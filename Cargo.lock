@@ -551,6 +551,7 @@ dependencies = [
  "ixmati-core",
  "prost",
  "rumqttc",
+ "rusqlite",
  "serde",
  "serde_json",
  "tokio",
