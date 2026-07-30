@@ -1,34 +1,73 @@
 # ROADMAP.md
 
-Direccion del proyecto en el tiempo.
+Prioridades de mediano plazo para Ixmati.
 
-## Objetivo
+## Fase 0 — Spike de decisión y contratos (actual)
 
-Dar contexto de prioridad sin convertir esto en una lista de tickets.
+**Objetivo**: cerrar las decisiones abiertas (DEC-0010, DEC-0011) y definir los contratos antes de escribir código de producción.
 
-## Cuando leer este archivo
+- `TASK-WRITE-0001`: spike de viabilidad de FlashDB vía FFI en Rust.
+- `TASK-WRITE-0002`: spike comparativo Opción A vs Opción B (durabilidad, latencia, orden).
+- `TASK-WRITE-0003`: definir contrato de envelope, topics MQTT y `.proto` para gRPC.
+- `TASK-WRITE-0004`: definir contrato de API REST (OpenAPI).
 
-Leer antes de crear una nueva spec para confirmar que la iniciativa
-es coherente con la direccion actual del proyecto.
+**Duración estimada**: 1-2 semanas.
 
-Si ROADMAP.md menciona una iniciativa pero no existe spec para ella,
-el siguiente paso es crear esa spec antes de implementar.
+## Fase 1 — Writer + SQLite (core)
 
-## Template
+**Objetivo**: el writer es funcional. Acepta mensajes, aplica escrituras en SQLite con batching y deduplicación.
 
-### Ahora
+- `TASK-WRITE-0005`: implementar `ixmati-core` (tipos, envelope, errores, config).
+- `TASK-WRITE-0006`: implementar `ixmati-writer` con consumer MQTT, lógica de `BEGIN IMMEDIATE`, batching, dedup.
+- `TASK-WRITE-0007`: tests de crash del writer (kill -9, 0 pérdidas, orden preservado).
 
-- Iniciativas activas
-- Bloqueos actuales
+**Duración estimada**: 2-3 semanas.
 
-### Despues
+## Fase 2 — API REST/gRPC
 
-- Siguientes prioridades
+**Objetivo**: los backends pueden enviar escrituras y consultar estado vía API HTTP y gRPC.
 
-### Mas adelante
+- `TASK-WRITE-0008`: implementar `ixmati-api` (axum REST + tonic gRPC).
+- `TASK-WRITE-0009`: implementar modo async (`ack=accepted`) y modo sync (`ack=committed`) con correlación de respuestas.
+- `TASK-WRITE-0010`: endpoint `GET /writes/{idempotency_key}` para consulta de estado.
 
-- Apuestas futuras
+**Duración estimada**: 2-3 semanas.
 
-### No hacer por ahora
+## Fase 3 — Cache y resync
 
-- Ideas descartadas temporalmente
+**Objetivo**: las lecturas se sirven desde FlashDB (o alternativa) con fallback a SQLite.
+
+- `TASK-WRITE-0011`: implementar `ixmati-cache` con trait `CacheBackend` e implementación FlashDB (o alternativa según spike).
+- `TASK-WRITE-0012`: invalidación/repoblación de cache desde el writer tras cada commit.
+- `TASK-WRITE-0013`: implementar `ixmati-resync` (reconstrucción offline de cache desde SQLite).
+
+**Duración estimada**: 2 semanas.
+
+## Fase 4 — Disaster recovery y producción
+
+**Objetivo**: el sistema tolera fallos y se puede recuperar desde backup.
+
+- `TASK-WRITE-0014`: configurar Litestream con ≥2 destinos de backup.
+- `TASK-WRITE-0015`: health checks integrados (API, writer, Mosquitto, SQLite, cache).
+- `TASK-WRITE-0016`: documentar runbook de producción (restore, failover, resync).
+
+**Duración estimada**: 1-2 semanas.
+
+## Fase 5 — Observabilidad y producción avanzada
+
+**Objetivo**: visibilidad operativa y hardening.
+
+- Métricas Prometheus (lag de cola, latencia de commit, tasa de misses, tamaño de cache).
+- Backpressure: rechazar escrituras cuando la cola supera un umbral.
+- Alertas: writer caído, cola creciendo, Litestream detenido, SQLite corrupto.
+- Benchmarks de throughput (escrituras/segundo, lecturas/segundo) y límites operativos documentados.
+
+**Duración estimada**: 2 semanas.
+
+## Más allá (backlog no priorizado)
+
+- Writer standby con failover automático.
+- Soporte para múltiples archivos SQLite (sharding por entidad).
+- Plugin de autenticación en la API (JWT, API keys).
+- Dashboard web de operación (lag, throughput, errores).
+- CDC (change data capture) para suscriptores externos vía MQTT.

@@ -1,48 +1,103 @@
 # COMMANDS.md
 
-Lista de comandos operativos del proyecto.
+Comandos del proyecto para desarrollo, build, test y operaciones.
 
-## Objetivo
-
-Reducir la ambiguedad de ejecucion para agentes y humanos.
-
-## Template
-
-### Setup
+## Desarrollo local
 
 ```bash
-# instalar dependencias
+# Compilar todo el workspace
+cargo build
+
+# Compilar en release
+cargo build --release
+
+# Ejecutar tests (unitarios + integración)
+cargo test
+
+# Tests con output
+cargo test -- --nocapture
+
+# Ejecutar un test específico
+cargo test -p ixmati-writer -- test_batch_commit
+
+# Linting
+cargo clippy --all-targets --all-features -- -D warnings
+
+# Formato
+cargo fmt --all -- --check
+cargo fmt --all
+
+# Documentación
+cargo doc --open
 ```
 
-### Desarrollo
+## Levantar servicios de desarrollo
 
 ```bash
-# iniciar app
+# Iniciar Mosquitto + entorno de test
+docker compose -f docker/docker-compose.dev.yml up -d
+
+# Detener
+docker compose -f docker/docker-compose.dev.yml down
+
+# Ver logs de Mosquitto
+docker compose -f docker/docker-compose.dev.yml logs -f mosquitto
 ```
 
-### Tests
+## Resync de cache
+
+Reconstruir FlashDB desde SQLite (cache se considera siempre desechable):
 
 ```bash
-# correr tests
+cargo run -p ixmati-resync -- --sqlite /data/ixmati.db --cache /data/cache.db
 ```
 
-### Lint y formato
-
-```bash
-# lint
-# format
+Opciones:
+```
+--sqlite <PATH>       Ruta al archivo SQLite
+--cache <PATH>        Ruta al archivo FlashDB (se sobrescribe)
+--entity <ENTITY>     Solo reconstruir una entidad (opcional)
+--batch-size <N>      Registros por batch (default: 10000)
 ```
 
-### Build
+## Disaster recovery con Litestream
 
 ```bash
-# build
+# Restaurar desde el último backup
+litestream restore -o /data/ixmati_restored.db s3://ixmati-backups/ixmati
+
+# Restaurar a un punto en el tiempo
+litestream restore -o /data/ixmati_restored.db --timestamp 2026-07-29T10:30:00Z s3://ixmati-backups/ixmati
+
+# Verificar integridad post-restauración
+sqlite3 /data/ixmati_restored.db "PRAGMA integrity_check;"
 ```
 
-### Utilidad
+## Verificaciones de salud
 
 ```bash
-# seed
-# migrate
-# generar tipos
+# Health check de la API
+curl http://localhost:8080/health
+
+# Verificar integridad de SQLite
+sqlite3 /data/ixmati.db "PRAGMA integrity_check; PRAGMA quick_check;"
+
+# Verificar estado de replicación Litestream
+litestream generations /data/ixmati.db
+
+# Verificar conexión Mosquitto
+mosquitto_sub -t 'ixmati/health/#' -C 1 -W 2
+
+# Tamaño del WAL (bytes)
+stat -f%z /data/ixmati.db-wal
+```
+
+## Métricas y debugging
+
+```bash
+# Lag de cola MQTT
+mosquitto_sub -t '$SYS/broker/messages/stored' -C 1
+
+# Tamaño de la base de datos
+sqlite3 /data/ixmati.db "SELECT COUNT(*) FROM _idempotency; SELECT page_count * page_size AS size_bytes FROM pragma_page_count(), pragma_page_size();"
 ```
