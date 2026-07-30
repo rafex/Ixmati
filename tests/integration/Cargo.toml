@@ -13,3 +13,6 @@ ixmati-cache = { path = "../../crates/ixmati-cache" }
 ixmati-projector = { path = "../../crates/ixmati-projector" }
 tokio.workspace = true
 serde_json.workspace = true
+rusqlite.workspace = true
+uuid.workspace = true
+chrono.workspace = true

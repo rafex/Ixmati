@@ -1,11 +1,13 @@
 pub mod config;
 pub mod envelope;
 pub mod error;
+pub mod projection;
 pub mod store;
 
 pub use config::{Config, StoreConfig};
 pub use envelope::{AckResponse, EventEnvelope, WriteEnvelope};
 pub use error::{Error, Result};
+pub use projection::{ProjectionConfig, ProjectionPattern, ProjectionRegistry};
 pub use store::{Store, StoreRegistry, Topology};
 
 #[cfg(test)]
