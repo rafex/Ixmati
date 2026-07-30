@@ -15,3 +15,7 @@ Vínculos entre artefactos del proyecto.
 
 - **Decisiones**: 33 (29 `accepted`, 2 `superseded`, 1 `cancelled`)
 - **Tareas**: 53 en 4 iniciativas
+| SPEC-WRITE-0001 | spec-native/specs/write-engine/SPEC.md | closed | 2026-07-30 |
+| SPEC-CONTAINERS-0001 | spec-native/specs/containers/SPEC.md | closed | 2026-07-30 |
+| SPEC-TOOL-0001 | spec-native/specs/tooling/SPEC.md | closed | 2026-07-30 |
+| SPEC-AUTH-0001 | spec-native/specs/authentication/SPEC.md | closed | 2026-07-30 |

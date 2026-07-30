@@ -3,10 +3,10 @@
 ```toml
 artifact_type = "spec"
 id = "SPEC-WRITE-0001"
-state = "active"
+state = "done"
 owner = "team-core"
 created_at = "2026-07-29"
-updated_at = "2026-07-29"
+P26-07-30"
 replaces = "none"
 related_tasks = [
   "TASK-WRITE-0001", "TASK-WRITE-0003", "TASK-WRITE-0004",
