@@ -1,7 +1,5 @@
 # helpers/just/containers.just — tareas de contenedores
 
-repo_root := `git rev-parse --show-toplevel 2>/dev/null || pwd`
-
 # ── tunnel ──
 
 # levanta el tunel SSH al podman remoto
@@ -83,10 +81,10 @@ containers-logs file="dev" service="":
 [group('containers')]
 quadlet-install:
     @echo "[quadlet] instalando unidades..."
-    cp {{repo_root}}/containers/quadlet/*{.network,.volume,.container} {{env_var_or("HOME", "/home/rafex")}}/.config/containers/systemd/
+    cp {{repo_root}}/containers/quadlet/*{.network,.volume,.container} ~/.config/containers/systemd/
     systemctl --user daemon-reload
     @echo "[quadlet] listo. Unidades disponibles:"
-    @ls {{env_var_or("HOME", "/home/rafex")}}/.config/containers/systemd/ixmati-*
+    @ls ~/.config/containers/systemd/ixmati-*
 
 # estado de las unidades quadlet
 [group('containers')]

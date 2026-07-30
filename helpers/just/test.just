@@ -1,7 +1,5 @@
 # helpers/just/test.just — tareas de test
 
-repo_root := `git rev-parse --show-toplevel 2>/dev/null || pwd`
-
 # ejecuta tests unitarios (in-source)
 [group('test')]
 test-unit filter="":

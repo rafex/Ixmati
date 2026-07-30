@@ -12,3 +12,4 @@
 .opencode/worktrees.log
 .opencode/node_modules/
 session-ses_*.md
+target/

@@ -166,7 +166,7 @@ validation = ["mdbook build docs/ compila sin errores", "just docs-build funcion
 ```toml
 id = "TASK-TOOL-0013"
 title = "Rellenar spec-native/pipelines/CI.md y CD.md con gates reales"
-state = "todo"
+state = "done"
 owner = "team-core"
 dependencies = ["TASK-TOOL-0005", "TASK-TOOL-0010"]
 expected_files = ["spec-native/pipelines/CI.md", "spec-native/pipelines/CD.md"]

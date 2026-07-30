@@ -1,7 +1,5 @@
 # helpers/just/dev.just — tareas de desarrollo local
 
-repo_root := `git rev-parse --show-toplevel 2>/dev/null || pwd`
-
 # levanta servicios de desarrollo (Mosquitto, etc.)
 [group('dev')]
 env-up:

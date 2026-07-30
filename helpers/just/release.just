@@ -1,7 +1,5 @@
 # helpers/just/release.just — tareas de release
 
-repo_root := `git rev-parse --show-toplevel 2>/dev/null || pwd`
-
 # muestra la version actual (desde Cargo.toml)
 [group('release')]
 version:

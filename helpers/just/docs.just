@@ -1,7 +1,5 @@
 # helpers/just/docs.just — documentacion mdBook
 
-repo_root := `git rev-parse --show-toplevel 2>/dev/null || pwd`
-
 # compila el libro (mdBook build)
 [group('docs')]
 docs-build:

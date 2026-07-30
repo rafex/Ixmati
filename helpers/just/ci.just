@@ -1,7 +1,5 @@
 # helpers/just/ci.just — tasks de CI (llamadas desde GitHub Actions)
 
-repo_root := `git rev-parse --show-toplevel 2>/dev/null || pwd`
-
 # verificaciones de PR
 [group('ci')]
 ci-pr:

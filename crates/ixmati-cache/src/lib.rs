@@ -9,6 +9,6 @@ mod tests {
     #[test]
     fn bootstrap_tdd_red() {
         let result = add(2, 2);
-        assert_eq!(result, 5, "TDD bootstrap: este test DEBE fallar. Implementa y corrígelo.");
+        assert_eq!(result, 4);
     }
 }

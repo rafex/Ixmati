@@ -1,7 +1,5 @@
 # helpers/just/hooks.just — gestion de git hooks
 
-repo_root := `git rev-parse --show-toplevel 2>/dev/null || pwd`
-
 # instala los hooks (core.hooksPath → .githooks)
 [group('hooks')]
 hooks-install:

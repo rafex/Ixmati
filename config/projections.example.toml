@@ -1,0 +1,23 @@
+# Ixmati — Example projection declarations
+
+# Pattern R: referencia + lookup (eager loading)
+# La consulta completa hace 2 lecturas a FlashDB
+# [[projections]]
+# name = "pedidos_con_usuario"
+# pattern = "R"
+# source_stores = ["pedidos", "usuarios"]
+# target_key = "pedido_id"
+# ttl_seconds = 300
+
+# Pattern M: materializado (copia campos desde otros stores)
+# Requiere copy_fields. Validado contra DEC-0016 (fan_out ≤ 100)
+# [[projections]]
+# name = "usuarios_materializados"
+# pattern = "M"
+# source_stores = ["usuarios"]
+# target_key = "usuario_id"
+# ttl_seconds = 600
+# [[projections.copy_fields]]
+# source_store = "usuarios"
+# source_entity = "usuario"
+# fields = ["nombre", "email"]

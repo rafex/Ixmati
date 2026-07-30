@@ -1,7 +1,5 @@
 # helpers/just/quality.just — linting, formato, auditoria
 
-repo_root := `git rev-parse --show-toplevel 2>/dev/null || pwd`
-
 # formatea codigo Rust
 [group('quality')]
 fmt:

@@ -1,0 +1,15 @@
+[workspace]
+
+[package]
+name = "flashdb-ffi-spike"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+publish = false
+
+[dependencies]
+libc = "0.2"
+
+[build-dependencies]
+cc = "1"
+bindgen = "0"

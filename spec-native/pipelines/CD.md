@@ -1,65 +1,53 @@
-# CD.md
+# CD.md — Continuous Delivery Pipeline
 
-Entrega continua del proyecto.
+## Visión general
 
-## Objetivo
+El pipeline de release produce imágenes de contenedor versionadas para cada binario y las publica en un registry. Los artefacts se construyen una sola vez y se promueven entre entornos.
 
-Describir como el codigo pasa de un cambio mergeado a produccion:
-ambientes, gates de promocion, proceso de deploy y rollback.
+## Artefactos
 
-## Cuando actualizar este archivo
+Para cada release se producen:
 
-Actualizar cuando cambie un ambiente, se modifiquen los gates de
-promocion o cambie el proceso de release.
+| Artefacto | Descripción |
+|---|---|
+| `ixmati-api:<tag>` | API REST + gRPC |
+| `ixmati-writer:<tag>` | Writer por store |
+| `ixmati-projector:<tag>` | Runtime de proyecciones |
+| `ixmati-supervisor:<tag>` | Orquestador de stores |
+| `ixmati-reconciler:<tag>` | Reproductor offline |
+| `ixmati-mosquitto:<tag>` | Broker MQTT con config de Ixmati |
+| `ixmati-litestream:<tag>` | Sidecar Litestream por store |
 
-## Template
+## Estrategia de versionado
 
-### Plataforma
+- Tags de imagen: `<major>.<minor>.<patch>-<short-sha>` para releases, `latest` para main
+- Versión semántica desde `Cargo.toml` workspace
+- Imágenes base: `debian:trixie-slim` (glibc, seguro para FlashDB FFI)
 
-- Plataforma de CD:
-- Archivo de configuracion:
-- Donde ver el estado de los deploys:
+## Pipeline de release
 
-### Ambientes
+1. **Build**: `make containers-build` → construye el builder compartido y todas las imágenes
+2. **Tag**: las imágenes se tagean con `git describe --tags` + short SHA
+3. **Test**: `just ci-main` contra la imagen de test
+4. **Push**: las imágenes se empujan al registry (`ghcr.io/rafex/ixmati`)
+5. **Release**: `gh release create` con changelog
 
-| Ambiente | Rama o tag | Deploy automatico | Aprobacion requerida |
-| --- | --- | --- | --- |
-| Desarrollo | | | |
-| Staging | | | |
-| Produccion | | | |
+## Entornos
 
-### Proceso de release
+| Entorno | Estrategia | Registry |
+|---|---|---|
+| Dev | Manual, `latest` | Registry local |
+| Staging | Automático desde main | ghcr.io |
+| Producción | Manual desde release tag | ghcr.io |
 
-Describe los pasos desde que un cambio esta en la rama principal
-hasta que llega a produccion:
+## Despliegue de stores
 
-1. Paso
-2. Paso
-3. Paso
+- K8s: 1 Deployment o StatefulSet por store, con PVC y sidecar Litestream
+- Quadlet: `ixmati-writer@.container` unit template (1 instancia por store)
+- El supervisor resuelve topología al iniciar
 
-### Gates de promocion
+## Rollback
 
-Condiciones que deben cumplirse antes de promover a cada ambiente:
-
-| De | A | Gates requeridos |
-| --- | --- | --- |
-| rama principal | staging | |
-| staging | produccion | |
-
-### Variables y secretos
-
-- Donde se gestionan las variables de entorno por ambiente.
-- Que variables son obligatorias para que el deploy funcione.
-- No documentar valores; solo nombres y proposito.
-
-### Rollback
-
-- Como revertir un deploy fallido en cada ambiente.
-- Criterio para activar un rollback.
-- Quien tiene autoridad para hacerlo.
-
-### Relacion con specs y tareas
-
-Antes de considerar una iniciativa completamente entregada, verificar
-que el cambio fue desplegado al ambiente objetivo y que los gates de
-promocion definidos aqui fueron satisfechos.
+- Las imágenes son inmutables — rollback = deploy de tag anterior
+- Litestream garantiza que los datos de SQLite por store son recuperables (RPO < 5s)
+- Los read models en FlashDB son reconstruibles vía reconciler

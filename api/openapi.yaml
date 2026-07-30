@@ -1,0 +1,281 @@
+openapi: "3.0.3"
+info:
+  title: Ixmati Write Engine API
+  description: API de escritura y lectura del motor Ixmati — multiple stores con Mosquitto + SQLite.
+  version: "0.1.0"
+
+servers:
+  - url: http://localhost:8080
+    description: Local development
+
+paths:
+  /write:
+    post:
+      summary: Enviar comando de escritura
+      operationId: write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WriteEnvelope"
+      responses:
+        "200":
+          description: Comando aceptado (modo async)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AckResponse"
+        "201":
+          description: Comando confirmado (modo sync committed)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AckResponse"
+        "409":
+          description: Conflicto (VERSION_CONFLICT o DUPLICATE)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+        "422":
+          description: Store no encontrado o parámetros inválidos
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+
+  /writes/{store}/{idempotencyKey}:
+    get:
+      summary: Consultar estado de un comando
+      operationId: getWriteStatus
+      parameters:
+        - name: store
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Nombre del store destino
+        - name: idempotencyKey
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: UUID v4 de idempotencia del comando
+      responses:
+        "200":
+          description: Estado del comando
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WriteStatusResponse"
+        "404":
+          description: Store o idempotency_key no encontrado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+
+  /read:
+    get:
+      summary: Leer entidad por store/entity/key o por proyección
+      operationId: read
+      parameters:
+        - name: store
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Nombre del store (requerido si no se usa projection)
+        - name: entity
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Nombre de la entidad en snake_case
+        - name: key
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Clave de la entidad
+        - name: projection
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Nombre de la proyección a consultar
+      responses:
+        "200":
+          description: Entidad encontrada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadResponse"
+        "404":
+          description: Entidad no encontrada
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
+
+  /health:
+    get:
+      summary: Health check agregado
+      operationId: health
+      responses:
+        "200":
+          description: Sistema saludable (todos los componentes OK)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+        "503":
+          description: Sistema degradado o no disponible
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+components:
+  schemas:
+    WriteEnvelope:
+      type: object
+      required:
+        - op
+        - store
+        - entity
+        - key
+        - version
+        - ts
+        - idempotency_key
+        - ack_mode
+        - payload
+      properties:
+        op:
+          type: string
+          enum: [upsert, delete, patch]
+          description: Operación de escritura
+        store:
+          type: string
+          description: Store destino del comando (obligatorio)
+        entity:
+          type: string
+          description: Nombre de la entidad en snake_case
+        key:
+          type: string
+          description: Identificador único de la entidad
+        version:
+          type: integer
+          format: uint64
+          minimum: 0
+          description: Número de versión monotónico
+        ts:
+          type: string
+          format: date-time
+          description: Timestamp ISO 8601 del origen (no del writer)
+        idempotency_key:
+          type: string
+          format: uuid
+          description: UUID v4 para deduplicación
+        ack_mode:
+          type: string
+          enum: [accepted, committed]
+          description: Modo de confirmación
+        payload:
+          type: object
+          description: Datos específicos de la entidad (schema libre)
+
+    AckResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ACCEPTED, COMMITTED]
+          description: Estado resultante del comando
+        store:
+          type: string
+        idempotency_key:
+          type: string
+          format: uuid
+        message:
+          type: string
+
+    WriteStatusResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [PENDING, APPLIED, DUPLICATE, VERSION_CONFLICT, REJECTED]
+          description: Estado del comando en el store
+        store:
+          type: string
+        idempotency_key:
+          type: string
+          format: uuid
+        detail:
+          type: string
+
+    ReadResponse:
+      type: object
+      properties:
+        found:
+          type: boolean
+          description: false si la entidad no existe
+        store:
+          type: string
+        entity:
+          type: string
+        key:
+          type: string
+        version:
+          type: integer
+          format: uint64
+        payload:
+          type: object
+
+    HealthResponse:
+      type: object
+      properties:
+        overall:
+          type: string
+          enum: [OK, DEGRADED, UNAVAILABLE]
+        components:
+          type: array
+          items:
+            $ref: "#/components/schemas/ComponentHealth"
+
+    ComponentHealth:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Nombre del componente (api, writer:store, mosquitto, sqlite:store, cache)
+        status:
+          type: string
+          enum: [OK, DEGRADED, UNAVAILABLE]
+        detail:
+          type: string
+
+    ErrorDetail:
+      type: object
+      properties:
+        error:
+          type: string
+          enum:
+            - VERSION_CONFLICT
+            - DUPLICATE
+            - STORE_NOT_FOUND
+            - ENTITY_NOT_FOUND
+            - WRITE_REJECTED
+            - QUEUE_FULL
+            - PROJECTION_ERROR
+            - INTERNAL
+        detail:
+          type: string
+        store:
+          type: string
+        idempotency_key:
+          type: string
+          format: uuid

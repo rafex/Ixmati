@@ -22,7 +22,7 @@ state = "in_progress"
 ```toml
 id = "TASK-WRITE-0001"
 title = "Spike: viabilidad de FlashDB vía FFI en Rust"
-state = "todo"
+state = "done"
 owner = "team-core"
 dependencies = []
 expected_files = ["spike/flashdb-ffi/Cargo.toml", "spike/flashdb-ffi/README.md"]
@@ -49,7 +49,7 @@ dependencies = []
 ```toml
 id = "TASK-WRITE-0003"
 title = "Definir contrato de envelope (comando + evento), topics MQTT (cmd + evt) y archivos .proto"
-state = "todo"
+state = "done"
 owner = "team-core"
 dependencies = []
 expected_files = ["proto/ixmati/v1/write.proto", "proto/ixmati/v1/read.proto", "proto/ixmati/v1/common.proto"]
@@ -64,7 +64,7 @@ Definir los archivos `.proto` para gRPC y el esquema JSON del envelope de comand
 ```toml
 id = "TASK-WRITE-0004"
 title = "Definir contrato de API REST (OpenAPI 3.0)"
-state = "todo"
+state = "done"
 owner = "team-core"
 dependencies = ["TASK-WRITE-0003"]
 expected_files = ["api/openapi.yaml"]
@@ -79,7 +79,7 @@ Especificación OpenAPI 3.0: `POST /write`, `GET /writes/{store}/{idempotency_ke
 ```toml
 id = "TASK-WRITE-0005"
 title = "Implementar ixmati-core (tipos, envelope comando + evento, errores, config, StoreConfig)"
-state = "todo"
+state = "done"
 owner = "team-core"
 dependencies = ["TASK-WRITE-0003", "TASK-WRITE-0004"]
 expected_files = ["crates/ixmati-core/src/lib.rs", "crates/ixmati-core/src/envelope.rs", "crates/ixmati-core/src/error.rs", "crates/ixmati-core/src/config.rs", "crates/ixmati-core/src/store.rs"]
@@ -94,7 +94,7 @@ Crate compartido. Define `WriteEnvelope`, `EventEnvelope`, `AckResponse`, `Write
 ```toml
 id = "TASK-WRITE-0006"
 title = "Implementar ixmati-writer (consumer MQTT, batching, deduplicación, BEGIN IMMEDIATE, outbox transaccional)"
-state = "todo"
+state = "done"
 owner = "team-core"
 dependencies = ["TASK-WRITE-0005"]
 expected_files = ["crates/ixmati-writer/src/lib.rs", "crates/ixmati-writer/src/consumer.rs", "crates/ixmati-writer/src/batcher.rs", "crates/ixmati-writer/src/dedup.rs", "crates/ixmati-writer/src/outbox.rs"]
@@ -134,7 +134,7 @@ Test de integración crítico. Un script externo lanza N writers (uno por store)
 ```toml
 id = "TASK-WRITE-0008"
 title = "Implementar ixmati-api (axum REST + tonic gRPC)"
-state = "todo"
+state = "done"
 owner = "team-core"
 dependencies = ["TASK-WRITE-0003", "TASK-WRITE-0004", "TASK-WRITE-0005"]
 expected_files = ["crates/ixmati-api/src/lib.rs", "crates/ixmati-api/src/rest.rs", "crates/ixmati-api/src/grpc.rs"]
@@ -287,7 +287,7 @@ Documento operativo: cómo restaurar un store desde Litestream, failover manual 
 ```toml
 id = "TASK-WRITE-0017"
 title = "Implementar store registry y configuración multi-store"
-state = "todo"
+state = "done"
 owner = "team-core"
 dependencies = ["TASK-WRITE-0005"]
 expected_files = ["crates/ixmati-core/src/store.rs", "config/stores.example.toml"]
@@ -306,7 +306,7 @@ Define `StoreConfig` y el registry. Resuelve topología: `N` pods vs 1 proceso c
 ```toml
 id = "TASK-WRITE-0018"
 title = "Implementar tabla _outbox, inserción transaccional, y publicador de eventos como task del writer"
-state = "todo"
+state = "done"
 owner = "team-core"
 dependencies = ["TASK-WRITE-0006"]
 expected_files = ["crates/ixmati-writer/src/outbox.rs", "crates/ixmati-writer/src/publisher.rs"]

@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+package ixmati.v1;
+
+service ReadService {
+  rpc Read (ReadRequest) returns (ReadResponse);
+}
+
+message ReadRequest {
+  string store = 1;
+  string entity = 2;
+  string key = 3;
+  string projection = 4;
+}
+
+message ReadResponse {
+  bool found = 1;
+  string store = 2;
+  string entity = 3;
+  string key = 4;
+  uint64 version = 5;
+  bytes payload = 6;
+}
+
+message HealthCheckRequest {}
+
+message HealthCheckResponse {
+  enum Status {
+    STATUS_UNSPECIFIED = 0;
+    STATUS_OK = 1;
+    STATUS_DEGRADED = 2;
+    STATUS_UNAVAILABLE = 3;
+  }
+
+  Status overall = 1;
+  repeated ComponentHealth components = 2;
+}
+
+message ComponentHealth {
+  string name = 1;
+  HealthCheckResponse.Status status = 2;
+  string detail = 3;
+}

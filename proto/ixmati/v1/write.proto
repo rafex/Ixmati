@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+package ixmati.v1;
+
+import "ixmati/v1/common.proto";
+
+service WriteService {
+  rpc Write (WriteRequest) returns (WriteResponse);
+  rpc GetWriteStatus (GetWriteStatusRequest) returns (GetWriteStatusResponse);
+}
+
+message WriteRequest {
+  WriteEnvelope envelope = 1;
+}
+
+message WriteResponse {
+  string status = 1;
+  string store = 2;
+  string idempotency_key = 3;
+  string message = 4;
+}
+
+message GetWriteStatusRequest {
+  string store = 1;
+  string idempotency_key = 2;
+}
+
+message GetWriteStatusResponse {
+  WriteStatus status = 1;
+  string store = 2;
+  string idempotency_key = 3;
+  string detail = 4;
+}

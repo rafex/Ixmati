@@ -1,0 +1,27 @@
+# Ixmati — Example: multi-store with projections
+
+[[stores]]
+name = "pedidos"
+label = "Pedidos"
+db_path = "/data/ixmati/pedidos.db"
+mqtt_broker = "tcp://localhost:1883"
+mqtt_client_id = "writer-pedidos"
+batch_size = 100
+batch_interval_ms = 50
+
+[[stores]]
+name = "usuarios"
+label = "Usuarios"
+db_path = "/data/ixmati/usuarios.db"
+mqtt_broker = "tcp://localhost:1883"
+mqtt_client_id = "writer-usuarios"
+batch_size = 100
+batch_interval_ms = 50
+
+# Proyecciones (opt-in, solo se activan en multi-store)
+# [[projections]]
+# name = "pedidos_con_usuario"
+# pattern = "R"
+# source_stores = ["pedidos", "usuarios"]
+# target_key = "pedido_id"
+# ttl_seconds = 300
