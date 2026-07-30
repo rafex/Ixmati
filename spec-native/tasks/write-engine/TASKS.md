@@ -326,7 +326,7 @@ Tabla `_outbox(id, event_type, event_id, store, entity, key, version, occurred_a
 ```toml
 id = "TASK-WRITE-0019"
 title = "Definir EventEnvelope y publicación en ixmati/evt/..."
-state = "todo"
+state = "done"
 owner = "team-core"
 dependencies = ["TASK-WRITE-0003", "TASK-WRITE-0018"]
 expected_files = ["crates/ixmati-core/src/event.rs", "crates/ixmati-writer/src/publisher.rs"]

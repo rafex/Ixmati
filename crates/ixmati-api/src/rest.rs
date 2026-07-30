@@ -112,9 +112,13 @@ async fn write_handler(
 
 #[derive(Deserialize)]
 struct ReadQuery {
+    #[allow(dead_code)]
     store: Option<String>,
+    #[allow(dead_code)]
     entity: Option<String>,
+    #[allow(dead_code)]
     key: Option<String>,
+    #[allow(dead_code)]
     projection: Option<String>,
 }
 
