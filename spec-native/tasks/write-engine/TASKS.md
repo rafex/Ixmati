@@ -148,8 +148,8 @@ Implementa los endpoints definidos. Traduce requests HTTP/gRPC a comandos JSON y
 
 ```toml
 id = "TASK-WRITE-0009"
-title = "Implementar modo async (ack=accepted) y sync (ack=committed) con correlación de respuestas"
-state = "todo"
+title = "Implementar modo async/sync con correlación de respuestas"
+state = "done"
 owner = "team-core"
 dependencies = ["TASK-WRITE-0008", "TASK-WRITE-0006"]
 expected_files = ["crates/ixmati-api/src/ack.rs", "crates/ixmati-writer/src/ack.rs"]
@@ -169,7 +169,7 @@ Dos caminos de confirmación. En modo async, el ack se genera al publicar en Mos
 ```toml
 id = "TASK-WRITE-0010"
 title = "Implementar endpoint de consulta de estado de comando"
-state = "todo"
+state = "done"
 owner = "team-core"
 dependencies = ["TASK-WRITE-0009"]
 expected_files = ["crates/ixmati-api/src/status.rs"]

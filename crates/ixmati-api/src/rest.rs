@@ -13,12 +13,21 @@ use uuid::Uuid;
 #[derive(Clone)]
 pub struct AppState {
     mqtt_broker: String,
+    db_path: Option<String>,
 }
 
 impl AppState {
     pub fn new(broker: &str) -> Self {
         Self {
             mqtt_broker: broker.to_string(),
+            db_path: None,
+        }
+    }
+
+    pub fn with_db(broker: &str, db_path: &str) -> Self {
+        Self {
+            mqtt_broker: broker.to_string(),
+            db_path: Some(db_path.to_string()),
         }
     }
 
@@ -142,14 +151,55 @@ struct WriteStatusParams {
 }
 
 async fn write_status_handler(
+    State(state): State<AppState>,
     Path(params): Path<WriteStatusParams>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ixmati_core::Error>)> {
-    Ok(Json(serde_json::json!({
-        "status": "PENDING",
-        "store": params.store,
-        "idempotency_key": params.idempotency_key,
-        "detail": "status query not yet implemented"
-    })))
+    let db_path = state.db_path.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ixmati_core::Error::Internal {
+                detail: "no database configured for status queries".into(),
+            }),
+        )
+    })?;
+
+    match crate::status::StatusQuery::query(
+        db_path,
+        &params.store,
+        &params.idempotency_key,
+    ) {
+        Ok(status) => match status {
+            crate::status::WriteStatus::Pending { store, idempotency_key } => {
+                Ok(Json(serde_json::json!({
+                    "status": "PENDING",
+                    "store": store,
+                    "idempotency_key": idempotency_key,
+                })))
+            }
+            crate::status::WriteStatus::Applied {
+                idempotency_key,
+                store,
+                entity,
+                key,
+                version,
+                applied_at,
+            } => Ok(Json(serde_json::json!({
+                "status": "APPLIED",
+                "store": store,
+                "entity": entity,
+                "key": key,
+                "version": version,
+                "idempotency_key": idempotency_key,
+                "applied_at": applied_at,
+            }))),
+        },
+        Err(e) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ixmati_core::Error::Internal {
+                detail: e.to_string(),
+            }),
+        )),
+    }
 }
 
 async fn health_handler() -> Json<serde_json::Value> {

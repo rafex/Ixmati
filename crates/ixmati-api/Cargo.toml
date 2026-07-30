@@ -16,3 +16,4 @@ axum.workspace = true
 tonic.workspace = true
 prost.workspace = true
 rumqttc.workspace = true
+rusqlite.workspace = true
