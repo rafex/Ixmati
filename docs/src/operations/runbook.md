@@ -1,37 +1,85 @@
-### Runbook Operativo
+# Ixmati — Runbook de Producción
 
-#### Restaurar un store desde Litestream
+## Restore de un store desde Litestream
 
-1. Detener el writer del store afectado.
-2. `litestream restore -o /data/<store>_restored.db s3://ixmati-backups/<store>`
-3. Verificar integridad: `sqlite3 /data/<store>_restored.db "PRAGMA integrity_check;"`
-4. Reemplazar el archivo y reiniciar el writer.
-5. Si es necesario, reproyectar: `cargo run -p ixmati-reconciler -- --projection <name>`
+1. Detener el writer del store afectado:
+   ```bash
+   kubectl scale deployment ixmati-writer-${store} --replicas=0
+   ```
+2. Restaurar desde S3:
+   ```bash
+   litestream restore -config config/litestream.yml -o /data/ixmati/${store}.db /data/ixmati/${store}.db
+   ```
+3. Verificar integridad:
+   ```bash
+   sqlite3 /data/ixmati/${store}.db "SELECT COUNT(*) FROM _idempotency"
+   ```
+4. Rearrancar writer:
+   ```bash
+   kubectl scale deployment ixmati-writer-${store} --replicas=1
+   ```
+5. Validar health:
+   ```bash
+   curl http://ixmati-api:8080/health
+   ```
 
-#### Failover manual del writer
+## Failover manual del writer de un store
 
-1. Detectar caída (health check o alerta).
-2. Mosquitto retiene los comandos en disco (persistence). Sin pérdida.
-3. Reiniciar el writer. El proceso consume los comandos pendientes.
-4. El publicador vacía `_outbox` (eventos pendientes).
+1. Verificar estado actual:
+   ```bash
+   curl http://ixmati-api:8080/health | jq .components
+   ```
+2. Si el writer está en `UNAVAILABLE`, mover tráfico al pod de respaldo:
+   ```bash
+   kubectl scale deployment ixmati-writer-${store} --replicas=2
+   ```
+3. Esperar que el health reporte `OK` para ese store
+4. Bajar el pod defectuoso:
+   ```bash
+   kubectl scale deployment ixmati-writer-${store} --replicas=1
+   ```
 
-#### Reconstruir read models
+## Reprojección completa con reconciler
 
-```bash
-# reproyección total (todos los read models desde cero)
-cargo run -p ixmati-reconciler
+1. Ejecutar reconciler en modo dry-run para estimar:
+   ```bash
+   ixmati-reconciler --dry-run
+   ```
+2. Reprojectar todo:
+   ```bash
+   ixmati-reconciler --cache-endpoint http://ixmati-cache:8081
+   ```
+3. Reprojectar una proyección específica:
+   ```bash
+   ixmati-reconciler --projection pedidos_con_usuario
+   ```
 
-# reproyección selectiva
-cargo run -p ixmati-reconciler -- --projection pedidos_con_usuario
+## Diagnóstico de lag
 
-# dry-run (validar sin escribir)
-cargo run -p ixmati-reconciler -- --dry-run
-```
+- **Lag de cola**: consultar outbox no publicado
+  ```bash
+  sqlite3 /data/ixmati/${store}.db "SELECT COUNT(*) FROM _outbox WHERE published_at IS NULL"
+  ```
+  Si crece monótonamente → el publicador de eventos está caído.
 
-#### Troubleshooting
+- **Lag de proyección**: comparar `MAX(version)` en _idempotency vs cache
+  ```bash
+  sqlite3 /data/ixmati/${store}.db "SELECT MAX(version) FROM _idempotency"
+  ```
+  Si el número en SQLite es mayor que en FlashDB → el projector está atrasado.
 
-- **Cola creciendo**: `mosquitto_sub -t '$SYS/broker/messages/stored'` → verificar que el writer está corriendo.
-- **Outbox estancado**: `SELECT COUNT(*) FROM _outbox WHERE published_at IS NULL` → verificar publicador.
-- **Lag de proyección**: `uv run python helpers/python/lag_probe.py /data/<store>.db --projection` → posible cuello de botella en proyector.
-- **SQLITE_BUSY**: no debería ocurrir. Si aparece, verificar que solo un proceso abre el store en write.
-- **Cache stale**: purgar `just cache-purge --prefix "c:<store>:*"` y dejar que se repueble con el tráfico.
+- **Store caliente**: medir escrituras por minuto
+  ```bash
+  sqlite3 /data/ixmati/${store}.db "SELECT COUNT(*) FROM _idempotency WHERE applied_at > datetime('now', '-1 minute')"
+  ```
+
+## Troubleshooting común
+
+| Síntoma | Causa probable | Acción |
+|---|---|---|
+| `POST /write` devuelve 503 | Mosquitto caído | `systemctl restart mosquitto` |
+| `GET /writes/{store}/{key}` 404 siempre | SQLite inaccesible | Verificar PVC y permisos |
+| `GET /health` reporta `sqlite: UNAVAILABLE` | Litestream en restore | Esperar a que termine |
+| Comandos aceptados pero nunca APPLIED | Writer caído | Verificar logs del writer |
+| Proyecciones desactualizadas | Projector caído | Reiniciar projector |
+| Outbox creciendo sin publicar | EventPublisher error | Verificar conectividad MQTT |

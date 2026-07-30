@@ -1,0 +1,16 @@
+# Litestream configuration for Ixmati
+# Two replicas per store: local VPS backup + remote S3
+# Each store gets its own Litestream instance as a sidecar
+
+dbs:
+  - path: /data/ixmati/${STORE_NAME}.db
+    replicas:
+      - type: file
+        path: /backups/ixmati/${STORE_NAME}
+      - type: s3
+        bucket: ixmati-backups
+        path: ${STORE_NAME}
+        region: us-east-1
+        endpoint: https://s3.us-east-1.amazonaws.com
+        retention: 168h
+        sync-interval: 1s

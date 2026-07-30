@@ -1,9 +1,11 @@
+pub mod attach;
 pub mod config;
 pub mod envelope;
 pub mod error;
 pub mod projection;
 pub mod store;
 
+pub use attach::ReadOnlyConnection;
 pub use config::{Config, StoreConfig};
 pub use envelope::{AckResponse, EventEnvelope, WriteEnvelope};
 pub use error::{Error, Result};

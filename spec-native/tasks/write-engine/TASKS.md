@@ -234,7 +234,7 @@ dependencies = []
 ```toml
 id = "TASK-WRITE-0014"
 title = "Configurar Litestream con replicación a ≥2 destinos por store"
-state = "todo"
+state = "done"
 owner = "team-core"
 dependencies = ["TASK-WRITE-0006", "TASK-WRITE-0017"]
 expected_files = ["config/litestream.yml", "docker/litestream.Dockerfile"]
@@ -272,7 +272,7 @@ Health check agregado por store. Verifica: conectividad Mosquitto, respuesta SQL
 ```toml
 id = "TASK-WRITE-0016"
 title = "Documentar runbook de producción (restore por store, failover, reproyección, troubleshooting)"
-state = "todo"
+state = "done"
 owner = "team-core"
 dependencies = ["TASK-WRITE-0014", "TASK-WRITE-0015", "TASK-WRITE-0022"]
 expected_files = ["docs/src/operations/runbook.md"]
@@ -404,7 +404,7 @@ Binario offline. Modo fan-in: para cada proyección declarada, lee los stores fu
 ```toml
 id = "TASK-WRITE-0023"
 title = "Habilitar ATTACH DATABASE en conexiones read-only para reporting cross-store"
-state = "todo"
+state = "done"
 owner = "team-core"
 dependencies = ["TASK-WRITE-0006", "TASK-WRITE-0017"]
 expected_files = ["crates/ixmati-core/src/attach.rs"]
@@ -442,7 +442,7 @@ Supervisor orquesta múltiples stores. Topología configurable: `N` pods (K8s, 1
 ```toml
 id = "TASK-WRITE-0025"
 title = "Tests de consistencia eventual: outbox, lag de proyección, reproyección"
-state = "todo"
+state = "done"
 owner = "team-core"
 dependencies = ["TASK-WRITE-0018", "TASK-WRITE-0020", "TASK-WRITE-0022"]
 expected_files = ["tests/smoke/test_outbox.py", "tests/smoke/test_projection_lag.py", "tests/smoke/test_crash_durability.py"]
