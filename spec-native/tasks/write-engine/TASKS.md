@@ -115,7 +115,7 @@ Núcleo del sistema. Consume de `ixmati/cmd/<store>/...`. Cada writer maneja exa
 ```toml
 id = "TASK-WRITE-0007"
 title = "Tests de crash del writer (kill -9, 0 comandos perdidos, 0 eventos perdidos, orden preservado)"
-state = "todo"
+state = "done"
 owner = "team-core"
 dependencies = ["TASK-WRITE-0006", "TASK-WRITE-0018"]
 expected_files = ["helpers/shell/kill9_writer.sh", "tests/smoke/test_crash_durability.py"]
@@ -345,7 +345,7 @@ Define `EventEnvelope` con `store`, `entity`, `key`, `version`, `event_type`, `o
 ```toml
 id = "TASK-WRITE-0020"
 title = "Implementar ixmati-projector (runtime de proyecciones, idempotencia, patrón R y M)"
-state = "todo"
+state = "done"
 owner = "team-core"
 dependencies = ["TASK-WRITE-0011", "TASK-WRITE-0019"]
 expected_files = ["crates/ixmati-projector/src/lib.rs", "crates/ixmati-projector/src/projection.rs", "crates/ixmati-projector/src/idempotency.rs"]
