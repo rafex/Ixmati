@@ -204,7 +204,7 @@ Define `CacheBackend` con namespaces `c:` (cache-aside) y `p:` (proyecciones). L
 ```toml
 id = "TASK-WRITE-0012"
 title = "Invalidación y repoblación de cache-aside desde el writer tras cada commit"
-state = "todo"
+state = "done"
 owner = "team-core"
 dependencies = ["TASK-WRITE-0006", "TASK-WRITE-0011"]
 expected_files = ["crates/ixmati-writer/src/cache_sync.rs"]
@@ -253,7 +253,7 @@ Configuración de Litestream con dos réplicas por store. Frecuencia, destinos y
 ```toml
 id = "TASK-WRITE-0015"
 title = "Implementar health checks (API, writer por store, Mosquitto, SQLite por store, cache)"
-state = "todo"
+state = "done"
 owner = "team-core"
 dependencies = ["TASK-WRITE-0008", "TASK-WRITE-0006", "TASK-WRITE-0011"]
 expected_files = ["crates/ixmati-api/src/health.rs"]
@@ -365,7 +365,7 @@ Consume eventos de `ixmati/evt/...`, aplica proyecciones declaradas en config. I
 ```toml
 id = "TASK-WRITE-0021"
 title = "Declaración de proyecciones en config (patrón R/M, stores fuente, campos, clave destino)"
-state = "todo"
+state = "done"
 owner = "team-core"
 dependencies = ["TASK-WRITE-0020"]
 expected_files = ["config/projections.example.toml", "crates/ixmati-core/src/projection_config.rs"]
@@ -384,7 +384,7 @@ Formato de declaración: nombre, stores fuente, patrón (R/M), campos copiados (
 ```toml
 id = "TASK-WRITE-0022"
 title = "Implementar ixmati-reconciler (reproyección offline fan-in sobre N stores)"
-state = "todo"
+state = "done"
 owner = "team-core"
 dependencies = ["TASK-WRITE-0011", "TASK-WRITE-0021"]
 expected_files = ["crates/ixmati-reconciler/src/main.rs"]
@@ -423,7 +423,7 @@ Habilita `ATTACH DATABASE` exclusivamente en conexiones de solo lectura, sobre r
 ```toml
 id = "TASK-WRITE-0024"
 title = "Implementar ixmati-supervisor y manifiestos Kubernetes por store"
-state = "todo"
+state = "done"
 owner = "team-core"
 dependencies = ["TASK-WRITE-0017", "TASK-WRITE-0014"]
 expected_files = ["crates/ixmati-supervisor/src/main.rs", "k8s/deployment.yaml", "k8s/pvc.yaml", "k8s/litestream-sidecar.yaml"]

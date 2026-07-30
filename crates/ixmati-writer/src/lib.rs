@@ -4,6 +4,7 @@ pub mod dedup;
 pub mod outbox;
 pub mod write_engine;
 pub mod event_publisher;
+pub mod cache_sync;
 
 use ixmati_core::{EventEnvelope, StoreConfig, WriteEnvelope};
 

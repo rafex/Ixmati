@@ -206,11 +206,15 @@ async fn write_status_handler(
     }
 }
 
-async fn health_handler() -> Json<serde_json::Value> {
-    Json(serde_json::json!({
-        "overall": "OK",
-        "components": [
-            {"name": "api", "status": "OK", "detail": "running"}
-        ]
-    }))
+async fn health_handler(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let mut checker = crate::health::HealthChecker::new();
+
+    if let Some(ref db) = state.db_path {
+        checker = checker.with_db(db);
+    }
+
+    checker = checker.with_mqtt(&state.mqtt_broker);
+
+    let status = checker.check();
+    Json(serde_json::to_value(status).unwrap_or_default())
 }

@@ -1,5 +1,6 @@
 pub mod rest;
 pub mod status;
+pub mod health;
 
 use axum::Router;
 use std::net::SocketAddr;
