@@ -557,6 +557,7 @@ name = "ixmati-api"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "chrono",
  "ixmati-core",
  "prost",
  "rumqttc",
@@ -565,6 +566,7 @@ dependencies = [
  "serde_json",
  "tokio",
  "tonic",
+ "tower",
  "tracing",
  "tracing-subscriber",
  "uuid",
