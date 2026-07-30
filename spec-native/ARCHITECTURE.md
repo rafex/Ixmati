@@ -1,116 +1,141 @@
 # ARCHITECTURE.md
 
-Describe la arquitectura actual del proyecto y las opciones en evaluación.
+Describe la arquitectura actual del proyecto.
 
 ## Visión general
 
-Ixmati es un motor de escritura serializada que permite a múltiples backends/pods escribir en una misma instancia de SQLite sin contención. Los backends nunca abren SQLite directamente en modo escritura. Todas las escrituras pasan por un canal de ingesta (API REST/gRPC o MQTT) y son procesadas secuencialmente por un único writer Rust. Las lecturas se sirven desde una caché (FlashDB) con fallback directo a SQLite. Litestream replica el WAL a destinos remotos para disaster recovery.
+Ixmati es un motor de escritura serializada que permite a múltiples backends/pods escribir en una misma instancia de SQLite sin contención. La unidad atómica del sistema es el **store**: un archivo SQLite con su propio writer, su propio prefijo de topic y su propio destino de backup. Con 1 store se obtiene el diseño monolítico original. Con N stores nombrados por bounded context, tenant o región se obtiene la variante DDD.
 
-## Opciones de arquitectura (abiertas)
+Los backends nunca abren SQLite directamente. Todas las escrituras pasan como comandos por la API (REST/gRPC), se publican en Mosquitto, y son consumidas por el writer del store correspondiente. Las lecturas se sirven desde FlashDB: cache-aside por defecto (`c:<store>:<entity>:<key>`) y proyecciones opt-in (`p:<projection>:<key>`) alimentadas por un bus de eventos.
 
-Ambas opciones comparten el mismo objetivo y comparten SQLite como fuente de verdad con Litestream como backup. Difieren en el canal de ingesta de escrituras y en el camino de lectura.
+Litestream replica el WAL de cada store a destinos remotos. El sistema es tolerante a crash del writer (outbox transaccional garantiza 0 eventos perdidos) y a corrupción de cache (reconstruible desde los stores vía reconciler).
 
-### Opción A — Cola de escritura (Mosquitto como buffer)
-
-```
-                       ┌─────────────┐
-   [Backend 1] ───────►│             │
-   [Backend 2] ───────►│  API Layer  │────► Mosquitto ────► Writer ────► SQLite
-   [Backend N] ───────►│ (REST/gRPC) │       (persistent,       │
-                       └─────────────┘        QoS 1)            ▼
-                                                          Litestream ──► VPS Backup
-                                                               │
-                                                               ▼
-                                                          FlashDB ◄──── Lecturas directas
-                                                               ▲
-   [Backend] ──── lectura ────► FlashDB (cache)               │
-                                │ miss                        │
-                                └────► SQLite ──── repoblar ──┘
-```
-
-**Escritura**: el backend publica en un topic MQTT o llama a la API REST/gRPC, que publica en Mosquitto. El writer consume mensajes de Mosquitto y escribe en SQLite. Tras cada commit, el writer actualiza FlashDB (invalidación o repoblación).
-
-**Lectura**: el backend consulta FlashDB. Si la clave no existe (miss), consulta SQLite directamente, guarda el resultado en FlashDB con TTL, y lo retorna.
-
-### Opción B — FlashDB como buffer de ingesta
+## Arquitectura (decisión cerrada)
 
 ```
-                       ┌─────────────┐
-   [Backend 1] ───────►│             │
-   [Backend 2] ───────►│  API Layer  │────► FlashDB ──────► Worker ────► SQLite
-   [Backend N] ───────►│ (REST/gRPC) │     (buffer de            │
-                       └─────────────┘      escritura)           ▼
-                                                           Litestream ──► VPS Backup
-                                                                │
-   [Backend] ──── lectura ────► API ────► Mosquitto ────► Worker ────► SQLite
-                                             (cola de                    │
-                                              lecturas)                  ▼
-                                                                   FlashDB ◄── materialización
-                                                                        │
-                                                                        └────► retorno al backend
+                          ┌──────────────────────────────┐
+                          │         API Layer            │
+                          │     (REST/gRPC + OpenAPI)    │
+                          └──────┬──────────────┬────────┘
+                                 │              │
+                         escritura              lectura
+                                 │              │
+                                 ▼              ▼
+                          ┌──────────────┐ ┌──────────────┐
+                          │  Mosquitto   │ │   FlashDB    │
+                          │ (persistent, │ │  (cache +    │
+                          │  QoS 1)      │ │  read models)│
+                          └──────┬───────┘ └──────┬───────┘
+                                 │                │
+                    ┌────────────┼────────┐       │ miss
+                    │            │        │       │
+                    ▼            ▼        ▼       ▼
+              ┌──────────┐ ┌──────────┐ ┌──────────┐
+              │ Writer   │ │ Writer   │ │ Writer   │  ← 1 proceso por store
+              │ store A  │ │ store B  │ │ store N  │
+              └────┬─────┘ └────┬─────┘ └────┬─────┘
+                   │            │            │
+              ┌────┴────┐  ┌───┴────┐  ┌───┴────┐
+              │SQLite A │  │SQLite B│  │SQLite N│  ← fuente de verdad por store
+              └────┬────┘  └───┬────┘  └───┬────┘
+                   │            │            │
+              ┌────┴────┐  ┌───┴────┐  ┌───┴────┐
+              │Litestrm │  │Litestrm│  │Litestrm│  ← backup por store
+              └────┬────┘  └───┬────┘  └───┬────┘
+                   │            │            │
+                   ▼            ▼            ▼
+              ┌──────────────────────────────────────┐
+              │    S3 / VPS Backup (≥2 destinos)     │
+              └──────────────────────────────────────┘
+
+  Flujo de proyección (bus de eventos, separado de comandos):
+
+  Writer(store) ──► _outbox ──► publicador ──► ixmati/evt/...
+                                                   │
+                              ┌────────────────────┼──────────────┐
+                              ▼                    ▼              ▼
+                        Projector A          Projector B    (auditoría,
+                         (read model)         (read model)   monitoreo)
+                              │                    │
+                              ▼                    ▼
+                           FlashDB             FlashDB
+                        p:proj_a:*           p:proj_b:*
 ```
 
-**Escritura**: el backend escribe directamente en FlashDB (ingesta rápida, sin bloqueos). Un worker Rust lee de FlashDB y aplica los cambios a SQLite de forma serializada.
+## Flujo de escritura
 
-**Lectura**: el backend envía una petición de lectura a la API, que la encola en Mosquitto. Un worker consume la cola, consulta SQLite, materializa el resultado en FlashDB, y lo retorna al backend.
+1. El backend envía un comando a la API (`POST /write` o gRPC `Write`).
+2. La API valida el envelope (store obligatorio, `idempotency_key`, `version`, `ack_mode`).
+3. La API publica el comando en `ixmati/cmd/<store>/<entity>/<id>` (Mosquitto, QoS 1).
+4. Si `ack_mode=accepted`: la API devuelve ack inmediato con `write_id`. Fin del flujo para el backend.
+5. Si `ack_mode=committed`: la API espera la confirmación en el topic de ack.
+6. El writer del store consume el comando, lo acumula en un batch.
+7. Al cumplirse `MAX_BATCH_SIZE` o `MAX_BATCH_INTERVAL_MS`, ejecuta `BEGIN IMMEDIATE`:
+   - Aplica el comando a la tabla de la entidad.
+   - Inserta en `_idempotency`.
+   - Inserta el evento en `_outbox` (misma transacción).
+   - `COMMIT`.
+8. El publicador (task interna del writer) lee `_outbox WHERE published_at IS NULL`, publica en `ixmati/evt/<store>/<entity>/<id>`, y marca `published_at`.
+9. Si `ack_mode=committed`, el writer publica la confirmación en el topic de ack.
+10. Los proyectores reciben el evento y actualizan sus read models en FlashDB de forma idempotente.
 
-### Tabla comparativa
+## Flujo de lectura
 
-| Aspecto | Opción A (Mosquitto buffer) | Opción B (FlashDB buffer) |
-|---|---|---|
-| **Durabilidad de escrituras en tránsito** | Alta: Mosquitto con persistence + QoS 1 garantiza que no se pierden | Baja: FlashDB no está diseñado como buffer transaccional; pérdida si el worker cae antes de leer |
-| **Latencia de ack de escritura** | Baja: publicación en MQTT o escritura en API | Muy baja: escritura local en FlashDB |
-| **Garantía de orden** | Por topic particionado (entidad+id) | Depende de implementación; sin FIFO nativo |
-| **Read-your-writes** | Garantizado en modo sync | No garantizado: el worker puede no haber aplicado aún la escritura |
-| **Carga en SQLite** | Solo escrituras del writer + fallback de lecturas | Escrituras del worker + cada lectura (vía cola) genera una consulta |
-| **Complejidad operativa** | Media: mantener Mosquitto + writer + FlashDB | Alta: dos workers (escritura y lectura), doble almacenamiento, resync bidireccional |
-| **Modos de fallo** | Si Mosquitto cae, se rechazan escrituras (fail-stop). Los mensajes persisten en disco. | Si FlashDB cae, se pierden escrituras no aplicadas. Si el worker cae, hay backlog no leído. |
-| **Explosión de datos en FlashDB** | Solo claves cacheadas con TTL | Cada consulta de lectura distinta crea una entrada; riesgo de crecimiento no acotado |
-
-### Criterios de decisión
-
-La decisión final entre Opción A y Opción B debe basarse en evidencia experimental, no en preferencia:
-
-1. **Durabilidad de FlashDB ante crash**: escribir en FlashDB, matar el worker con `kill -9`, reiniciar. ¿Cuántos registros se perdieron?
-2. **Latencia de escritura extremo a extremo**: medir p50/p99 desde que el backend publica/escribe hasta que el dato está en SQLite, para ambas opciones.
-3. **Orden bajo carga concurrente**: 10 backends escribiendo sobre el mismo `entity_id` en paralelo. ¿Se preserva el orden en SQLite?
-4. **Costo de resync**: reconstruir FlashDB desde SQLite. Tiempo y carga para 100k, 1M, 10M registros.
-5. **Complejidad del código**: líneas de Rust necesarias para implementar cada opción. Mantenibilidad a 6 meses.
-
-La opción que se elija se registrará como `DEC-0010` y `DEC-0011` en estado `accepted`.
+1. El backend consulta la API (`GET /read` o gRPC `Read`).
+2. Si especifica `projection`, la API busca en `p:<projection>:<key>` en FlashDB.
+3. Si especifica `store` + `entity` + `key`, la API busca en `c:<store>:<entity>:<key>` (cache-aside).
+4. Si hay hit: se devuelve el dato. Fin.
+5. Si hay miss: la API consulta SQLite del store en modo solo lectura.
+6. Si existe en SQLite: se guarda en FlashDB (cache-aside) con TTL, y se devuelve.
+7. Si no existe en SQLite: 404.
 
 ## Módulos principales
 
-Independientemente de la opción elegida, el sistema se compone de estos módulos:
+| Módulo | Crate | Responsabilidad |
+|---|---|---|
+| **API Gateway** | `ixmati-api` | Endpoints REST + gRPC. Validación, rate limiting, enrutamiento async/sync, consulta de estado. Traduce requests a comandos (JSON) y los publica en Mosquitto. |
+| **Core** | `ixmati-core` | Tipos compartidos: `WriteEnvelope`, `EventEnvelope`, `AckResponse`, `WriteStatus`, `Error`, `Config`, `StoreConfig`. Trait `CacheBackend`. Lógica de proyección compartida con reconciler. |
+| **Writer** | `ixmati-writer` | Único proceso que abre SQLite en modo escritura. Consume comandos de `ixmati/cmd/...`, aplica batches con `BEGIN IMMEDIATE`, deduplicación, outbox transaccional. Incluye el publicador de eventos como task interna. Un writer por store. |
+| **Cache** | `ixmati-cache` | Abstracción sobre FlashDB (o alternativa). Expone `get`/`set`/`invalidate` con TTL. Namespaces `c:` y `p:`. |
+| **Projector** | `ixmati-projector` | Consume eventos de `ixmati/evt/...`. Aplica proyecciones declaradas en config (patrón R o M). Idempotente por `event_id` o por upsert natural. |
+| **Supervisor** | `ixmati-supervisor` | Orquesta múltiples stores en un solo proceso (single-VPS) o gestiona el ciclo de vida de pods (K8s). Config de topología. |
+| **Reconciler** | `ixmati-reconciler` | Binario offline. Reconstruye read models (`p:*`) desde los stores fuente en modo solo lectura. Fan-in sobre N stores. Soporta reproyección total y selectiva. |
 
-- **API Gateway** (`api-gateway`): expone endpoints REST y gRPC para escritura y lectura. Traduce requests a mensajes internos. Responsable de validación, rate limiting, y enrutamiento entre modo async y sync.
-- **Writer** (`writer`): único proceso que abre SQLite en modo escritura. Consume mensajes del canal de ingesta (Mosquitto o FlashDB), aplica escrituras con `BEGIN IMMEDIATE`, batching, y deduplicación por `idempotency_key`.
-- **Cache Layer** (`cache-layer`): abstracción sobre FlashDB. Expone operaciones de get/set/invalidate con TTL. Usado por el writer para invalidar/repoblar tras escrituras, y por la API de lectura para servir consultas.
-- **Resync Module** (`resync`): comando offline que reconstruye FlashDB desde SQLite. Necesario para bootstrap inicial y recuperación tras corrupción de cache.
-- **Observability** (`observability`): métricas (lag de cola, latencia de commit, tasa de misses, tamaño de cache) y health checks (writer vivo, Mosquitto conectado, FlashDB responde).
+## Invariantes
+
+1. **Un writer por store**: solo el writer asignado al store abre ese archivo SQLite en modo escritura. Nunca 2 pods sobre el mismo store.
+2. **Un comando, un store**: el campo `store` es obligatorio en todo comando. Un comando no puede modificar 2 stores.
+3. **Ningún proceso con 2 stores en write**: un writer solo escribe en su store asignado.
+4. **Outbox atómico**: el evento se escribe en `_outbox` dentro de la misma transacción que los datos. No hay publicación de eventos fuera de la transacción.
+5. **Publicador interno**: la task que publica eventos desde `_outbox` es parte del proceso writer, no un proceso separado.
+6. **Proyectores idempotentes**: la re-entrega de un evento (QoS 1) no produce duplicados en los read models.
+7. **ATTACH solo lectura**: `ATTACH DATABASE` está prohibido en cualquier conexión con permisos de escritura.
+8. **Cache desechable**: tanto cache-aside como read models son reconstruibles desde los stores. Borrar FlashDB no pierde datos.
 
 ## Restricciones
 
 - **Dependencias prohibidas**:
-  - Ningún módulo distinto del writer abre SQLite en modo escritura.
-  - Los backends externos no acceden directamente a SQLite ni a FlashDB.
-  - La API de lectura no debe depender del canal de escritura (no acoplar lectura y escritura).
+  - Ningún módulo distinto del writer de un store abre ese SQLite en modo escritura.
+  - `ixmati-api` no depende de `ixmati-writer` ni de `ixmati-projector` (solo conoce `ixmati-core` y Mosquitto).
+  - `ixmati-projector` no abre SQLite en escritura.
 - **Acoplamientos a evitar**:
-  - El formato de envelope de mensaje no debe estar acoplado a la implementación interna del writer.
-  - La semántica de sync/async no debe filtrarse a la capa de storage (SQLite no sabe de modos).
+  - El formato de envelope de comando no debe estar acoplado a la implementación interna del writer.
+  - Los proyectores no deben conocer la estructura interna de los stores fuente (consume eventos, no tablas).
 - **Límites de infraestructura**:
-  - SQLite en WAL con un solo archivo de base de datos (no sharding).
-  - FlashDB como cache volátil; siempre reconstruible desde SQLite.
-  - Mosquitto con persistence en disco; sin clustering (single broker).
-  - Un solo writer activo; failover manual u orquestado externamente.
+  - Sin JOIN SQL cross-store operacional (solo ATTACH read-only para analítica).
+  - Sin transacción cross-store (sagas en la aplicación).
+  - Mosquitto single broker (sin clustering).
 
 ## Riesgos
 
 | Riesgo | Impacto | Mitigación |
 |---|---|---|
-| Caída del writer | Escrituras bloqueadas hasta reinicio | Mosquitto retiene mensajes en disco; health check + alerta; posible writer standby (futuro) |
-| Inconsistencia FlashDB | Lecturas devuelven datos obsoletos | TTL corto + invalidación por el writer + comando de resync. Lectura con fallback a SQLite. |
-| Pérdida de mensajes en Mosquitto | Escrituras descartadas | `persistence true` + QoS 1 + `autosave_interval`. Validar con test de crash. |
-| Corrupción de SQLite | Pérdida de datos canónicos | Litestream a ≥2 destinos + backups regulares. PRAGMA integrity_check periódico. |
-| FlashDB sin binding Rust maduro | Bloquea la capa de cache | Criterio de salida: evaluar sled, redb, o lmdb-rs como alternativas si el binding FFI no es viable. |
-| Explosión de cache | FlashDB sin límite de tamaño | TTL obligatorio + max keys + LRU eviction si el binding lo soporta. Resync completo como válvula de escape. |
+| Caída del writer de un store | Escrituras bloqueadas para ese store | Mosquitto retiene mensajes en disco. Health check + alerta. Los demás stores no se ven afectados. |
+| Evento perdido (dual-write) | Read models desincronizados sin error visible | Outbox transaccional (`_outbox` en la misma tx). 0 eventos perdidos por diseño. |
+| Lag de proyección | Read models devuelven datos obsoletos | Métrica de lag por proyección. TTL corto en FlashDB como safety net. |
+| Fan-out descontrolado en patrón M | Un cambio dispara N rewrites en FlashDB | Regla de decisión explícita en DEC-0016 (fan_out ≤ 100). Violación detectada en validación de proyección. |
+| Store caliente | Un store concentra el 90% del tráfico y se convierte en cuello de botella | El sharding por store no es sharding por carga. Si ocurre, re-evaluar partición interna o migrar ese store a otro motor. |
+| Inconsistencia FlashDB | Lecturas devuelven datos obsoletos | TTL + invalidación por writer + fallback a SQLite. Reconciler como último recurso. |
+| Corrupción de SQLite | Pérdida de datos canónicos | Litestream a ≥2 destinos por store. PRAGMA integrity_check periódico. |
+| N× coste operativo | N stores = N writers, N Litestream, N PVCs | Aceptado como trade-off del aislamiento. Optimizable con supervisor single-process en entornos pequeños. |
+| Renombrar un store | Equivale a migración de base de datos | Stores estables por diseño. Si es inevitable: nuevo store + migración de datos + redirección de tráfico + decomiso del viejo. |

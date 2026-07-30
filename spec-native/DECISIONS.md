@@ -8,45 +8,52 @@ Registro de decisiones persistentes del proyecto.
 
 - **Fecha**: 2026-07-29
 - **Estado**: `accepted`
+- **Enmienda**: 2026-07-29 — un SQLite **por store**
 - **Relacionado con specs**: `SPEC-WRITE-0001`
-- **Relacionado con tareas**: `TASK-WRITE-0005`, `TASK-WRITE-0006`
+- **Relacionado con tareas**: `TASK-WRITE-0005`, `TASK-WRITE-0006`, `TASK-WRITE-0017`
 - **Contexto**: se necesita una base de datos transaccional, ACID, sin servidor externo, que pueda correr en un VPS pequeño o en un pod. PostgreSQL o MySQL requieren un proceso separado, aumentan la complejidad operativa y el costo de infraestructura. SQLite es autocontenido, no requiere administración, y con WAL soporta lecturas concurrentes sin bloquear al escritor.
-- **Decisión**: SQLite es la fuente de verdad canónica. Se configura con `PRAGMA journal_mode=WAL`, `PRAGMA synchronous=NORMAL`, `PRAGMA busy_timeout=5000`, `PRAGMA foreign_keys=ON`. Solo el writer abre la base de datos en modo escritura. Las lecturas de fallback (miss de cache) abren conexiones en modo solo lectura.
+- **Decisión**: SQLite es la fuente de verdad canónica. Se configura con `PRAGMA journal_mode=WAL`, `PRAGMA synchronous=NORMAL`, `PRAGMA busy_timeout=5000`, `PRAGMA foreign_keys=ON`. Cada store tiene su propio archivo SQLite. Solo el writer de ese store abre la base de datos en modo escritura. Las lecturas de fallback (miss de cache) y los proyectores abren conexiones en modo solo lectura.
 - **Consecuencias**:
-  - (+) Sin servidor de base de datos externo. El binario y el archivo `.db` son todo lo necesario.
+  - (+) Sin servidor de base de datos externo. Los binarios y los archivos `.db` son todo lo necesario.
   - (+) WAL permite lecturas concurrentes sin bloquear la escritura.
   - (+) `synchronous=NORMAL` reduce la latencia de escritura sin riesgo de corrupción (el WAL protege la integridad).
-  - (-) Un solo escritor por diseño. No se puede escalar horizontalmente la escritura.
+  - (+) N stores = N escritores independientes, cada uno con su propio WAL y sin contención entre stores.
+  - (-) Un solo escritor por store por diseño. No se puede escalar horizontalmente la escritura *dentro* de un store.
   - (-) `synchronous=NORMAL` puede perder la última transacción en caso de crash del SO (no corrupción, solo pérdida de lo no sincronizado). Aceptable para el RPO declarado (< 5s vía Litestream).
 - **Reemplaza**: `none`
 
-### DEC-0002 — Un solo escritor lógico; nadie más abre la DB en write
+### DEC-0002 — Un solo escritor por store; nadie más abre la DB en write
 
 - **Fecha**: 2026-07-29
 - **Estado**: `accepted`
+- **Enmienda**: 2026-07-29 — "un solo escritor **por store**" (antes: "nadie más abre la DB en write" global)
 - **Relacionado con specs**: `SPEC-WRITE-0001`
-- **Relacionado con tareas**: `TASK-WRITE-0006`
-- **Contexto**: SQLite solo soporta un escritor a la vez. Intentar escribir desde múltiples procesos genera `SQLITE_BUSY` y reintentos que degradan la latencia. La alternativa de usar `busy_timeout` con reintentos no escala bien más allá de 2-3 escritores concurrentes.
-- **Decisión**: solo el proceso `ixmati-writer` abre la base de datos con permisos de escritura. Ningún otro componente —ni siquiera la API— abre SQLite en modo write. Esto garantiza serialización predecible y elimina la contención.
+- **Relacionado con tareas**: `TASK-WRITE-0006`, `TASK-WRITE-0014`
+- **Contexto**: SQLite solo soporta un escritor a la vez por archivo. Intentar escribir desde múltiples procesos genera `SQLITE_BUSY` y reintentos que degradan la latencia.
+- **Decisión**: solo el proceso writer asignado a un store abre el archivo SQLite de ese store con permisos de escritura. Ningún otro componente abre SQLite en modo write. Esto garantiza serialización predecible y elimina la contención. Con múltiples stores, hay múltiples writers independientes (uno por store) que no compiten entre sí.
 - **Consecuencias**:
-  - (+) Sin `SQLITE_BUSY` jamás. La serialización es explícita y controlada.
-  - (+) El writer puede hacer batching y optimizaciones sin preocuparse por concurrencia.
-  - (-) El writer es un punto único de fallo para escrituras (mitigado por Mosquitto con persistence).
-  - (-) No se puede escalar horizontalmente el Writer (pero sí los backends y los lectores).
+  - (+) Sin `SQLITE_BUSY` jamás. La serialización es explícita y controlada por store.
+  - (+) Los writers de distintos stores son independientes y paralelos.
+  - (+) El writer puede hacer batching y optimizaciones sin preocuparse por concurrencia externa.
+  - (-) El writer es un punto único de fallo para escrituras de su store (mitigado por Mosquitto con persistence).
+  - (-) No se puede escalar horizontalmente un writer individual (pero sí los backends y los lectores).
+  - (-) Renombrar un store implica el equivalente a una migración de base de datos (nuevo archivo, nueva replicación Litestream).
 - **Reemplaza**: `none`
 
 ### DEC-0003 — Idempotencia con `idempotency_key` + `version`/`updated_at`
 
 - **Fecha**: 2026-07-29
 - **Estado**: `accepted`
+- **Enmienda**: 2026-07-29 — scope de la clave pasa a `(store, idempotency_key)`
 - **Relacionado con specs**: `SPEC-WRITE-0001`
 - **Relacionado con tareas**: `TASK-WRITE-0005`, `TASK-WRITE-0006`
 - **Contexto**: en un sistema con QoS 1 (at least once), los mensajes pueden entregarse más de una vez. Además, múltiples backends pueden intentar escribir sobre el mismo registro. Se necesita un mecanismo para garantizar que cada mensaje se aplica exactamente una vez y que las versiones obsoletas se rechazan.
 - **Decisión**:
-  1. Todo mensaje incluye `idempotency_key` (UUID v4). El writer mantiene una tabla `_idempotency` con `(key, applied_at, status)`. Los mensajes con key ya existente se rechazan con `DUPLICATE`.
-  2. Todo mensaje incluye `version` (u64 monotónico). El writer rechaza `version <= stored_version` con `VERSION_CONFLICT`.
-  3. La tabla `_idempotency` tiene TTL de 24h (limpieza periódica).
-  4. Resolución de conflictos: last-write-wins basado en `version`; a igual `version`, gana `ts` más reciente.
+  1. Todo comando incluye `store` (obligatorio), `idempotency_key` (UUID v4), y `version` (u64 monotónico).
+  2. El writer mantiene una tabla `_idempotency` por store con `(key, applied_at, status)`. Los comandos con key ya existente en ese store se rechazan con `DUPLICATE`.
+  3. El writer rechaza `version <= stored_version` dentro del mismo store con `VERSION_CONFLICT`.
+  4. La tabla `_idempotency` tiene TTL de 24h (limpieza periódica).
+  5. Resolución de conflictos: last-write-wins basado en `version`; a igual `version`, gana `ts` más reciente.
 - **Consecuencias**:
   - (+) Reintentos seguros sin efectos secundarios.
   - (+) Protección contra escrituras fuera de orden (versiones obsoletas).
@@ -55,19 +62,20 @@ Registro de decisiones persistentes del proyecto.
   - (-) Last-write-wins no es adecuado para conflictos mergeables (ej. contadores). Si surge ese caso, se evaluará CRDT en una decisión futura.
 - **Reemplaza**: `none`
 
-### DEC-0004 — Orden por particionado de topic `entity/id`, no FIFO global
+### DEC-0004 — Orden por particionado jerárquico `store/entity/id`, no FIFO global
 
 - **Fecha**: 2026-07-29
 - **Estado**: `accepted`
+- **Enmienda**: 2026-07-29 — jerarquía `store → entity → id`; 1 proceso writer por store con concurrencia interna
 - **Relacionado con specs**: `SPEC-WRITE-0001`
-- **Relacionado con tareas**: `TASK-WRITE-0006`
+- **Relacionado con tareas**: `TASK-WRITE-0006`, `TASK-WRITE-0017`
 - **Contexto**: si el orden de escrituras importa (ej. actualizaciones consecutivas sobre el mismo registro), un FIFO global serializaría todas las escrituras en un solo worker, anulando cualquier paralelismo. Se necesita una solución que preserve el orden donde importa sin sacrificar el throughput.
-- **Decisión**: los topics MQTT siguen el formato `ixmati/write/<entity>/<id>`. Múltiples workers pueden consumir topics diferentes, pero todos los mensajes para una misma entidad+id van al mismo worker (porque MQTT garantiza orden dentro de un mismo topic). Esto permite paralelismo entre entidades distintas y orden garantizado dentro de la misma entidad.
+- **Decisión**: los topics de comando siguen el formato `ixmati/cmd/<store>/<entity>/<id>`. Cada store tiene exactamente **un proceso writer** (1 pod). El paralelismo vive dentro del proceso: el writer consume de múltiples topics del mismo store concurrentemente, pero serializa los de la misma entidad+id. Nunca hay 2 pods sobre el mismo archivo SQLite.
 - **Consecuencias**:
-  - (+) Paralelismo real: workers independientes para entidades distintas.
-  - (+) Orden garantizado donde importa (mismo id).
-  - (-) Si todas las escrituras son sobre el mismo `id`, no hay paralelismo (es un solo worker). Caso poco probable en la práctica.
-  - (-) La topología de topics puede crecer; Mosquitto debe manejar muchos topics pequeños.
+  - (+) Paralelismo entre stores (N writers independientes).
+  - (+) Concurrencia interna dentro del writer por entidad (parallelismo intra-store).
+  - (+) Orden garantizado dentro de `(store, entity, id)`.
+  - (-) Si todas las escrituras son sobre el mismo `(store, entity, id)`, el throughput se reduce a 1 worker para ese flujo. Inevitable si el orden importa.
 - **Reemplaza**: `none`
 
 ### DEC-0005 — Batching con `BEGIN IMMEDIATE` acotado por tamaño/tiempo
@@ -76,122 +84,295 @@ Registro de decisiones persistentes del proyecto.
 - **Estado**: `accepted`
 - **Relacionado con specs**: `SPEC-WRITE-0001`
 - **Relacionado con tareas**: `TASK-WRITE-0006`
-- **Contexto**: escribir cada mensaje en su propia transacción genera mucha contención de journal y reduce el throughput. Agrupar mensajes en batches mejora significativamente el rendimiento. Se necesita una estrategia de batching que no introduzca latencia excesiva y que use el modo de transacción correcto.
+- **Contexto**: escribir cada mensaje en su propia transacción genera mucha contención de journal y reduce el throughput. Agrupar mensajes en batches mejora significativamente el rendimiento.
 - **Decisión**:
-  1. El writer acumula mensajes hasta que se alcanza `MAX_BATCH_SIZE` (default: 100) o `MAX_BATCH_INTERVAL_MS` (default: 50ms), lo que ocurra primero.
-  2. El batch se ejecuta dentro de `BEGIN IMMEDIATE` (no `BEGIN` a secas) para evitar que SQLite reintente automáticamente, lo cual es innecesario porque solo hay un escritor.
+  1. El writer acumula comandos por store hasta `MAX_BATCH_SIZE` (default: 100) o `MAX_BATCH_INTERVAL_MS` (default: 50ms), lo que ocurra primero.
+  2. El batch se ejecuta dentro de `BEGIN IMMEDIATE`. La transacción incluye: los datos de la entidad, la tabla `_idempotency`, y la tabla `_outbox` (ver DEC-0014).
   3. Si el batch falla por `SQLITE_BUSY` (no debería ocurrir, pero como defensa), se reintenta 3 veces con backoff exponencial (10ms, 100ms, 1s).
 - **Consecuencias**:
   - (+) Throughput de escritura mejorado en ~10x respecto a una transacción por mensaje.
-  - (+) `BEGIN IMMEDIATE` evita que SQLite haga upgrade de shared a reserved lock (innecesario con un solo escritor).
-  - (-) 50ms de latencia adicional máxima en el peor caso (mensaje solitario esperando a que se llene el batch o expire el timer).
-  - (-) Si un mensaje en el batch falla (ej. VERSION_CONFLICT), el batch entero podría fallar. Mitigación: pre-validar versiones antes del commit y excluir mensajes conflictivos del batch.
+  - (+) `BEGIN IMMEDIATE` evita que SQLite haga upgrade de shared a reserved lock.
+  - (-) 50ms de latencia adicional máxima en el peor caso.
+  - (-) Si un mensaje en el batch falla (VERSION_CONFLICT), se excluye y el resto del batch se aplica.
 - **Reemplaza**: `none`
 
-### DEC-0006 — Cache (FlashDB o alternativa) siempre reconstruible desde SQLite
+### DEC-0006 — Cache y read models siempre reconstruibles desde los stores
+
+- **Fecha**: 2026-07-29
+- **Estado**: `superseded`
+- **Reemplazada por**: `DEC-0019` y `DEC-0020`
+- **Relacionado con specs**: `SPEC-WRITE-0001`
+- **Contexto original**: la cache de lectura (FlashDB o alternativa) puede corromperse y debe ser desechable. Con la introducción de stores y eventos, la cache se complementa con read models proyectados, que también deben ser reconstruibles.
+- **Decisión original**: FlashDB es tratado como artefacto desechable con comando de resync.
+- **Razón del reemplazo**: el modelo de reconstrucción cambia de "dumping de 1 store" a "fan-in sobre N stores vía eventos". Las decisiones `DEC-0019` y `DEC-0020` cubren este caso superset.
+
+### DEC-0007 — Litestream a ≥2 destinos por store con RPO < 5s y RTO < 60s
 
 - **Fecha**: 2026-07-29
 - **Estado**: `accepted`
+- **Enmienda**: 2026-07-29 — **por store**, con criticidad y frecuencia independientes
 - **Relacionado con specs**: `SPEC-WRITE-0001`
-- **Relacionado con tareas**: `TASK-WRITE-0011`, `TASK-WRITE-0013`
-- **Contexto**: la cache de lectura (FlashDB o alternativa) puede corromperse, llenarse, o desincronizarse de SQLite. No es aceptable que una corrupción de cache cause pérdida de datos o requiera intervención manual compleja.
-- **Decisión**: FlashDB es siempre tratado como un artefacto desechable. Existe un comando `ixmati-resync` que lo reconstruye completamente desde SQLite en frío (offline). La cache se puede borrar y reconstruir en cualquier momento sin pérdida de datos. En caso de fallo de cache, el sistema automáticamente hace fallback a SQLite para lecturas.
-- **Consecuencias**:
-  - (+) Recuperación trivial: borrar el archivo de cache y ejecutar resync.
-  - (+) Sin riesgo de pérdida de datos por corrupción de cache.
-  - (+) El formato interno de FlashDB puede cambiar sin migraciones (se reconstruye).
-  - (-) Durante el resync, las lecturas van a SQLite, aumentando la carga temporalmente.
-  - (-) Si la cache se borra en caliente, hay una ventana de latencia aumentada hasta que se repuebla.
-- **Reemplaza**: `none`
-
-### DEC-0007 — Litestream a ≥2 destinos con RPO < 5s y RTO < 60s
-
-- **Fecha**: 2026-07-29
-- **Estado**: `accepted`
-- **Relacionado con specs**: `SPEC-WRITE-0001`
-- **Relacionado con tareas**: `TASK-WRITE-0014`
-- **Contexto**: un solo archivo SQLite en un VPS es vulnerable a fallo de disco, corrupción del filesystem, o pérdida del VPS. Se necesita backup continuo con bajo RPO y recuperación rápida.
+- **Relacionado con tareas**: `TASK-WRITE-0014`, `TASK-WRITE-0024`
+- **Contexto**: un solo archivo SQLite en un VPS es vulnerable a fallo de disco, corrupción del filesystem, o pérdida del VPS. Con múltiples stores, cada uno puede tener requisitos de criticidad distintos (ej. `pedidos` necesita RPO más bajo que `logs`).
 - **Decisión**:
-  1. Litestream replica el WAL de SQLite a ≥2 destinos: un bucket S3-compatible (o R2, o MinIO) y un filesystem en otro VPS.
-  2. RPO objetivo < 5 segundos (intervalo de sync configurable).
-  3. RTO objetivo < 60 segundos (tiempo desde detección hasta servicio restaurado).
-  4. El comando de restore está documentado en `COMMANDS.md` y probado en un runbook.
+  1. Litestream replica el WAL de cada store a ≥2 destinos: un bucket S3-compatible (o R2, o MinIO) y un filesystem en otro VPS.
+  2. Por store: frecuencia (`sync-interval`), destinos y retención configurables independientemente.
+  3. RPO objetivo < 5 segundos para stores críticos.
+  4. RTO objetivo < 60 segundos (tiempo desde detección hasta servicio restaurado).
+  5. Cada store tiene su propia instancia de Litestream (sidecar en K8s, o proceso separado).
 - **Consecuencias**:
-  - (+) Recuperación point-in-time con granularidad de segundos.
-  - (+) Sin impacto en el rendimiento de escritura (Litestream lee el WAL, no compite por el write lock).
-  - (-) Costo de storage adicional en S3 + VPS remoto.
-  - (-) En failover, el último batch (no replicado aún) puede perderse. Ventana máxima: `sync-interval`.
+  - (+) Recuperación point-in-time con granularidad de segundos por store.
+  - (+) Aislamiento: una corrupción en un store no afecta el backup de otros.
+  - (-) Costo de storage adicional en S3 + VPS remoto multiplicado por N stores.
+  - (-) N procesos de Litestream (uno por store) → mayor consumo de recursos.
 - **Reemplaza**: `none`
 
 ### DEC-0008 — Semántica de escritura dual: async (`accepted`) y sync (`committed`), seleccionable por request
 
 - **Fecha**: 2026-07-29
 - **Estado**: `accepted`
+- **Enmienda**: 2026-07-29 — el ack sync está acotado a 1 store; **invariante: un comando toca exactamente 1 store**
 - **Relacionado con specs**: `SPEC-WRITE-0001`
 - **Relacionado con tareas**: `TASK-WRITE-0009`, `TASK-WRITE-0010`
-- **Contexto**: diferentes operaciones tienen diferentes requisitos de consistencia. Una actualización de perfil puede tolerar consistencia eventual (async), pero una deducción de saldo requiere confirmación de commit (sync). Imponer un solo modo obliga al caso más restrictivo para todos, aumentando la latencia innecesariamente.
+- **Contexto**: diferentes operaciones tienen diferentes requisitos de consistencia. Una actualización de perfil puede tolerar consistencia eventual (async), pero una deducción de saldo requiere confirmación de commit (sync).
 - **Decisión**:
-  1. El campo `ack_mode` en el envelope acepta `accepted` (async) o `committed` (sync).
-  2. Modo `accepted`: el writer publica ack inmediato al recibir el mensaje. El backend recibe un `write_id` y puede consultar `GET /writes/{idempotency_key}` para verificar el estado.
-  3. Modo `committed`: el writer retiene la conexión del backend (o publica en un topic de respuesta) hasta que el commit en SQLite se completa, y entonces envía el ack con el resultado.
-  4. La correlación de respuestas usa el `idempotency_key` como identificador de request.
+  1. El campo `ack_mode` en el comando acepta `accepted` (async) o `committed` (sync).
+  2. Modo `accepted`: ack inmediato al recibir el mensaje. El backend puede consultar `GET /writes/{store}/{idempotency_key}`.
+  3. Modo `committed`: el writer retiene la conexión hasta el commit en SQLite, y envía el ack con el resultado.
+  4. La correlación usa `(store, idempotency_key)`.
+  5. **Invariante**: un comando apunta a 1 store. Si una operación de negocio requiere tocar 2 stores, la aplicación debe emitir 2 comandos separados y coordinar (saga fuera del motor).
 - **Consecuencias**:
   - (+) Latencia mínima para escrituras que no requieren confirmación inmediata.
-  - (+) Read-your-writes garantizado en modo sync.
-  - (+) El backend elige el nivel de consistencia por operación.
-  - (-) Mayor complejidad en la API (dos caminos de respuesta).
-  - (-) El modo sync introduce latencia de extremo a extremo (RTT API → MQTT → Writer → SQLite → Writer → API).
-  - (-) Si el writer cae durante un commit sync, el backend debe manejar el timeout y reintentar (la idempotencia lo protege).
+  - (+) Read-your-writes garantizado en modo sync, acotado al store del comando.
+  - (+) Sin transacciones distribuidas en el motor.
+  - (-) El backend debe coordinar operaciones multi-store por su cuenta.
 - **Reemplaza**: `none`
 
 ### DEC-0009 — Riesgo abierto: FlashDB requiere FFI; criterio de salida a sled/redb/lmdb-rs
 
 - **Fecha**: 2026-07-29
 - **Estado**: `accepted`
+- **Enmienda**: 2026-07-29 — severidad sube: FlashDB pasará a alojar **read models proyectados**, no solo cache. Perderlo cuesta más.
 - **Relacionado con specs**: `SPEC-WRITE-0001`
 - **Relacionado con tareas**: `TASK-WRITE-0001`
-- **Contexto**: FlashDB es una librería C diseñada para microcontroladores (STM32, ESP32). No tiene binding oficial en Rust. Integrarlo requiere FFI con `bindgen` + `cc`, lo cual introduce complejidad de build, riesgos de seguridad (unsafe), y posible incompatibilidad con el modelo de memoria de servidor.
-- **Decisión**: se intentará integrar FlashDB vía FFI en el spike `TASK-WRITE-0001`. Si el spike revela alguno de estos bloqueos, se descarta FlashDB y se adopta una alternativa (sled, redb, o lmdb-rs):
-  1. El FFI no compila en Linux x86_64 (el target de servidor, no de microcontrolador).
-  2. La API de FlashDB no soporta TTL o invalidación selectiva.
-  3. El rendimiento en servidor es peor que sled/redb en benchmarks sintéticos.
+- **Contexto**: FlashDB es una librería C diseñada para microcontroladores. No tiene binding oficial en Rust. Con la introducción de read models proyectados, FlashDB deja de ser solo una cache volátil — contiene datos desnormalizados que tardan en reconstruirse. La fiabilidad del backend de storage sube de importancia.
+- **Decisión**: se intentará integrar FlashDB vía FFI en `TASK-WRITE-0001`. Si el spike revela alguno de estos bloqueos, se descarta FlashDB y se adopta una alternativa (sled, redb, o lmdb-rs):
+  1. El FFI no compila en Linux x86_64.
+  2. La API no soporta TTL o invalidación por prefijo.
+  3. El rendimiento es peor que sled/redb en benchmarks sintéticos.
   4. La superficie de `unsafe` es inmanejable (> 100 líneas o requiere invariantes complejos).
 - **Consecuencias**:
-  - (+) No hay bloqueo: si FlashDB no funciona, hay alternativas maduras en Rust puro.
-  - (+) El trait `CacheBackend` abstrae la implementación, haciendo el cambio transparente.
-  - (-) Tiempo invertido en el spike de FlashDB que podría ser tiempo perdido si se descarta (1-3 días).
+  - (+) El trait `CacheBackend` abstrae la implementación.
+  - (-) Tiempo invertido en el spike que podría ser tiempo perdido.
+  - (-) Si FlashDB falla, hay que migrar read models a otro backend; el costo de migración es mayor que con cache pura.
+- **Reemplaza**: `none`
+
+### DEC-0010 — Canal de ingesta de escrituras: Mosquitto (Opción A)
+
+- **Fecha**: 2026-07-29
+- **Estado**: `accepted` (cerrada por diseño, antes `proposed`)
+- **Relacionado con specs**: `SPEC-WRITE-0001`
+- **Relacionado con tareas**: `TASK-WRITE-0006`, `TASK-WRITE-0017`
+- **Contexto**: la arquitectura tenía dos opciones para el canal de ingesta de escrituras. Con la introducción de transactional outbox (`DEC-0014`) y la taxonomía separada de comandos y eventos (`DEC-0015`), la Opción B (FlashDB como buffer de escritura) queda descartada por incompatibilidad de diseño, no por benchmark.
+- **Decisión**: Mosquitto con persistence y QoS 1 es el canal de ingesta para comandos. Motivos de descarte de FlashDB como buffer:
+  1. No soporta el patrón outbox: necesitarías dos escrituras atómicas (dato + evento) y FlashDB no es transaccional.
+  2. El orden de eventos no está garantizado en FlashDB sin un mecanismo externo de secuenciación.
+  3. La durabilidad ante crash es inferior (DEC-0009 ya marca el riesgo de FFI; añadir escrituras en tránsito lo agrava).
+- **Consecuencias**:
+  - Ver consecuencias originales de DEC-0001 y DEC-0002.
+  - `TASK-WRITE-0002` (spike comparativo A vs B) se cancela.
+- **Reemplaza**: `none`
+
+### DEC-0011 — Camino de lectura: directo (cache → miss → SQLite → repoblar)
+
+- **Fecha**: 2026-07-29
+- **Estado**: `accepted` (cerrada por diseño, antes `proposed`)
+- **Relacionado con specs**: `SPEC-WRITE-0001`
+- **Relacionado con tareas**: `TASK-WRITE-0011`, `TASK-WRITE-0020`
+- **Contexto**: la Opción B proponía lectura vía cola (API → Mosquitto → worker → SQLite → FlashDB → retorno). Con la introducción de read models proyectados eager (`DEC-0020`), la cola de lecturas pierde todo sentido.
+- **Decisión**: lectura directa con cache-aside + read models opt-in.
+  1. El backend consulta FlashDB con prefijo `c:<store>:<entity>:<key>` (cache-aside) o `p:<projection>:<key>` (read model).
+  2. Si hay miss en ambos, se consulta SQLite del store correspondiente.
+  3. La cola de lecturas (MQTT) no existe. Las proyecciones se alimentan del bus de eventos, no de requests de lectura.
+- **Consecuencias**:
+  - (+) Latencia de lectura mínima (sin paso por cola).
+  - (+) Sin explosión de entradas en FlashDB por consultas distintas.
+  - (+) Las proyecciones se actualizan en escritura, no en lectura.
 - **Reemplaza**: `none`
 
 ---
 
-## Decisiones abiertas (`proposed`)
-
-Estas decisiones dependen del resultado del spike `TASK-WRITE-0002`. Se actualizarán a `accepted` cuando haya evidencia experimental.
-
-### DEC-0010 — Canal de ingesta de escrituras: Mosquitto vs FlashDB como buffer
+### DEC-0012 — Store como primitivo del motor
 
 - **Fecha**: 2026-07-29
-- **Estado**: `proposed`
+- **Estado**: `accepted`
 - **Relacionado con specs**: `SPEC-WRITE-0001`
-- **Relacionado con tareas**: `TASK-WRITE-0002`
-- **Contexto**: la arquitectura tiene dos opciones para el canal de ingesta de escrituras. La Opción A usa Mosquitto como cola persistente (el backend publica, el writer consume). La Opción B usa FlashDB como buffer directo (el backend escribe en FlashDB, el worker lee y aplica a SQLite). Ambas tienen trade-offs distintos en durabilidad, latencia, y complejidad. Ver `ARCHITECTURE.md` para diagramas y tabla comparativa.
-- **Decisión pendiente**: se elegirá la opción que ofrezca el mejor balance entre durabilidad y latencia, basado en los experimentos del spike.
-- **Criterio de cierre**:
-  - Resultados del spike `TASK-WRITE-0002`: durabilidad ante `kill -9`, latencia p50/p99, orden bajo concurrencia.
-  - Si Opción B pierde > 0 mensajes en el test de crash, se descarta automáticamente (no cumple requisito de 0 pérdidas).
-  - Si Opción B no preserva orden por entidad, se descarta automáticamente.
+- **Relacionado con tareas**: `TASK-WRITE-0017`
+- **Contexto**: la propuesta introduce "SQLite por dominio", pero el motor no debe asumir DDD. Necesita un primitivo que funcione igual con 1 store que con N, independientemente de si los stores representan dominios, tenants, regiones o particiones temporales.
+- **Decisión**:
+  1. Un **store** es la tupla `(archivo SQLite, un writer, un prefijo de topic, un destino Litestream)`.
+  2. Es la unidad de serialización, transaccionalidad, backup y aislamiento de fallo.
+  3. `stores=1` es el caso degenerado y debe funcionar sin ningún componente adicional (sin bus de eventos, sin outbox, sin proyectores).
+  4. "Dominio" es una etiqueta de config (`label: "pedidos"`). El código solo conoce stores.
+  5. Topología: configurable entre `N` pods (aislamiento K8s, 1 pod por store) y 1 proceso con `N` writer tasks (single-VPS, el supervisor lanza 1 task por store).
+- **Consecuencias**:
+  - (+) El motor sirve para DDD y para cualquier otro criterio de partición.
+  - (+) `stores=1` no paga sobrecarga de eventos ni outbox.
+  - (-) La topología de despliegue es una decisión operativa que el config debe expresar.
+  - (-) Renombrar un store es una migración: nuevo archivo, nueva replicación, migración de topics.
 - **Reemplaza**: `none`
 
-### DEC-0011 — Camino de lectura: directo vs vía cola
+### DEC-0013 — Sin transacciones cross-store; sagas fuera del motor
 
 - **Fecha**: 2026-07-29
-- **Estado**: `proposed`
+- **Estado**: `accepted`
 - **Relacionado con specs**: `SPEC-WRITE-0001`
-- **Relacionado con tareas**: `TASK-WRITE-0002`
-- **Contexto**: la Opción A propone lectura directa (cache → miss → SQLite → repoblar). La Opción B propone lectura vía cola (API → Mosquitto → worker → SQLite → FlashDB → retorno). La Opción B añade una cola a cada lectura, lo cual puede congestionar el sistema si hay muchas lecturas.
-- **Decisión pendiente**: se elegirá lectura directa a menos que la Opción B demuestre una ventaja clara en algún escenario.
-- **Criterio de cierre**:
-  - Latencia p99 de lectura en ambas opciones bajo carga (100 lecturas/segundo concurrentes).
-  - Crecimiento de FlashDB en Opción B (¿explosión de entradas por consultas distintas?).
-  - Si la Opción B tiene p99 > 2x la Opción A, se descarta.
+- **Relacionado con tareas**: `TASK-WRITE-0005` (envelope con `store` obligatorio)
+- **Contexto**: con N stores independientes, no hay forma de hacer una transacción ACID que abarque dos stores (SQLite no soporta transacciones distribuidas). El motor debe establecer un límite claro de responsabilidad.
+- **Decisión**:
+  1. Un comando toca exactamente 1 store. El campo `store` en el envelope es obligatorio.
+  2. La aplicación que necesite atomicidad cross-store debe implementar sagas u otro patrón de coordinación.
+  3. El motor provee las primitivas necesarias para construir sagas: outbox transaccional (`DEC-0014`), idempotencia (`DEC-0003`), y entrega at-least-once de eventos.
+  4. Explícitamente fuera de alcance: orquestador de sagas, compensación automática, estado de saga.
+- **Consecuencias**:
+  - (+) Límite claro: el motor no se convierte en un coordinador de transacciones distribuidas.
+  - (+) Las primitivas provistas son suficientes para que cualquier aplicación construya sagas encima.
+  - (-) La aplicación debe manejar la complejidad de coordinación multi-store.
 - **Reemplaza**: `none`
+
+### DEC-0014 — Transactional outbox
+
+- **Fecha**: 2026-07-29
+- **Estado**: `accepted`
+- **Relacionado con specs**: `SPEC-WRITE-0001`
+- **Relacionado con tareas**: `TASK-WRITE-0018`
+- **Contexto**: cuando un comando se aplica en SQLite, los proyectores necesitan saberlo para actualizar sus read models. Si el writer publica el evento *después* del commit, y el proceso muere entre ambos, el evento se pierde para siempre y los read models quedan desincronizados en silencio — el peor modo de fallo.
+- **Decisión**:
+  1. Cada store tiene una tabla `_outbox` con columnas: `id INTEGER PRIMARY KEY`, `event_type TEXT`, `event_id TEXT UNIQUE`, `store TEXT`, `entity TEXT`, `key TEXT`, `version INTEGER`, `occurred_at TEXT`, `payload JSON`, `published_at TEXT NULL`.
+  2. El evento se inserta en `_outbox` **dentro de la misma transacción** que los datos de la entidad y la tabla `_idempotency`. Esto garantiza atomicidad: o se escriben ambos (dato + evento), o ninguno.
+  3. El **publicador** es una task interna del proceso writer. Lee `_outbox WHERE published_at IS NULL`, publica en `ixmati/evt/<store>/<entity>/<id>` con QoS 1, y marca `published_at` con el timestamp de publicación.
+  4. La marca de `published_at` es idempotente (si MQTT ack falla, se reintenta). La entrega es at-least-once. Los consumidores (proyectores) deben ser idempotentes.
+- **Consecuencias**:
+  - (+) 0 eventos perdidos. El outbox sobrevive a crash del writer.
+  - (+) El publicador es parte del writer → no viola la invariante de escritor único.
+  - (+) Sin dependencia externa para publicar eventos (no se necesita Debezium ni triggers).
+  - (-) La tabla `_outbox` crece. Necesita limpieza periódica (filas con `published_at` anterior a N días).
+  - (-) Latencia adicional entre commit y publicación (el publicador sondea o usa notificaciones). Típicamente < 100ms.
+- **Reemplaza**: `none`
+
+### DEC-0015 — Taxonomía de topics separada: comandos vs eventos
+
+- **Fecha**: 2026-07-29
+- **Estado**: `accepted`
+- **Relacionado con specs**: `SPEC-WRITE-0001`
+- **Relacionado con tareas**: `TASK-WRITE-0003`, `TASK-WRITE-0019`
+- **Contexto**: comandos y eventos tienen semántica, consumidores y ciclo de vida distintos. Mezclarlos en el mismo árbol de topics causa acoplamiento indeseado y dificulta la operación.
+- **Decisión**:
+
+| | Comando | Evento |
+|---|---|---|
+| Topic | `ixmati/cmd/<store>/<entity>/<id>` | `ixmati/evt/<store>/<entity>/<id>` |
+| Semántica | "haz esto" | "esto pasó" |
+| Consumidores | 1 (el writer del store) | N (proyectores, auditoría) |
+| Se puede rechazar | Sí (`VERSION_CONFLICT`, `DUPLICATE`) | No (es un hecho consumado) |
+| Retención en Mosquitto | Hasta consumo + TTL | Mayor (permitir reproyección) |
+| `retained` | `false` | `false` (los proyectores se ponen al día desde outbox) |
+
+- **Consecuencias**:
+  - (+) Separación clara de responsabilidades.
+  - (+) Se pueden configurar políticas de retención distintas.
+  - (+) Los proyectores no se ven afectados por rechazos de comandos (ni siquiera los ven).
+- **Reemplaza**: `none`
+
+### DEC-0016 — Read models: patrón R por defecto, M por excepción
+
+- **Fecha**: 2026-07-29
+- **Estado**: `accepted`
+- **Relacionado con specs**: `SPEC-WRITE-0001`
+- **Relacionado con tareas**: `TASK-WRITE-0020`, `TASK-WRITE-0021`
+- **Contexto**: los read models pueden materializar datos de otros stores de dos formas. Llamarlas igual ("join en FlashDB") oculta que tienen costos operativos radicalmente distintos.
+- **Decisión**:
+  - **Patrón R (referencia + lookup)**: el read model guarda `{usr_id: 9}`. La consulta completa hace 2 lecturas a FlashDB (`ped:123` + `usr:9`) y combina en Rust. Escritura barata (sin fan-out), 2 lecturas, sin propagación de cambios.
+  - **Patrón M (materializado)**: el read model guarda `{usr_id: 9, usr_nombre: "Ana"}`. Una sola lectura. Pero al renombrar "Ana" → "Ana M.", el proyector debe reescribir todas las filas que referencian ese usuario.
+  - **Regla de decisión**: usar M solo si `fan_out ≤ 100` Y `ratio_lectura_escritura ≥ 100:1` para el campo copiado. Por defecto, R.
+- **Consecuencias**:
+  - (+) La regla de decisión es explícita y medible, no opinable.
+  - (+) R es seguro por defecto: sin riesgo de fan-out descontrolado.
+  - (-) Quien declara la proyección debe conocer los datos de acceso para aplicar la regla.
+- **Reemplaza**: `none`
+
+### DEC-0017 — ATTACH DATABASE permitido solo en lectura
+
+- **Fecha**: 2026-07-29
+- **Estado**: `accepted`
+- **Relacionado con specs**: `SPEC-WRITE-0001`
+- **Relacionado con tareas**: `TASK-WRITE-0023`
+- **Contexto**: `ATTACH DATABASE` permite a SQLite hacer consultas entre múltiples archivos. Es la única forma razonable de hacer reporting cross-store sin mover datos a otro sistema. Pero mal usado, rompe la invariante de escritor único.
+- **Decisión**:
+  1. **Prohibido** para cualquier conexión que tenga permisos de escritura. Sin excepción.
+  2. **Permitido** en conexiones de solo lectura, sobre réplicas co-localizadas (mismo nodo), exclusivamente para reporting, analítica ad-hoc y debugging.
+  3. No se usa en el camino de lectura online (ese va por FlashDB o SQLite directo).
+- **Consecuencias**:
+  - (+) Escape hatch para consultas analíticas sin montar un data warehouse.
+  - (+) Sin riesgo para la integridad de los stores (solo lectura).
+  - (-) Requiere disciplina: el `ATTACH` debe estar bloqueado a nivel de permisos de archivo o de PRAGMA.
+- **Reemplaza**: `none`
+
+### DEC-0018 — Keyspace de FlashDB unificado con prefijo `<store>:<entity>:<key>`
+
+- **Fecha**: 2026-07-29
+- **Estado**: `accepted`
+- **Relacionado con specs**: `SPEC-WRITE-0001`
+- **Relacionado con tareas**: `TASK-WRITE-0011`, `TASK-WRITE-0020`
+- **Contexto**: FlashDB aloja tanto cache-aside como read models. Con múltiples stores y proyecciones, el keyspace debe ser predecible, purgable por prefijo, y sin colisiones entre stores.
+- **Decisión**:
+  1. Keyspace unificado con prefijos:
+     - Cache-aside: `c:<store>:<entity>:<key>`
+     - Read models (proyecciones): `p:<projection_name>:<key>`
+  2. Esto permite purgar toda la cache de un store (`c:pedidos:*`) o una proyección entera (`p:pedidos_con_usuario:*`) sin afectar otras.
+  3. Un solo archivo FlashDB para todos los stores y proyecciones. Alternativa: un archivo por store si un store domina el volumen (configurable).
+- **Consecuencias**:
+  - (+) Purga quirúrgica por prefijo.
+  - (+) Sin colisiones entre stores ni entre cache y proyecciones.
+  - (-) Un solo archivo = un solo punto de fallo para todas las lecturas (mitigado: la cache es desechable y hay fallback a SQLite).
+- **Reemplaza**: `none`
+
+### DEC-0019 — Reconciler: reproyección fan-in sobre N stores
+
+- **Fecha**: 2026-07-29
+- **Estado**: `accepted`
+- **Relacionado con specs**: `SPEC-WRITE-0001`
+- **Relacionado con tareas**: `TASK-WRITE-0022`
+- **Contexto**: con read models proyectados desde eventos, la reconstrucción ya no es "dumping de 1 store" (DEC-0006 original), sino "fan-in sobre N stores". Si un read model se corrompe o necesita migrarse, hay que reproyectarlo desde los datos canónicos de los stores fuente.
+- **Decisión**:
+  1. El `ixmati-reconciler` es un binario offline que reconstruye read models.
+  2. Soporta dos modos: reproyección total (todos los read models desde cero) y selectiva (`--projection <name>`).
+  3. Modo fan-in: para cada proyección, lee los stores fuente en modo solo lectura, aplica la lógica de proyección (R o M), y escribe en FlashDB.
+  4. La cache-aside (`c:*`) no se reconstruye (se repuebla con el tráfico). Solo los read models (`p:*`).
+- **Consecuencias**:
+  - (+) Recuperación de read models sin depender del bus de eventos (offline).
+  - (+) Permite migrar el esquema de una proyección: se borra `p:<name>:*` y se reproyecta.
+  - (-) Lectura intensiva de todos los stores fuente durante la reproyección.
+  - (-) La lógica de proyección está duplicada (en el projector online y en el reconciler offline). Mitigación: compartir el código de proyección en `ixmati-core`.
+- **Reemplaza**: `DEC-0006`
+
+### DEC-0020 — Coexistencia cache-aside + proyecciones
+
+- **Fecha**: 2026-07-29
+- **Estado**: `accepted`
+- **Relacionado con specs**: `SPEC-WRITE-0001`
+- **Relacionado con tareas**: `TASK-WRITE-0011`, `TASK-WRITE-0020`, `TASK-WRITE-0021`
+- **Contexto**: no todos los datos necesitan proyección. La mayoría de las lecturas se benefician de cache-aside simple. Imponer proyecciones para todo añadiría complejidad innecesaria. Pero para ciertos patrones de acceso (lecturas frecuentes que cruzan stores), las proyecciones eager son superiores.
+- **Decisión**:
+  1. El motor soporta ambos caminos de lectura simultáneamente:
+     - **Cache-aside** (lazy, por defecto): `c:<store>:<entity>:<key>` en FlashDB. Se llena en read-miss desde SQLite. Se invalida/actualiza por el writer tras cada commit.
+     - **Proyección** (eager, opt-in): `p:<projection_name>:<key>` en FlashDB. Se llena por el projector al recibir eventos. Se declara explícitamente en config.
+  2. Ambos comparten el mismo `CacheBackend` con namespaces distintos.
+  3. Una proyección puede declarar su propio TTL (inferior al de cache-aside, porque se actualiza proactivamente).
+  4. El backend elige qué camino usar por consulta (implícito: si pide por `projection`, va a proyección; si pide por `store/entity/key`, va a cache-aside).
+- **Consecuencias**:
+  - (+) Sin overhead de proyecciones para datos que no las necesitan.
+  - (+) Las proyecciones se añaden incrementalmente sin rediseñar.
+  - (-) Dos caminos de lectura que el backend debe entender (mitigado: la API unifica la interfaz).
+  - (-) La purga de cache-aside no debe afectar proyecciones y viceversa (resuelto por prefijos).
+- **Reemplaza**: `DEC-0006` (junto con `DEC-0019`)

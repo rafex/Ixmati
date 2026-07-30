@@ -2,72 +2,83 @@
 
 Prioridades de mediano plazo para Ixmati.
 
-## Fase 0 — Spike de decisión y contratos (actual)
+## Fase 0 — Contratos y decisión técnica
 
-**Objetivo**: cerrar las decisiones abiertas (DEC-0010, DEC-0011) y definir los contratos antes de escribir código de producción.
+**Objetivo**: cerrar el riesgo FlashDB (DEC-0009) y definir todos los contratos antes de escribir código de producción. Las decisiones de arquitectura (A vs B, lectura directa) ya están cerradas.
 
 - `TASK-WRITE-0001`: spike de viabilidad de FlashDB vía FFI en Rust.
-- `TASK-WRITE-0002`: spike comparativo Opción A vs Opción B (durabilidad, latencia, orden).
-- `TASK-WRITE-0003`: definir contrato de envelope, topics MQTT y `.proto` para gRPC.
+- `TASK-WRITE-0003`: definir contrato de envelope (comando + evento), topics MQTT (cmd + evt) y `.proto`.
 - `TASK-WRITE-0004`: definir contrato de API REST (OpenAPI).
 
 **Duración estimada**: 1-2 semanas.
+**Tarea cancelada**: `TASK-WRITE-0002` (comparativa A/B). Las decisiones DEC-0010 y DEC-0011 se cerraron por diseño.
 
-## Fase 1 — Writer + SQLite (core)
+## Fase 1 — Core, store registry y writer
 
-**Objetivo**: el writer es funcional. Acepta mensajes, aplica escrituras en SQLite con batching y deduplicación.
+**Objetivo**: el writer procesa comandos con outbox transaccional. Múltiples stores independientes. `stores=1` funciona sin overhead de eventos.
 
-- `TASK-WRITE-0005`: implementar `ixmati-core` (tipos, envelope, errores, config).
-- `TASK-WRITE-0006`: implementar `ixmati-writer` con consumer MQTT, lógica de `BEGIN IMMEDIATE`, batching, dedup.
-- `TASK-WRITE-0007`: tests de crash del writer (kill -9, 0 pérdidas, orden preservado).
+- `TASK-WRITE-0005`: implementar `ixmati-core` (tipos, envelopes, errores, config, StoreConfig, lógica de proyección compartida).
+- `TASK-WRITE-0017`: store registry + config multi-store + resolución de topología (N pods vs 1 proceso).
+- `TASK-WRITE-0006`: implementar `ixmati-writer` (consumer MQTT, batching, dedup, `BEGIN IMMEDIATE`).
+- `TASK-WRITE-0018`: tabla `_outbox`, inserción transaccional, publicador como task del writer.
+- `TASK-WRITE-0007`: tests de crash del writer (kill -9, 0 comandos perdidos, 0 eventos perdidos, orden).
 
-**Duración estimada**: 2-3 semanas.
+**Duración estimada**: 3-4 semanas.
+**Tarea cancelada**: `TASK-WRITE-0013` (resync mono-store), reemplazada por `TASK-WRITE-0022` (reconciler fan-in).
 
 ## Fase 2 — API REST/gRPC
 
-**Objetivo**: los backends pueden enviar escrituras y consultar estado vía API HTTP y gRPC.
+**Objetivo**: los backends envían comandos y consultan estado vía API HTTP y gRPC.
 
 - `TASK-WRITE-0008`: implementar `ixmati-api` (axum REST + tonic gRPC).
-- `TASK-WRITE-0009`: implementar modo async (`ack=accepted`) y modo sync (`ack=committed`) con correlación de respuestas.
-- `TASK-WRITE-0010`: endpoint `GET /writes/{idempotency_key}` para consulta de estado.
+- `TASK-WRITE-0009`: implementar modo async (`ack=accepted`) y modo sync (`ack=committed`) con correlación.
+- `TASK-WRITE-0010`: endpoint `GET /writes/{store}/{idempotency_key}`.
 
 **Duración estimada**: 2-3 semanas.
 
-## Fase 3 — Cache y resync
+## Fase 3 — Cache, eventos y proyecciones
 
-**Objetivo**: las lecturas se sirven desde FlashDB (o alternativa) con fallback a SQLite.
+**Objetivo**: las lecturas se sirven desde cache-aside (por defecto) y desde read models proyectados (opt-in). El bus de eventos alimenta los proyectores.
 
-- `TASK-WRITE-0011`: implementar `ixmati-cache` con trait `CacheBackend` e implementación FlashDB (o alternativa según spike).
-- `TASK-WRITE-0012`: invalidación/repoblación de cache desde el writer tras cada commit.
-- `TASK-WRITE-0013`: implementar `ixmati-resync` (reconstrucción offline de cache desde SQLite).
+- `TASK-WRITE-0011`: implementar `ixmati-cache` con trait `CacheBackend` y namespaces `c:` / `p:`.
+- `TASK-WRITE-0012`: invalidación/repoblación de cache-aside desde el writer tras cada commit.
+- `TASK-WRITE-0019`: `EventEnvelope` + publicación en `ixmati/evt/...`.
+- `TASK-WRITE-0020`: `ixmati-projector`: runtime de proyecciones idempotentes (patrón R y M).
+- `TASK-WRITE-0021`: declaración de proyecciones en config + validación (fan-out, stores fuente).
 
-**Duración estimada**: 2 semanas.
+**Duración estimada**: 3-4 semanas.
 
-## Fase 4 — Disaster recovery y producción
+## Fase 4 — Reconciler, disaster recovery y producción
 
-**Objetivo**: el sistema tolera fallos y se puede recuperar desde backup.
+**Objetivo**: el sistema tolera fallos, los read models son reconstruibles, y hay runbook operativo.
 
-- `TASK-WRITE-0014`: configurar Litestream con ≥2 destinos de backup.
-- `TASK-WRITE-0015`: health checks integrados (API, writer, Mosquitto, SQLite, cache).
-- `TASK-WRITE-0016`: documentar runbook de producción (restore, failover, resync).
+- `TASK-WRITE-0022`: `ixmati-reconciler` (reproyección fan-in sobre N stores).
+- `TASK-WRITE-0014`: configurar Litestream con ≥2 destinos por store.
+- `TASK-WRITE-0023`: ATTACH DATABASE read-only para reporting cross-store.
+- `TASK-WRITE-0015`: health checks integrados (API, writer por store, Mosquitto, SQLite, cache).
+- `TASK-WRITE-0024`: `ixmati-supervisor` + K8s manifests (Deployment, PVC, sidecar por store).
+- `TASK-WRITE-0016`: documentar runbook de producción (restore por store, failover, reproyección, troubleshooting).
 
-**Duración estimada**: 1-2 semanas.
+**Duración estimada**: 2-3 semanas.
 
-## Fase 5 — Observabilidad y producción avanzada
+## Fase 5 — Observabilidad, consistencia y hardening
 
-**Objetivo**: visibilidad operativa y hardening.
+**Objetivo**: visibilidad operativa, validación de garantías de consistencia, y benchmarks.
 
-- Métricas Prometheus (lag de cola, latencia de commit, tasa de misses, tamaño de cache).
-- Backpressure: rechazar escrituras cuando la cola supera un umbral.
-- Alertas: writer caído, cola creciendo, Litestream detenido, SQLite corrupto.
-- Benchmarks de throughput (escrituras/segundo, lecturas/segundo) y límites operativos documentados.
+- `TASK-WRITE-0025`: tests de consistencia eventual (outbox, idempotencia de proyecciones, lag, reproyección).
+- Métricas Prometheus (lag de cola, lag de proyección, latencia de commit, tasa de misses, tamaño de outbox, eventos publicados/segundo).
+- Backpressure: rechazar comandos cuando la cola supera un umbral por store.
+- Alertas: writer caído, cola creciendo, outbox estancado, Litestream detenido, SQLite corrupto, lag de proyección > 1s.
+- Benchmarks de throughput multi-store (comandos/segundo, lecturas/segundo) y límites operativos documentados.
 
 **Duración estimada**: 2 semanas.
 
 ## Más allá (backlog no priorizado)
 
-- Writer standby con failover automático.
-- Soporte para múltiples archivos SQLite (sharding por entidad).
+- Writer standby con failover automático por store.
+- Soporte para partición interna de un store (sharding por carga, no por dominio).
 - Plugin de autenticación en la API (JWT, API keys).
-- Dashboard web de operación (lag, throughput, errores).
-- CDC (change data capture) para suscriptores externos vía MQTT.
+- Dashboard web de operación (lag, throughput, errores por store).
+- CDC para suscriptores externos vía MQTT (reutilizando el bus de eventos).
+- Migración de stores (renombrar, merge, split).
+- Soporte para múltiples brokers Mosquitto (clustering).

@@ -27,51 +27,37 @@ owner = "team-core"
 dependencies = []
 expected_files = ["spike/flashdb-ffi/Cargo.toml", "spike/flashdb-ffi/README.md"]
 close_criteria = "Resultado documentado: FlashDB compila y funciona en Linux x86_64, o se descarta con justificación"
-validation = ["compilación exitosa en Linux", "benchmark sintético vs sled", "evaluación de superficie unsafe"]
+validation = ["compilación exitosa en Linux", "benchmark sintético vs sled", "evaluación de superficie unsafe", "test de TTL e invalidación por prefijo"]
 ```
 
-Integrar FlashDB (librería C para microcontroladores) en Rust vía `bindgen` + `cc`. Determinar si:
-- Compila en Linux x86_64 como shared/static lib.
-- Soporta operaciones get/set/delete con TTL en el mismo proceso.
-- La superficie `unsafe` es manejable.
-- El rendimiento justifica la complejidad vs alternativas puras de Rust (sled, redb, lmdb-rs).
+Integrar FlashDB (librería C para microcontroladores) en Rust vía `bindgen` + `cc`. Determinar si compila en Linux x86_64, soporta operaciones get/set/delete con TTL, y la superficie `unsafe` es manejable. **Severidad alta**: FlashDB alojará read models, no solo cache.
 
-Resultado esperado: documento de decisión (dentro o fuera) + benchmark comparativo.
-
-### TASK-WRITE-0002 — Spike: comparativa Opción A vs Opción B
+### TASK-WRITE-0002 — ~~Spike: comparativa Opción A vs Opción B~~ CANCELADA
 
 ```toml
 id = "TASK-WRITE-0002"
-title = "Spike: comparativa Opción A (Mosquitto buffer) vs Opción B (FlashDB buffer)"
-state = "todo"
+title = "Spike: comparativa Opción A vs Opción B"
+state = "cancelled"
 owner = "team-core"
-dependencies = ["TASK-WRITE-0001"]
-expected_files = ["spike/comparativa/README.md", "spike/comparativa/results.json"]
-close_criteria = "Datos de durabilidad, latencia y orden para ambas opciones; cierra DEC-0010 y DEC-0011"
-validation = [
-  "test de crash (kill -9): mensajes perdidos en cada opción",
-  "medición de latencia p50/p99 de extremo a extremo",
-  "test de orden con 10 productores concurrentes sobre mismo entity_id",
-  "documento de recomendación con evidencia"
-]
+dependencies = []
 ```
 
-Implementar un prototipo mínimo de cada opción y ejecutar los experimentos definidos en `ARCHITECTURE.md` (criterios de decisión). El resultado determina la arquitectura final (cierra DEC-0010 y DEC-0011).
+**Motivo de cancelación**: las decisiones DEC-0010 y DEC-0011 se cerraron por diseño (no por benchmark). La Opción A (Mosquitto) es la única compatible con outbox transaccional y taxonomía de eventos separada. La Opción B (FlashDB como buffer de escritura) queda descartada. Ver DEC-0010 y DEC-0011 para justificación completa.
 
 ### TASK-WRITE-0003 — Definir contrato de envelope, topics MQTT y .proto
 
 ```toml
 id = "TASK-WRITE-0003"
-title = "Definir contrato de envelope, topics MQTT y archivos .proto"
+title = "Definir contrato de envelope (comando + evento), topics MQTT (cmd + evt) y archivos .proto"
 state = "todo"
 owner = "team-core"
-dependencies = ["TASK-WRITE-0002"]
+dependencies = []
 expected_files = ["proto/ixmati/v1/write.proto", "proto/ixmati/v1/read.proto", "proto/ixmati/v1/common.proto"]
-close_criteria = "Archivos .proto compilan sin errores y coinciden con CONVENTIONS.md"
-validation = ["protoc compila sin warnings", "revisión de pares del esquema de envelope"]
+close_criteria = "Archivos .proto compilan sin errores y reflejan CONVENTIONS.md actualizado"
+validation = ["protoc compila sin warnings", "revisión de pares del esquema de envelope (comando y evento)", "taxonomía cmd/evt validada"]
 ```
 
-Definir los archivos `.proto` para gRPC y el esquema JSON del envelope según `CONVENTIONS.md`. Incluye mensajes de escritura, respuesta de ack, y consulta de estado.
+Definir los archivos `.proto` para gRPC y el esquema JSON del envelope de comando y de evento según `CONVENTIONS.md`. Incluye topics `ixmati/cmd/...` y `ixmati/evt/...` con semántica separada. El campo `store` es obligatorio en comandos.
 
 ### TASK-WRITE-0004 — Definir contrato de API REST (OpenAPI)
 
@@ -86,61 +72,62 @@ close_criteria = "Especificación OpenAPI completa con todos los endpoints docum
 validation = ["swagger-cli validate openapi.yaml", "revisión de pares"]
 ```
 
-Especificación OpenAPI 3.0 para los endpoints REST: `POST /write`, `GET /writes/{idempotency_key}`, `GET /health`, `GET /read/{entity}/{key}`.
+Especificación OpenAPI 3.0: `POST /write`, `GET /writes/{store}/{idempotency_key}`, `GET /read` (por store o por proyección), `GET /health`. El campo `store` es obligatorio en escritura.
 
 ### TASK-WRITE-0005 — Implementar ixmati-core
 
 ```toml
 id = "TASK-WRITE-0005"
-title = "Implementar ixmati-core (tipos, envelope, errores, config)"
+title = "Implementar ixmati-core (tipos, envelope comando + evento, errores, config, StoreConfig)"
 state = "todo"
 owner = "team-core"
 dependencies = ["TASK-WRITE-0003", "TASK-WRITE-0004"]
-expected_files = ["crates/ixmati-core/src/lib.rs", "crates/ixmati-core/src/envelope.rs", "crates/ixmati-core/src/error.rs", "crates/ixmati-core/src/config.rs"]
-close_criteria = "Tipos compilan, envelope se serializa/deserializa correctamente, errores usan thiserror, config se carga desde env/toml"
-validation = ["cargo build -p ixmati-core", "tests unitarios de serialización del envelope", "tests de errores"]
+expected_files = ["crates/ixmati-core/src/lib.rs", "crates/ixmati-core/src/envelope.rs", "crates/ixmati-core/src/error.rs", "crates/ixmati-core/src/config.rs", "crates/ixmati-core/src/store.rs"]
+close_criteria = "Tipos compilan, envelopes se serializan correctamente, StoreConfig se carga desde env/toml"
+validation = ["cargo build -p ixmati-core", "tests de serialización del envelope de comando y evento", "tests de carga de config multi-store"]
 ```
 
-Crate compartido sin dependencias externas pesadas. Define `WriteEnvelope`, `AckResponse`, `WriteStatus`, `WriteError`, `Config`. Es el único crate del que dependen todos los demás.
+Crate compartido. Define `WriteEnvelope`, `EventEnvelope`, `AckResponse`, `WriteStatus`, `Error`, `Config`, `StoreConfig`. Incluye lógica de proyección compartida (para projector y reconciler). El campo `store` es obligatorio en `WriteEnvelope`.
 
-### TASK-WRITE-0006 — Implementar ixmati-writer (consumer, batching, dedup)
+### TASK-WRITE-0006 — Implementar ixmati-writer (consumer, batching, dedup, outbox)
 
 ```toml
 id = "TASK-WRITE-0006"
-title = "Implementar ixmati-writer (consumer MQTT/flashdb, batching, deduplicación, BEGIN IMMEDIATE)"
+title = "Implementar ixmati-writer (consumer MQTT, batching, deduplicación, BEGIN IMMEDIATE, outbox transaccional)"
 state = "todo"
 owner = "team-core"
 dependencies = ["TASK-WRITE-0005"]
-expected_files = ["crates/ixmati-writer/src/lib.rs", "crates/ixmati-writer/src/consumer.rs", "crates/ixmati-writer/src/batcher.rs", "crates/ixmati-writer/src/dedup.rs"]
-close_criteria = "Writer consume mensajes, aplica batches en SQLite con deduplicación y control de versiones"
+expected_files = ["crates/ixmati-writer/src/lib.rs", "crates/ixmati-writer/src/consumer.rs", "crates/ixmati-writer/src/batcher.rs", "crates/ixmati-writer/src/dedup.rs", "crates/ixmati-writer/src/outbox.rs"]
+close_criteria = "Writer consume comandos, aplica batches con outbox transaccional (datos + _idempotency + _outbox en misma tx)"
 validation = [
-  "test unitario de batch commit",
-  "test unitario de deduplicación (mismo idempotency_key, única aplicación)",
+  "test unitario de batch commit con outbox",
+  "test unitario de deduplicación por (store, idempotency_key)",
   "test unitario de rechazo de versión obsoleta",
+  "test unitario: _outbox contiene el evento tras commit",
   "test de integración con SQLite en memoria"
 ]
 ```
 
-Núcleo del sistema. Según el resultado del spike (DEC-0010), consume de Mosquitto o de FlashDB. Aplica escrituras en SQLite con `BEGIN IMMEDIATE`, batching acotado, validación de versiones, y registro en tabla `_idempotency`.
+Núcleo del sistema. Consume de `ixmati/cmd/<store>/...`. Cada writer maneja exactamente un store. Aplica batches con `BEGIN IMMEDIATE`. La transacción incluye: datos de la entidad, `_idempotency`, y `_outbox`. El publicador de eventos es una task interna del mismo proceso.
 
 ### TASK-WRITE-0007 — Tests de crash del writer
 
 ```toml
 id = "TASK-WRITE-0007"
-title = "Tests de crash del writer (kill -9, 0 pérdidas, orden preservado)"
+title = "Tests de crash del writer (kill -9, 0 comandos perdidos, 0 eventos perdidos, orden preservado)"
 state = "todo"
 owner = "team-core"
-dependencies = ["TASK-WRITE-0006"]
+dependencies = ["TASK-WRITE-0006", "TASK-WRITE-0018"]
 expected_files = ["crates/ixmati-writer/tests/crash_test.rs", "scripts/crash_test.sh"]
-close_criteria = "Test de crash automatizado: publica N mensajes, kill -9, reinicia, verifica 0 pérdidas y orden"
+close_criteria = "Test de crash automatizado: publica N comandos, kill -9, reinicia, verifica 0 comandos perdidos, 0 eventos perdidos, orden preservado"
 validation = [
-  "script crash_test.sh pasa con N=1000",
-  "test verifica conteo exacto de mensajes en SQLite",
-  "test verifica orden por entity+id"
+  "crash_test.sh pasa con N=1000 y 1 store",
+  "crash_test.sh pasa con N=1000 y 3 stores (aislamiento)",
+  "test verifica que _outbox se vacía tras reinicio (todos los eventos publicados)"
 ]
 ```
 
-Test de integración crítico. Un script externo (bash o Rust) lanza el writer, publica mensajes vía MQTT, envía `kill -9` al writer, verifica que Mosquitto retuvo los mensajes, reinicia el writer, y confirma que todos los mensajes están en SQLite en el orden correcto.
+Test de integración crítico. Un script externo lanza N writers (uno por store), publica comandos vía MQTT, `kill -9` un writer, verifica que Mosquitto retuvo los comandos, reinicia, y confirma que todos los comandos están en SQLite y todos los eventos del outbox fueron publicados.
 
 ### TASK-WRITE-0008 — Implementar ixmati-api (REST + gRPC)
 
@@ -152,154 +139,321 @@ owner = "team-core"
 dependencies = ["TASK-WRITE-0003", "TASK-WRITE-0004", "TASK-WRITE-0005"]
 expected_files = ["crates/ixmati-api/src/lib.rs", "crates/ixmati-api/src/rest.rs", "crates/ixmati-api/src/grpc.rs"]
 close_criteria = "Endpoints REST y gRPC funcionales según OpenAPI y .proto"
-validation = [
-  "test de integración REST con reqwest",
-  "test de integración gRPC con tonic client",
-  "cargo build -p ixmati-api"
-]
+validation = ["test de integración REST con reqwest", "test de integración gRPC con tonic client", "cargo build -p ixmati-api"]
 ```
 
-Implementa los endpoints definidos en OpenAPI y `.proto`. Traduce requests HTTP/gRPC a mensajes del envelope (JSON) y los publica en el canal de ingesta.
+Implementa los endpoints definidos. Traduce requests HTTP/gRPC a comandos JSON y los publica en `ixmati/cmd/<store>/...`. Sirve lecturas desde FlashDB con fallback a SQLite (cache-aside y proyecciones).
 
-### TASK-WRITE-0009 — Implementar modo async (ack=accepted) y sync (ack=committed)
+### TASK-WRITE-0009 — Implementar modo async y sync con correlación
 
 ```toml
 id = "TASK-WRITE-0009"
-title = "Implementar modo async y sync con correlación de respuestas"
+title = "Implementar modo async (ack=accepted) y sync (ack=committed) con correlación de respuestas"
 state = "todo"
 owner = "team-core"
 dependencies = ["TASK-WRITE-0008", "TASK-WRITE-0006"]
 expected_files = ["crates/ixmati-api/src/ack.rs", "crates/ixmati-writer/src/ack.rs"]
-close_criteria = "Modo async devuelve ack inmediato; modo sync espera commit y devuelve resultado; write_id consultable"
+close_criteria = "Modo async devuelve ack inmediato; modo sync espera commit y devuelve resultado; write_id consultable por (store, idempotency_key)"
 validation = [
   "test: modo async devuelve ack en < 50ms",
-  "test: modo sync devuelve ack solo tras commit en SQLite",
-  "test: modo sync garantiza read-your-writes"
+  "test: modo sync devuelve ack solo tras commit en SQLite del store correcto",
+  "test: modo sync garantiza read-your-writes en el store del comando",
+  "test: comando sin store → rechazado con error"
 ]
 ```
 
-Implementa los dos caminos de confirmación. En modo async, el ack se genera al publicar el mensaje. En modo sync, el writer publica la confirmación en un topic de respuesta y la API espera correlacionando por `idempotency_key`.
+Dos caminos de confirmación. En modo async, el ack se genera al publicar en Mosquitto. En modo sync, el writer publica la confirmación en un topic de respuesta y la API espera correlacionando por `(store, idempotency_key)`.
 
-### TASK-WRITE-0010 — Endpoint GET /writes/{idempotency_key}
+### TASK-WRITE-0010 — Endpoint GET /writes/{store}/{idempotency_key}
 
 ```toml
 id = "TASK-WRITE-0010"
-title = "Implementar endpoint de consulta de estado de escritura"
+title = "Implementar endpoint de consulta de estado de comando"
 state = "todo"
 owner = "team-core"
 dependencies = ["TASK-WRITE-0009"]
 expected_files = ["crates/ixmati-api/src/status.rs"]
-close_criteria = "GET /writes/{idempotency_key} devuelve estado (pending, applied, rejected) con detalles"
-validation = ["test: escritura async → GET devuelve pending → luego applied", "test: idempotency_key inexistente → 404"]
+close_criteria = "GET /writes/{store}/{idempotency_key} devuelve estado (pending, applied, rejected) con detalles"
+validation = ["test: comando async → GET devuelve pending → luego applied", "test: idempotency_key inexistente → 404", "test: store inexistente → 404"]
 ```
 
-Endpoint REST y gRPC para consultar el estado de una escritura async. El estado se obtiene de la tabla `_idempotency` en SQLite (pending = no aplicado aún, applied = commit exitoso, rejected = VERSION_CONFLICT o DUPLICATE).
+Endpoint REST y gRPC para consultar el estado de un comando async. El estado se obtiene de `_idempotency` en el SQLite del store correspondiente.
 
 ### TASK-WRITE-0011 — Implementar ixmati-cache (trait CacheBackend + FlashDB o alternativa)
 
 ```toml
 id = "TASK-WRITE-0011"
-title = "Implementar ixmati-cache con trait CacheBackend"
+title = "Implementar ixmati-cache con trait CacheBackend y namespaces"
 state = "todo"
 owner = "team-core"
 dependencies = ["TASK-WRITE-0001", "TASK-WRITE-0005"]
 expected_files = ["crates/ixmati-cache/src/lib.rs", "crates/ixmati-cache/src/traits.rs", "crates/ixmati-cache/src/flashdb.rs"]
-close_criteria = "Trait CacheBackend definido; implementación concreta (FlashDB o alternativa) funcional con get/set/invalidate y TTL"
+close_criteria = "Trait CacheBackend definido con namespaces c: y p:; implementación concreta funcional con get/set/invalidate/delete_by_prefix y TTL"
 validation = [
-  "test unitario: get/set/delete con TTL",
-  "test unitario: invalidación selectiva por entity+key",
+  "test: get/set/delete con TTL en namespace c:",
+  "test: invalidación por prefijo (c:store:*)",
+  "test: namespaces aislados (purga de c: no afecta p:)",
   "benchmark sintético de latencia vs SQLite directo"
 ]
 ```
 
-Define el trait `CacheBackend` (get, set, invalidate, flush) y una implementación concreta según el resultado de DEC-0009. La cache es siempre opaca para el resto del sistema (solo se accede a través del trait).
+Define `CacheBackend` con namespaces `c:` (cache-aside) y `p:` (proyecciones). La purga de uno no afecta al otro. Keyspace unificado con prefijo `<store>:<entity>:<key>`.
 
-### TASK-WRITE-0012 — Invalidación/repoblación de cache desde el writer
+### TASK-WRITE-0012 — Invalidación/repoblación de cache-aside desde el writer
 
 ```toml
 id = "TASK-WRITE-0012"
-title = "Invalidación y repoblación de cache desde el writer tras cada commit"
+title = "Invalidación y repoblación de cache-aside desde el writer tras cada commit"
 state = "todo"
 owner = "team-core"
 dependencies = ["TASK-WRITE-0006", "TASK-WRITE-0011"]
 expected_files = ["crates/ixmati-writer/src/cache_sync.rs"]
-close_criteria = "Tras cada batch commit, las claves afectadas se invalidan o repueblan en cache"
+close_criteria = "Tras cada batch commit, las claves c: afectadas se invalidan o repueblan"
 validation = [
-  "test: escritura → lectura inmediata desde cache devuelve valor actualizado",
-  "test: invalidación por entity+key no afecta otras claves"
+  "test: comando → lectura desde c: devuelve valor actualizado",
+  "test: invalidación de c:store:* no afecta p:* ni otros stores"
 ]
 ```
 
-Extiende el writer para que, tras cada `COMMIT` exitoso, invalide las claves de cache afectadas o las repueble con los nuevos valores. Usa el trait `CacheBackend` sin depender de la implementación concreta.
+Extiende el writer para que, tras cada `COMMIT`, invalide o repueble las claves `c:<store>:<entity>:<key>` afectadas. Usa `CacheBackend`. No afecta proyecciones (`p:*`) ni otros stores.
 
-### TASK-WRITE-0013 — Implementar ixmati-resync (reconstrucción offline de cache)
+### TASK-WRITE-0013 — ~~Implementar ixmati-resync~~ → reemplazada por TASK-WRITE-0022
 
 ```toml
 id = "TASK-WRITE-0013"
 title = "Implementar ixmati-resync (reconstrucción de cache desde SQLite)"
-state = "todo"
+state = "cancelled"
 owner = "team-core"
-dependencies = ["TASK-WRITE-0011"]
-expected_files = ["crates/ixmati-resync/src/main.rs"]
-close_criteria = "Binario que lee SQLite, reconstruye cache, reporta progreso y tiempo"
-validation = [
-  "test: resync de 100k registros en < 5s",
-  "test: resync parcial por --entity",
-  "test: cache resultante es idéntica a SQLite (muestreo de 1000 claves)"
-]
+dependencies = []
 ```
 
-Binario offline (no depende del writer corriendo). Lee SQLite en modo solo lectura, itera todas las entidades, y escribe en FlashDB. Soporta filtro por `--entity` y `--batch-size`. Reporta progreso cada 10k registros.
+**Motivo**: reemplazada por `TASK-WRITE-0022` (reconciler fan-in). La cache-aside no se reconstruye offline (se repuebla con el tráfico). Los read models se reproyectan vía reconciler. Ver DEC-0019 y DEC-0020.
 
-### TASK-WRITE-0014 — Configurar Litestream con ≥2 destinos de backup
+### TASK-WRITE-0014 — Configurar Litestream por store con ≥2 destinos
 
 ```toml
 id = "TASK-WRITE-0014"
-title = "Configurar Litestream con replicación a ≥2 destinos"
+title = "Configurar Litestream con replicación a ≥2 destinos por store"
 state = "todo"
 owner = "team-core"
-dependencies = ["TASK-WRITE-0006"]
+dependencies = ["TASK-WRITE-0006", "TASK-WRITE-0017"]
 expected_files = ["config/litestream.yml", "docker/litestream.Dockerfile"]
-close_criteria = "Litestream replicando WAL a S3 + VPS; comando restore verificado"
+close_criteria = "Litestream replicando WAL de cada store a S3 + VPS; restore verificado por store"
 validation = [
-  "litestream generations muestra generaciones en ambos destinos",
-  "test de restore: borrar SQLite, ejecutar litestream restore, verificar integridad",
-  "RPO medido < 5s"
+  "litestream generations muestra generaciones en ambos destinos por store",
+  "test de restore: borrar SQLite de un store, litestream restore, verificar integridad",
+  "RPO medido < 5s para store crítico"
 ]
 ```
 
-Configuración de Litestream con dos réplicas. Prueba de restore automatizada. Documentación del runbook en `COMMANDS.md`.
+Configuración de Litestream con dos réplicas por store. Frecuencia, destinos y retención configurables independientemente. Cada store tiene su sidecar o proceso Litestream.
 
 ### TASK-WRITE-0015 — Health checks integrados
 
 ```toml
 id = "TASK-WRITE-0015"
-title = "Implementar health checks (API, writer, Mosquitto, SQLite, cache)"
+title = "Implementar health checks (API, writer por store, Mosquitto, SQLite por store, cache)"
 state = "todo"
 owner = "team-core"
 dependencies = ["TASK-WRITE-0008", "TASK-WRITE-0006", "TASK-WRITE-0011"]
 expected_files = ["crates/ixmati-api/src/health.rs"]
-close_criteria = "Endpoint GET /health devuelve estado de todos los componentes con detalles"
+close_criteria = "GET /health devuelve estado de todos los componentes y stores con detalles"
 validation = [
-  "health check reporta OK con todos los servicios corriendo",
-  "health check reporta DEGRADED si Mosquitto no responde",
-  "health check reporta DEGRADED si SQLite no responde"
+  "health check reporta OK con todos los servicios y stores",
+  "health check reporta DEGRADED si un writer no responde (otros stores OK)",
+  "health check reporta store específico como unhealthy sin afectar el estado global"
 ]
 ```
 
-Health check agregado que verifica: conectividad con Mosquitto, respuesta de SQLite (`SELECT 1`), respuesta de cache, y presencia del writer (vía heartbeat MQTT).
+Health check agregado por store. Verifica: conectividad Mosquitto, respuesta SQLite (`SELECT 1`) por store, respuesta cache, presencia de cada writer (vía heartbeat MQTT por store).
 
 ### TASK-WRITE-0016 — Documentar runbook de producción
 
 ```toml
 id = "TASK-WRITE-0016"
-title = "Documentar runbook de producción (restore, failover, resync, troubleshooting)"
+title = "Documentar runbook de producción (restore por store, failover, reproyección, troubleshooting)"
 state = "todo"
 owner = "team-core"
-dependencies = ["TASK-WRITE-0014", "TASK-WRITE-0015"]
+dependencies = ["TASK-WRITE-0014", "TASK-WRITE-0015", "TASK-WRITE-0022"]
 expected_files = ["spec-native/workflows/PRODUCTION.md"]
-close_criteria = "Runbook escrito con procedimientos de restore, failover manual, resync, y diagnosis"
+close_criteria = "Runbook escrito con procedimientos de restore por store, failover manual, reproyección, y diagnóstico"
 validation = ["walkthrough manual de cada procedimiento", "revisión de pares"]
 ```
 
-Documento operativo con procedimientos detallados: cómo restaurar desde Litestream, cómo hacer failover manual del writer, cómo ejecutar resync de cache, cómo diagnosticar problemas comunes (cola creciendo, SQLITE_BUSY, cache inconsistentes).
+Documento operativo: cómo restaurar un store desde Litestream, failover manual del writer de un store, reproyección completa/selectiva con reconciler, diagnóstico (lag de cola, lag de proyección, store caliente, outbox creciendo).
+
+### TASK-WRITE-0017 — Store registry + config multi-store
+
+```toml
+id = "TASK-WRITE-0017"
+title = "Implementar store registry y configuración multi-store"
+state = "todo"
+owner = "team-core"
+dependencies = ["TASK-WRITE-0005"]
+expected_files = ["crates/ixmati-core/src/store.rs", "config/stores.example.toml"]
+close_criteria = "Config de stores cargable desde TOML/env; stores=1 funciona sin overhead; stores=N activa componentes opcionales"
+validation = [
+  "test: config con 1 store → no activa bus de eventos ni outbox",
+  "test: config con 3 stores → writer por store, topics independientes",
+  "test: store renombrado → error de validación (no migration path)"
+]
+```
+
+Define `StoreConfig` y el registry. Resuelve topología: `N` pods vs 1 proceso con `N` writer tasks, configurable. Con `stores=1`, el sistema no activa bus de eventos, outbox ni proyectores. Stores son inmutables tras creación (renombrar = migración).
+
+### TASK-WRITE-0018 — Tabla _outbox + publicador transaccional
+
+```toml
+id = "TASK-WRITE-0018"
+title = "Implementar tabla _outbox, inserción transaccional, y publicador de eventos como task del writer"
+state = "todo"
+owner = "team-core"
+dependencies = ["TASK-WRITE-0006"]
+expected_files = ["crates/ixmati-writer/src/outbox.rs", "crates/ixmati-writer/src/publisher.rs"]
+close_criteria = "Evento insertado en _outbox en misma tx que datos; publicador lee y publica con at-least-once; mark publicado idempotente"
+validation = [
+  "test: commit exitoso → fila en _outbox con published_at NULL",
+  "test: publicador publica y marca published_at",
+  "test: crash entre commit y publish → tras reinicio, evento se publica (0 pérdidas)",
+  "test: limpieza periódica de outbox (filas antiguas)"
+]
+```
+
+Tabla `_outbox(id, event_type, event_id, store, entity, key, version, occurred_at, payload, published_at)`. Insertada en la misma `BEGIN IMMEDIATE`. Publicador interno sondea o usa `sqlite3_update_hook`. Publica en `ixmati/evt/<store>/<entity>/<id>` con QoS 1 y marca `published_at`. Limpieza periódica de filas con > 7 días de antigüedad.
+
+### TASK-WRITE-0019 — EventEnvelope + bus de eventos
+
+```toml
+id = "TASK-WRITE-0019"
+title = "Definir EventEnvelope y publicación en ixmati/evt/..."
+state = "todo"
+owner = "team-core"
+dependencies = ["TASK-WRITE-0003", "TASK-WRITE-0018"]
+expected_files = ["crates/ixmati-core/src/event.rs", "crates/ixmati-writer/src/publisher.rs"]
+close_criteria = "EventEnvelope definido; publicador emite en ixmati/evt/<store>/<entity>/<id> con formato correcto"
+validation = [
+  "test: evento publicado contiene store, event_id, event_type, version, occurred_at, payload",
+  "test: topic evt separado de cmd",
+  "test: versión de evento coincide con versión del comando que lo generó"
+]
+```
+
+Define `EventEnvelope` con `store`, `entity`, `key`, `version`, `event_type`, `occurred_at`, `event_id` (UUID), `payload`. Publicado en `ixmati/evt/<store>/<entity>/<id>`. Separación estricta de topics cmd/evt.
+
+### TASK-WRITE-0020 — ixmati-projector: runtime de proyecciones idempotentes
+
+```toml
+id = "TASK-WRITE-0020"
+title = "Implementar ixmati-projector (runtime de proyecciones, idempotencia, patrón R y M)"
+state = "todo"
+owner = "team-core"
+dependencies = ["TASK-WRITE-0011", "TASK-WRITE-0019"]
+expected_files = ["crates/ixmati-projector/src/lib.rs", "crates/ixmati-projector/src/projection.rs", "crates/ixmati-projector/src/idempotency.rs"]
+close_criteria = "Projector consume eventos de ixmati/evt/... y actualiza read models p:<projection>:<key> de forma idempotente"
+validation = [
+  "test: evento → proyección actualizada",
+  "test: mismo event_id 3 veces → proyección actualizada 1 vez",
+  "test: patrón R (lookup) y M (materializado) según config",
+  "test: fan-out de patrón M validado contra DEC-0016"
+]
+```
+
+Consume eventos de `ixmati/evt/...`, aplica proyecciones declaradas en config. Idempotente por `event_id` (trackea IDs procesados) o por upsert natural (si la proyección es inherentemente idempotente). Soporta patrón R y M. Valida regla de fan-out (DEC-0016) al cargar proyecciones.
+
+### TASK-WRITE-0021 — Declaración de proyecciones en config
+
+```toml
+id = "TASK-WRITE-0021"
+title = "Declaración de proyecciones en config (patrón R/M, stores fuente, campos, clave destino)"
+state = "todo"
+owner = "team-core"
+dependencies = ["TASK-WRITE-0020"]
+expected_files = ["config/projections.example.toml", "crates/ixmati-core/src/projection_config.rs"]
+close_criteria = "Proyecciones declarables en TOML; validadas al cargar (fan-out ≤ 100 para M, stores fuente existen, clave destino única)"
+validation = [
+  "test: proyección R válida se carga sin error",
+  "test: proyección M con fan_out > 100 → rechazada en validación",
+  "test: proyección referencia store inexistente → error de validación"
+]
+```
+
+Formato de declaración: nombre, stores fuente, patrón (R/M), campos copiados (M), clave destino en FlashDB (`p:<name>:<key>`). Validación al cargar. Sin proyecciones declaradas, el projector no hace nada.
+
+### TASK-WRITE-0022 — ixmati-reconciler: reproyección fan-in sobre N stores
+
+```toml
+id = "TASK-WRITE-0022"
+title = "Implementar ixmati-reconciler (reproyección offline fan-in sobre N stores)"
+state = "todo"
+owner = "team-core"
+dependencies = ["TASK-WRITE-0011", "TASK-WRITE-0021"]
+expected_files = ["crates/ixmati-reconciler/src/main.rs"]
+close_criteria = "Binario que lee N stores en modo solo lectura, reproyecta read models p:*, reporta progreso"
+validation = [
+  "test: reproyección total con 3 stores y 100k registros combinados",
+  "test: reproyección selectiva --projection <name>",
+  "test: read models resultantes idénticos a proyección online (muestreo)",
+  "test: --dry-run reporta sin escribir"
+]
+```
+
+Binario offline. Modo fan-in: para cada proyección declarada, lee los stores fuente, aplica la lógica de proyección (compartida con `ixmati-core`), y escribe en FlashDB (`p:*`). Soporta `--projection`, `--dry-run`. No toca `c:*` (eso es cache-aside, se repuebla con tráfico).
+
+### TASK-WRITE-0023 — ATTACH DATABASE read-only para analítica
+
+```toml
+id = "TASK-WRITE-0023"
+title = "Habilitar ATTACH DATABASE en conexiones read-only para reporting cross-store"
+state = "todo"
+owner = "team-core"
+dependencies = ["TASK-WRITE-0006", "TASK-WRITE-0017"]
+expected_files = ["crates/ixmati-core/src/attach.rs"]
+close_criteria = "Conexiones read-only pueden usar ATTACH; conexiones write lo tienen bloqueado"
+validation = [
+  "test: ATTACH en conexión write → error",
+  "test: ATTACH en conexión read-only → consulta cross-store exitosa",
+  "test: stores en ATTACH no interfieren con writer (sin locks adicionales)"
+]
+```
+
+Habilita `ATTACH DATABASE` exclusivamente en conexiones de solo lectura, sobre réplicas co-localizadas. Útil para reporting ad-hoc. Bloqueado a nivel de PRAGMA en conexiones write.
+
+### TASK-WRITE-0024 — ixmati-supervisor + K8s manifests por store
+
+```toml
+id = "TASK-WRITE-0024"
+title = "Implementar ixmati-supervisor y manifiestos Kubernetes por store"
+state = "todo"
+owner = "team-core"
+dependencies = ["TASK-WRITE-0017", "TASK-WRITE-0014"]
+expected_files = ["crates/ixmati-supervisor/src/main.rs", "k8s/deployment.yaml", "k8s/pvc.yaml", "k8s/litestream-sidecar.yaml"]
+close_criteria = "Supervisor orquesta stores según topología; K8s manifiestos despliegan 1 pod por store con PVC y Litestream sidecar"
+validation = [
+  "test: supervisor con stores=1 lanza 1 writer task",
+  "test: supervisor con stores=3 lanza 3 writer tasks independientes",
+  "test: K8s manifests aplican sin errores (dry-run)"
+]
+```
+
+Supervisor orquesta múltiples stores. Topología configurable: `N` pods (K8s, 1 pod por store) o 1 proceso con `N` writer tasks (single-VPS). Manifiestos K8s: Deployment/StatefulSet por store, PVC por store, Litestream sidecar por store.
+
+### TASK-WRITE-0025 — Tests de consistencia eventual
+
+```toml
+id = "TASK-WRITE-0025"
+title = "Tests de consistencia eventual: outbox, lag de proyección, reproyección"
+state = "todo"
+owner = "team-core"
+dependencies = ["TASK-WRITE-0018", "TASK-WRITE-0020", "TASK-WRITE-0022"]
+expected_files = ["tests/eventual_consistency.rs", "scripts/consistency_test.sh"]
+close_criteria = "Suite de tests que validan 0 eventos perdidos, idempotencia de proyecciones, y reproyección correcta"
+validation = [
+  "test: crash entre commit y publish → 0 eventos perdidos (outbox)",
+  "test: re-entrega de evento → proyección idempotente",
+  "test: lag de proyección < 500ms p99 bajo carga normal (100 evt/s)",
+  "test: reproyección completa → idéntico a proyección online",
+  "test: caída de store A → proyecciones que referencian A siguen sirviendo"
+]
+```
+
+Suite de tests de integración para consistencia eventual. Valida las garantías del outbox, la idempotencia de proyectores, el lag en condiciones normales, y la integridad de la reproyección.
