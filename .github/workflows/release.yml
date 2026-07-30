@@ -1,0 +1,67 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build release
+        run: make build-release
+
+      - name: Package dist
+        run: make dist dist-checksums
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION=$(cat VERSION)
+          gh release create "v${VERSION}" \
+            --title "Ixmati v${VERSION}" \
+            --generate-notes \
+            --verify-tag \
+            dist/*.tar.gz dist/*.sha256
+
+  containers:
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Login to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build container images
+        run: |
+          VERSION=$(cat VERSION)
+          TAG="${VERSION}-$(git rev-parse --short HEAD)"
+          make PODMAN=docker IMAGE_PREFIX=ghcr.io/rafex/ixmati IMAGE_TAG=${TAG} containers-build
+
+      - name: Push container images
+        run: |
+          VERSION=$(cat VERSION)
+          TAG="${VERSION}-$(git rev-parse --short HEAD)"
+          SERVICES="api writer projector supervisor reconciler mosquitto litestream"
+          for svc in $SERVICES; do
+            docker tag "ghcr.io/rafex/ixmati-${svc}:${TAG}" "ghcr.io/rafex/ixmati-${svc}:${VERSION}"
+            docker push "ghcr.io/rafex/ixmati-${svc}:${TAG}"
+            docker push "ghcr.io/rafex/ixmati-${svc}:${VERSION}"
+            echo "  pushed ghcr.io/rafex/ixmati-${svc}:${VERSION}"
+          done

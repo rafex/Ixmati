@@ -44,6 +44,9 @@ define check_just_forbidden
 endef
 
 .PHONY: help
+ifndef COMMON_MK_HELP
+COMMON_MK_HELP := 1
+
 help:
 	@echo "$(COLOR_BLUE)Ixmati — Build System (make)$(COLOR_RESET)"
 	@echo ""
@@ -58,3 +61,4 @@ help:
 	@echo "  clean          Limpia target/ y dist/"
 	@echo ""
 	@echo "Para tareas de desarrollo usa just (test, fmt, lint, hooks, docs, etc.)"
+endif

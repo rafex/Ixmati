@@ -1,54 +1,56 @@
-name: ci
+name: CI
 
 on:
   pull_request:
-    branches: [main]
   push:
     branches: [main]
 
-env:
-  CARGO_TERM_COLOR: always
-
 jobs:
-  pr:
-    if: github.event_name == 'pull_request'
+  ci-pr:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install Rust
-        run: rustup update stable && rustup default stable
-      - name: Install just
-        uses: extractions/setup-just@v2
-      - name: Install cargo tools
-        run: cargo install cargo-deny cargo-audit
-      - name: CI PR
-        run: just ci-pr
 
-  main:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Format check
+        run: cargo fmt --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Unit tests
+        run: cargo test --workspace
+
+      - name: Integration tests
+        run: cargo test -p ixmati-integration
+
+      - name: Tool boundary check
+        run: |
+          pip install uv
+          uv run python helpers/python/lint_tool_boundary.py
+
+  ci-main:
+    if: github.ref == 'refs/heads/main'
+    needs: ci-pr
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install Rust
-        run: rustup update stable && rustup default stable && rustup component add llvm-tools-preview
-      - name: Install just
-        uses: extractions/setup-just@v2
-      - name: Install cargo tools
-        run: cargo install cargo-deny cargo-audit cargo-llvm-cov
-      - name: Install podman
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq podman podman-compose
-      - name: Start Mosquitto (podman compose)
-        run: podman compose -f containers/compose/test.yaml up -d mosquitto
-      - name: Wait for Mosquitto
-        run: |
-          for i in $(seq 1 30); do
-            podman compose -f containers/compose/test.yaml exec -T mosquitto mosquitto_sub -t '$$SYS/broker/version' -C 1 -W 2 && break
-            sleep 1
-          done
-      - name: CI Main
-        run: just ci-main
-      - name: Teardown
-        if: always()
-        run: podman compose -f containers/compose/test.yaml down
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build release
+        run: make build-release
+
+      - name: Package dist
+        run: make dist dist-checksums
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/

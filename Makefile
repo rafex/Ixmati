@@ -8,9 +8,8 @@
 REPO_ROOT := $(shell git rev-parse --show-toplevel 2>/dev/null || pwd)
 include $(REPO_ROOT)/helpers/make/common.mk
 
-$(call check_just_forbidden)
-
 include $(REPO_ROOT)/helpers/make/rust.mk
 include $(REPO_ROOT)/helpers/make/proto.mk
 include $(REPO_ROOT)/helpers/make/containers.mk
 include $(REPO_ROOT)/helpers/make/artifacts.mk
+include $(REPO_ROOT)/helpers/make/installer.mk
