@@ -142,7 +142,7 @@ close_criteria = "ci.yml usa podman compose en vez de services: para Mosquitto"
 ```toml
 id = "TASK-CONT-0012"
 title = "Validar build y compose dry-run contra 192.168.3.175"
-state = "todo"
+state = "done"
 owner = "team-core"
 dependencies = ["TASK-CONT-0002", "TASK-CONT-0003", "TASK-CONT-0006"]
 close_criteria = "podman build completa contra remoto; podman compose config valida syntaxis"

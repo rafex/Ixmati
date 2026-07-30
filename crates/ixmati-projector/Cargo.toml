@@ -14,3 +14,4 @@ serde_json.workspace = true
 tracing.workspace = true
 rumqttc.workspace = true
 uuid.workspace = true
+tracing-subscriber.workspace = true
