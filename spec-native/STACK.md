@@ -75,8 +75,22 @@ Tecnologías, versiones objetivo y restricciones del proyecto.
 | Métricas | `tracing` + `opentelemetry` (export a Prometheus o stdout) |
 | Logs | `tracing-subscriber` con formato JSON estructurado |
 
+## Tooling
+
+| Componente | Tecnología | Versión | Notas |
+|---|---|---|---|
+| Build system | **make** | — | Compila artefactos. `helpers/make/*.mk`. |
+| Task runner | **just** | ≥ 1.0 | Task manager. `helpers/just/*.just`. |
+| Python tooling | **uv** + Python | ≥ 3.12 | Scripts de CI, validación, coverage. |
+| Cobertura | **cargo-llvm-cov** | latest | Ratchet de cobertura. |
+| Auditoría deps | **cargo-deny** + **cargo-audit** | latest | Licencias, seguridad. |
+| Documentación | **mdBook** | ≥ 0.4 | Libro en `docs/`. |
+| Git hooks | `.githooks/` versionado | — | `just hooks-install` configura `core.hooksPath`. |
+
 ## Restricciones de versión
 
 - **SQLite >= 3.37.0**: requerido por `PRAGMA strict` y `BEGIN IMMEDIATE`. Feature `bundled` de rusqlite garantiza la versión.
 - **Mosquitto >= 2.0**: requerido por `persistence` configurable y `max_queued_messages`.
 - **Rust >= 1.80**: requerido por edition 2024 y features del ecosistema.
+- **Python >= 3.12**: gestionado por `uv`. Nunca usar el intérprete del sistema.
+- **Rustup**: prerequisito duro para desarrollo. Detectado por `just doctor`.

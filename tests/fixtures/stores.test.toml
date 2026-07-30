@@ -1,0 +1,18 @@
+# tests/fixtures/ — datos de prueba compartidos
+
+# stores.toml de ejemplo para tests de integracion
+[[stores]]
+name = "test"
+path = "/tmp/ixmati-test.db"
+label = "Default test store"
+
+# stores.toml multi-store para tests de aislamiento
+[[stores]]
+name = "pedidos"
+path = "/tmp/ixmati-pedidos.db"
+label = "Pedidos"
+
+[[stores]]
+name = "usuarios"
+path = "/tmp/ixmati-usuarios.db"
+label = "Usuarios"

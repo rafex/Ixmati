@@ -1,0 +1,9 @@
+[book]
+authors = ["Ixmati contributors"]
+language = "en"
+src = "src"
+title = "Ixmati — Motor de escritura serializada para SQLite"
+
+[output.html]
+git-repository-url = "https://github.com/rafex/Ixmati"
+edit-url-template = "https://github.com/rafex/Ixmati/edit/main/docs/{path}"

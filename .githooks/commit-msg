@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# .githooks/commit-msg — valida formato Conventional Commits
+
+set -euo pipefail
+COMMIT_MSG_FILE="$1"
+
+cd "$(dirname "$0")/.."
+
+if [ ! -f "$COMMIT_MSG_FILE" ]; then
+    echo "[commit-msg] sin mensaje que validar"
+    exit 0
+fi
+
+# saltar merge commits, rebase, amend
+if grep -qE '^(Merge branch|Squashed commit|Revert)' "$COMMIT_MSG_FILE"; then
+    exit 0
+fi
+
+MSG="$(head -1 "$COMMIT_MSG_FILE")"
+echo "$MSG" | uv run python helpers/python/commit_msg_lint.py

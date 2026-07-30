@@ -118,7 +118,7 @@ title = "Tests de crash del writer (kill -9, 0 comandos perdidos, 0 eventos perd
 state = "todo"
 owner = "team-core"
 dependencies = ["TASK-WRITE-0006", "TASK-WRITE-0018"]
-expected_files = ["crates/ixmati-writer/tests/crash_test.rs", "scripts/crash_test.sh"]
+expected_files = ["helpers/shell/kill9_writer.sh", "tests/smoke/test_crash_durability.py"]
 close_criteria = "Test de crash automatizado: publica N comandos, kill -9, reinicia, verifica 0 comandos perdidos, 0 eventos perdidos, orden preservado"
 validation = [
   "crash_test.sh pasa con N=1000 y 1 store",
@@ -275,7 +275,7 @@ title = "Documentar runbook de producción (restore por store, failover, reproye
 state = "todo"
 owner = "team-core"
 dependencies = ["TASK-WRITE-0014", "TASK-WRITE-0015", "TASK-WRITE-0022"]
-expected_files = ["spec-native/workflows/PRODUCTION.md"]
+expected_files = ["docs/src/operations/runbook.md"]
 close_criteria = "Runbook escrito con procedimientos de restore por store, failover manual, reproyección, y diagnóstico"
 validation = ["walkthrough manual de cada procedimiento", "revisión de pares"]
 ```
@@ -445,7 +445,7 @@ title = "Tests de consistencia eventual: outbox, lag de proyección, reproyecci�
 state = "todo"
 owner = "team-core"
 dependencies = ["TASK-WRITE-0018", "TASK-WRITE-0020", "TASK-WRITE-0022"]
-expected_files = ["tests/eventual_consistency.rs", "scripts/consistency_test.sh"]
+expected_files = ["tests/smoke/test_outbox.py", "tests/smoke/test_projection_lag.py", "tests/smoke/test_crash_durability.py"]
 close_criteria = "Suite de tests que validan 0 eventos perdidos, idempotencia de proyecciones, y reproyección correcta"
 validation = [
   "test: crash entre commit y publish → 0 eventos perdidos (outbox)",

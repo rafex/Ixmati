@@ -196,6 +196,30 @@ ttl_seconds = 300
 ## Tests
 
 - Tests unitarios: `#[cfg(test)] mod tests` en el mismo archivo.
-- Tests de integración: `tests/` en cada crate.
-- Tests de crash: scripts externos (bash o Rust) con `kill -9` y verificación.
-- Cobertura mínima: 80% en `ixmati-writer` e `ixmati-projector`, 70% en `ixmati-api`.
+- Tests de integración: crate Rust `tests/integration/` miembro del workspace (`publish = false`).
+- Tests de smoke: pytest sobre uv en `tests/smoke/`, caja negra contra docker compose.
+- Tests de crash: scripts en `helpers/shell/kill9_writer.sh` y `tests/smoke/test_crash_durability.py`.
+- Cobertura: ratchet versionado en `.coverage-floor`, gate en `just test-cov-gate`. Ver DEC-0025.
+
+## Tooling
+
+### Contrato make vs just
+
+- `make`: construye artefactos (compilar, codegen proto, Docker, dist). Ver `Makefile` y `helpers/make/*.mk`.
+- `just`: task manager (test, lint, fmt, hooks, docs, CI). Ver `Justfile` y `helpers/just/*.just`.
+- `just → make` permitido; `make → just` **prohibido** (guard automático en `lint_tool_boundary.py`). Ver DEC-0021.
+
+### Naming de recetas
+
+| Sistema | Naming | Ejemplo |
+|---|---|---|
+| Make targets | `kebab-case` | `build-release` |
+| Just recipes | `kebab-case` | `test-unit` |
+| Make modules | `snake_case.mk` | `common.mk` |
+| Just modules | `snake_case.just` | `dev.just` |
+| Shell scripts | `snake_case.sh` | `preflight.sh` |
+
+### Python tooling
+
+- `uv` gestiona Python ≥3.12. `pyproject.toml` en `helpers/python/`.
+- Shebang: `#!/usr/bin/env uv run`. Nunca usar `python3` del sistema. Ver DEC-0023.

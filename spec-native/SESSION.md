@@ -2,9 +2,9 @@
 [session]
 state = "in_progress"
 agent = "opencode"
-initiative = "write-engine"
-task = "documentation"
-intent = "Segunda ronda de documentacion: arquitectura unificada con Store, outbox transaccional, bus de eventos, proyecciones y cache dual. 20 decisiones, 25 tareas."
+initiative = "tooling"
+task = "scaffolding"
+intent = "Infraestructura de tooling completada: Makefile, Justfile, helpers, .githooks, tests/, docs/, CI, workspace Cargo con bootstrap TDD rojo. SPEC-TOOL-0001 y 14 tareas."
 last_updated = "2026-07-29"
 +++
 
@@ -12,41 +12,29 @@ last_updated = "2026-07-29"
 
 ## Current state
 
-Documentacion base del proyecto Ixmati actualizada tras la revision de la propuesta "SQLite por dominio" y "FlashDB como capa de joins".
+Tooling scaffolding completado. 27 decisiones (20 write-engine + 7 tooling), 3 specs, 42 tareas.
 
-Cambios clave respecto a la ronda anterior:
-- **Store** como primitivo del motor (no "dominio"). `stores=1` es el caso base sin overhead.
-- **Arquitectura unificada**: Opcion A (Mosquitto) confirmada. DEC-0010 y DEC-0011 cerradas por diseno.
-- **Transactional outbox**: los eventos se escriben en `_outbox` dentro de la misma transaccion que los datos. 0 eventos perdidos por diseno.
-- **Bus de eventos separado**: `ixmati/cmd/...` vs `ixmati/evt/...` con semantica y retencion distintas.
-- **Proyecciones opt-in**: cache-aside por defecto; read models proyectados se declaran en config (patron R y M).
-- **Reconciler fan-in**: reproyeccion offline desde N stores (reemplaza el resync mono-store).
-- **Cache dual**: namespaces `c:` (cache-aside) y `p:` (proyecciones) en FlashDB, purgables por separado.
-- **Sin sagas en el motor**: el motor provee primitivas (outbox, idempotencia, eventos); la aplicacion coordina.
-- **ATTACH read-only** como escape hatch para reporting cross-store.
+**Archivos creados**: Makefile, Justfile, .coverage-floor, Cargo.toml, 7 crates con test rojo, 5 helpers/make/*.mk, 7 helpers/just/*.just, 7 helpers/shell/*.sh, 10 helpers/python/*.py + pyproject.toml + tests, 4 .githooks/, tests/ (integration crate + smoke pytest + fixtures), docs/ (book.toml + 20 paginas mdBook), .github/workflows/ci.yml, SPEC-TOOL-0001, TASKS.md tooling.
 
-20 decisiones: 16 accepted, 2 superseded, 1 cancelled, 1 replaced.
-25 tareas: 21 todo, 2 cancelled, 2 sin estado (implied by superseded).
-`TASK-WRITE-0002` cancelada (spike A/B).
-`TASK-WRITE-0013` cancelada (resync mono-store reemplazado por reconciler).
+**Bloqueante**: `cargo`/`rustc` no estan instalados. Los tests bootstrap TDD no se pueden verificar. `just test-unit` fallara con error de "cargo not found" hasta instalar Rust.
+
+**Iniciativa activa**: `tooling` (bloqueante para `write-engine`). Ver ROADMAP.md Fase T.
 
 ## Next steps
 
-1. Ejecutar `TASK-WRITE-0001` — spike de viabilidad de FlashDB via FFI en Rust (severidad alta: alojara read models, no solo cache).
-2. Ejecutar `TASK-WRITE-0003` — definir contratos de envelope (comando + evento), topics (cmd + evt) y .proto.
-3. Ejecutar `TASK-WRITE-0004` — definir OpenAPI.
-4. Proceder con `TASK-WRITE-0005` (ixmati-core con StoreConfig, ambos envelopes) y `TASK-WRITE-0017` (store registry).
-5. Implementar writer + outbox (`0006` + `0018`) y tests de crash (`0007`).
+1. Instalar Rust: `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
+2. `just doctor` — verificar que todo el toolchain esta listo
+3. `just test-unit` — verificar que los 7 tests bootstrap estan en rojo
+4. `just test-cov-gate` — verificar que el ratchet de cobertura funciona (piso 0.0)
+5. Una vez verificado el harness, empezar `TASK-WRITE-0001` (spike FlashDB FFI)
 
 ## Context for next agent
 
-- Las decisiones de arquitectura (A/B, lectura) estan **cerradas**. No hay ambiguedad. Ver DEC-0010 y DEC-0011.
-- FlashDB es el unico riesgo abierto (DEC-0009). Si el spike falla, la migracion a sled/redb/lmdb-rs es transparente gracias al trait `CacheBackend`.
-- El campo `store` es **obligatorio** en todo comando. El motor no funciona sin el.
-- Los eventos (`ixmati/evt/...`) y comandos (`ixmati/cmd/...`) estan en topics separados. No mezclarlos.
-- El outbox es transaccional (misma `BEGIN IMMEDIATE` que los datos). El publicador es una task interna del writer.
-- `stores=1` debe funcionar sin bus de eventos, sin outbox, sin proyectores, sin reconciler. El overhead de eventos solo se activa con `stores > 1` o proyecciones declaradas.
-- Stores son inmutables tras creacion. Renombrar un store es una migracion (nuevo archivo + nuevo Litestream + redireccion de topics).
-- Las proyecciones son opt-in. Sin proyecciones declaradas, el projector y el reconciler no hacen nada.
-- `specs/authentication/` y `tasks/authentication/` son ejemplos del framework SpecNative, NO son parte del proyecto.
-- Formato de metadata: `+++` para SESSION.md, ` ```toml ` para specs y tasks.
+- `rustup` es prerequisito duro. Sin el, nada compila ni testea.
+- El bootstrap TDD tiene 7 tests con `assert_eq!(2+2, 5)`. Corregirlos es la primera tarea de implementacion real.
+- `just boundary` verifica que make no invoque a just. Esta pasando.
+- La cobertura arranca en 0.0. El gate esta activo pero no bloquea ese piso.
+- `make` y `just` son thin. La logica vive en `helpers/`.
+- Los scripts de helpers/shell/ y helpers/python/ tienen `chmod +x`.
+- `docs/` compila con `mdbook build docs/`.
+- La iniciativa `tooling` tiene 1 tarea pendiente: `TASK-TOOL-0013` (rellenar CI.md y CD.md de pipelines).

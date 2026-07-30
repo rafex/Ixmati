@@ -1,0 +1,26 @@
+# Índice
+
+- [Introducción](introduction.md)
+- [Comenzando](getting-started.md)
+- [Conceptos](concepts.md)
+- Configuración
+  - [Stores](configuration/stores.md)
+  - [Proyecciones](configuration/projections.md)
+  - [Referencia completa](configuration/reference.md)
+- API
+  - [REST](api/rest.md)
+  - [gRPC](api/grpc.md)
+  - [Envelope](api/envelope.md)
+  - [Errores](api/errors.md)
+- Guías
+  - [Single Store](guides/single-store.md)
+  - [Multi Store](guides/multi-store.md)
+  - [Proyecciones](guides/projections.md)
+  - [Disaster Recovery](guides/disaster-recovery.md)
+  - [Kubernetes](guides/kubernetes.md)
+- Operaciones
+  - [Runbook](operations/runbook.md)
+  - [Observabilidad](operations/observability.md)
+- Contribuyendo
+  - [Tooling](contributing/tooling.md)
+  - [Testing](contributing/testing.md)

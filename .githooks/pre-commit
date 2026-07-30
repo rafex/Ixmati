@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# .githooks/pre-commit — verificaciones antes de cada commit
+
+set -euo pipefail
+source "$(dirname "$0")/_common.sh"
+
+echo "[pre-commit] verificando..."
+
+# solo si hay archivos Rust staged
+if git diff --cached --name-only | grep -q '\.rs$'; then
+    echo "  cargo fmt --check..."
+    cargo fmt --all -- --check || die "cargo fmt encontro diferencias. Ejecuta: just fmt"
+
+    echo "  cargo clippy..."
+    cargo clippy --all-targets --workspace -- -D warnings 2>/dev/null || warn "clippy con warnings (no bloqueante en pre-commit)"
+fi
+
+# boundary: make no invoca a just
+echo "  lint_tool_boundary..."
+uv run python "$GIT_ROOT/helpers/python/lint_tool_boundary.py" || die "make esta invocando a just. Ver DEC-0021."
+
+# validate config si se modificaron archivos de config
+if git diff --cached --name-only | grep -q 'config/'; then
+    echo "  validate_config..."
+    uv run python "$GIT_ROOT/helpers/python/validate_config.py" || warn "config no valida (no bloqueante)"
+fi
+
+echo "[pre-commit] OK"

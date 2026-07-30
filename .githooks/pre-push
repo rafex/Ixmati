@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# .githooks/pre-push — verificaciones antes de push
+
+set -euo pipefail
+source "$(dirname "$0")/_common.sh"
+
+echo "[pre-push] verificando..."
+
+echo "  quality..."
+cargo clippy --all-targets --all-features --workspace -- -D warnings 2>/dev/null || true
+
+echo "  test-unit..."
+cargo test --lib --workspace 2>/dev/null || die "tests unitarios fallaron. Ejecuta: just test-unit"
+
+echo "  test-integration..."
+cargo test -p ixmati-integration 2>/dev/null || warn "tests de integracion fallaron (no bloqueante)"
+
+echo "  coverage gate..."
+if command -v cargo-llvm-cov &>/dev/null; then
+    cargo llvm-cov --workspace --lcov --output-path target/coverage.lcov 2>/dev/null && \
+        uv run python "$GIT_ROOT/helpers/python/coverage_gate.py" --lcov target/coverage.lcov || \
+        warn "coverage gate (no bloqueante en pre-push)"
+fi
+
+echo "[pre-push] OK"

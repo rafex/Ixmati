@@ -2,6 +2,15 @@
 
 Prioridades de mediano plazo para Ixmati.
 
+## Fase T — Tooling y harness (prerrequisito)
+
+**Objetivo**: infraestructura de desarrollo antes de escribir código del motor. Bloquea todas las fases siguientes.
+
+- `TASK-TOOL-0001`..`TASK-TOOL-0014`: Makefile, Justfile, helpers, hooks, workspace, tests, coverage, docs, CI.
+- **Dependencia bloqueante**: `SPEC-WRITE-0001` no puede iniciar implementación hasta que `just test-unit` pase de rojo a verde.
+
+**Duración estimada**: ya completada (scaffolding). Solo falta instalar Rust y corregir los 7 tests bootstrap.
+
 ## Fase 0 — Contratos y decisión técnica
 
 **Objetivo**: cerrar el riesgo FlashDB (DEC-0009) y definir todos los contratos antes de escribir código de producción. Las decisiones de arquitectura (A vs B, lectura directa) ya están cerradas.

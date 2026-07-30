@@ -1,179 +1,125 @@
 # COMMANDS.md
 
-Comandos del proyecto para desarrollo, build, test y operaciones.
+Catálogo de comandos del proyecto. Todas las tareas de desarrollo se ejecutan con `just`. La compilación con `make`. Los comandos crudos se listan como referencia de "qué hace por debajo".
 
-## Desarrollo local
+## Desarrollo diario
 
 ```bash
-# Compilar todo el workspace
-cargo build
-
-# Compilar en release
-cargo build --release
-
-# Ejecutar tests (unitarios + integración)
-cargo test
-
-# Tests con output
-cargo test -- --nocapture
-
-# Ejecutar un test específico
-cargo test -p ixmati-writer -- test_batch_commit
-
-# Linting
-cargo clippy --all-targets --all-features -- -D warnings
-
-# Formato
-cargo fmt --all -- --check
-cargo fmt --all
-
-# Documentación
-cargo doc --open
+just doctor              # verificar entorno
+just build               # compilar (→ make build)
+just test                # todos los tests
+just test-unit           # solo unitarios
+just test-integration    # solo integración
+just test-smoke          # solo smoke (pytest)
+just test-cov            # cobertura + reporte HTML
+just test-cov-gate       # cobertura con ratchet
+just fmt                 # formatear código
+just fmt-check           # verificar formato
+just clippy              # linter
+just quality             # fmt + clippy + boundary + validate
+just boundary            # verificar make no llama a just
+just validate-config     # validar stores.toml y projections.toml
+just env-up              # levantar Mosquitto (Docker)
+just env-down            # detener servicios
+just logs <service>      # logs de un servicio
+just watch               # recompilar al cambiar archivos
 ```
 
-## Levantar servicios de desarrollo
+## Git hooks
 
 ```bash
-# Iniciar Mosquitto + entorno de test
-docker compose -f docker/docker-compose.dev.yml up -d
+just hooks-install       # instalar hooks (.githooks/)
+just hooks-uninstall     # desinstalar
+just hooks-pre-commit    # ejecutar pre-commit manualmente
+just hooks-pre-push      # ejecutar pre-push manualmente
+```
 
-# Detener
-docker compose -f docker/docker-compose.dev.yml down
+## Documentación
 
-# Ver logs de Mosquitto
-docker compose -f docker/docker-compose.dev.yml logs -f mosquitto
+```bash
+just docs-build          # compilar mdBook
+just docs-serve          # mdBook con live reload (:3000)
+just docs-check-links    # verificar links rotos
+```
+
+## Build y artefactos
+
+```bash
+make build               # compilar debug
+make build-release       # compilar release
+make proto               # generar código desde .proto
+make docker              # construir imágenes Docker
+make dist                # ensamblar dist/ con checksums
+make clean               # limpiar target/ y dist/
 ```
 
 ## Stores
 
 ```bash
-# Supervisor: lanzar con N stores (topología single-process)
+# supervisor multi-store (topología single-process)
 cargo run -p ixmati-supervisor -- --config config/stores.toml
-
-# Config de ejemplo (stores.toml):
-# [[stores]]
-# name = "pedidos"
-# path = "/data/pedidos.db"
-# label = "Pedidos (dominio)"
-#
-# [[stores]]
-# name = "usuarios"
-# path = "/data/usuarios.db"
-# label = "Usuarios (dominio)"
 ```
 
-## Operaciones de cache
+## Cache
 
 ```bash
-# Purgar cache-aside de un store (no afecta proyecciones)
-cargo run -p ixmati-cache -- purge --prefix "c:pedidos:*"
-
-# Purgar un read model (requiere reproyección posterior)
-cargo run -p ixmati-cache -- purge --prefix "p:pedidos_con_usuario:*"
-
-# Ver estadísticas de FlashDB
-cargo run -p ixmati-cache -- stats
+# purgar cache-aside de un store
+uv run python helpers/python/validate_config.py  # base para futuros comandos
 ```
 
-## Reproyección (reconciler)
+## Reproyección
 
 ```bash
-# Reproyectar todos los read models (fan-in sobre todos los stores)
-cargo run -p ixmati-reconciler -- --config config/stores.toml --projections config/projections.toml
+# reproyectar todos los read models
+cargo run -p ixmati-reconciler
 
-# Reproyectar una proyección específica
-cargo run -p ixmati-reconciler -- --config config/stores.toml --projections config/projections.toml --projection pedidos_con_usuario
+# reproyectar una proyección específica
+cargo run -p ixmati-reconciler -- --projection pedidos_con_usuario
 
-# Dry-run: validar sin escribir
-cargo run -p ixmati-reconciler -- --config config/stores.toml --projections config/projections.toml --dry-run
-
-# Opciones:
-# --batch-size <N>       Stores procesados por batch (default: 10000)
-# --projection <NAME>    Solo reproyectar una proyección
-# --dry-run              Validar sin escribir en FlashDB
+# dry-run
+cargo run -p ixmati-reconciler -- --dry-run
 ```
 
 ## Inspección de outbox
 
 ```bash
-# Ver eventos pendientes de publicación en un store
 sqlite3 /data/pedidos.db "SELECT COUNT(*) FROM _outbox WHERE published_at IS NULL;"
-
-# Ver últimos eventos publicados
 sqlite3 /data/pedidos.db "SELECT event_id, event_type, entity, key, version, published_at FROM _outbox ORDER BY id DESC LIMIT 20;"
-
-# Lag del publicador (diferencia entre último id y último published_at)
-sqlite3 /data/pedidos.db "
-  SELECT (SELECT MAX(id) FROM _outbox) - (SELECT MAX(id) FROM _outbox WHERE published_at IS NOT NULL) AS lag;
-"
 ```
 
-## Disaster recovery con Litestream
+## Disaster recovery
 
 ```bash
-# Restaurar un store desde el último backup
 litestream restore -o /data/pedidos_restored.db s3://ixmati-backups/pedidos
-
-# Restaurar a un punto en el tiempo
-litestream restore -o /data/pedidos_restored.db --timestamp 2026-07-29T10:30:00Z s3://ixmati-backups/pedidos
-
-# Verificar integridad post-restauración
 sqlite3 /data/pedidos_restored.db "PRAGMA integrity_check;"
-
-# Ver generaciones de un store
-litestream generations /data/pedidos.db
-
-# Replicar un store específico (sidecar)
-litestream replicate -config /etc/litestream/pedidos.yml
 ```
 
-## Verificaciones de salud
+## CI
 
 ```bash
-# Health check de la API
+just ci-pr               # verificaciones de PR
+just ci-main              # verificaciones de main (con smoke + coverage)
+```
+
+## Health
+
+```bash
 curl http://localhost:8080/health
-
-# Health check de un store específico
-curl http://localhost:8080/health/pedidos
-
-# Verificar integridad de un store
-sqlite3 /data/pedidos.db "PRAGMA integrity_check; PRAGMA quick_check;"
-
-# Tamaño del WAL de un store (bytes)
+sqlite3 /data/pedidos.db "PRAGMA integrity_check;"
 stat -f%z /data/pedidos.db-wal
-
-# Verificar conexión Mosquitto
-mosquitto_sub -t 'ixmati/health/#' -C 1 -W 2
 ```
 
-## Métricas y debugging
+### Qué hace cada just recipe por debajo
 
-```bash
-# Lag de cola MQTT (comandos pendientes)
-mosquitto_sub -t '$SYS/broker/messages/stored' -C 1
-
-# Comandos procesados por store
-sqlite3 /data/pedidos.db "SELECT COUNT(*) FROM _idempotency WHERE applied_at > datetime('now', '-1 hour');"
-
-# Tamaño de cada store
-sqlite3 /data/pedidos.db "SELECT page_count * page_size AS size_bytes FROM pragma_page_count(), pragma_page_size();"
-
-# Eventos en outbox pendientes (todos los stores)
-for db in /data/*.db; do echo "$db: $(sqlite3 "$db" 'SELECT COUNT(*) FROM _outbox WHERE published_at IS NULL;')"; done
-```
-
-## ATTACH read-only (analítica ad-hoc)
-
-```bash
-# Abrir una sesión read-only con múltiples stores attachados
-sqlite3 <<SQL
-.mode json
-ATTACH '/data/pedidos.db' AS pedidos;
-ATTACH '/data/usuarios.db' AS usuarios;
-SELECT p.id, p.total, u.nombre
-FROM pedidos.pedido p
-JOIN usuarios.usuario u ON p.usuario_id = u.id
-WHERE p.created_at > datetime('now', '-7 days')
-LIMIT 100;
-SQL
-```
+| Recipe | Comandos |
+|---|---|
+| `just test-unit` | `cargo test --lib --workspace` |
+| `just test-integration` | `cargo test -p ixmati-integration` |
+| `just test-smoke` | `uv run pytest tests/smoke/ -v` |
+| `just test-cov` | `cargo llvm-cov --workspace --html` |
+| `just fmt` | `cargo fmt --all` |
+| `just clippy` | `cargo clippy --all-targets --all-features --workspace -- -D warnings` |
+| `just audit` | `cargo deny check && cargo audit` |
+| `just docs-build` | `mdbook build docs/` |
+| `just docs-serve` | `mdbook serve --open docs/` |
+| `just env-up` | `docker compose -f docker/docker-compose.dev.yml up -d` |

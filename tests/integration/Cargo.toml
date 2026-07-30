@@ -1,0 +1,15 @@
+[package]
+name = "ixmati-integration"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+ixmati-core = { path = "../../crates/ixmati-core" }
+ixmati-api = { path = "../../crates/ixmati-api" }
+ixmati-writer = { path = "../../crates/ixmati-writer" }
+ixmati-cache = { path = "../../crates/ixmati-cache" }
+ixmati-projector = { path = "../../crates/ixmati-projector" }
+tokio.workspace = true
+serde_json.workspace = true

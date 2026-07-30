@@ -376,3 +376,82 @@ Registro de decisiones persistentes del proyecto.
   - (-) Dos caminos de lectura que el backend debe entender (mitigado: la API unifica la interfaz).
   - (-) La purga de cache-aside no debe afectar proyecciones y viceversa (resuelto por prefijos).
 - **Reemplaza**: `DEC-0006` (junto con `DEC-0019`)
+
+---
+
+### DEC-0021 — make = build, just = tasks; just→make permitido, make→just prohibido
+
+- **Fecha**: 2026-07-29
+- **Estado**: `accepted`
+- **Relacionado con specs**: `SPEC-TOOL-0001`
+- **Relacionado con tareas**: `TASK-TOOL-0003`, `TASK-TOOL-0004`, `TASK-TOOL-0005`
+- **Contexto**: el proyecto necesita build y task runner. Ambos deben coexistir sin ambigüedad sobre sus responsabilidades.
+- **Decisión**: `make` construye artefactos (codegen, compilación, Docker, dist). `just` es el task manager (test, lint, fmt, hooks, docs, CI). `just` puede invocar `make`. `make` **nunca** puede invocar `just`. El guard es `helpers/python/lint_tool_boundary.py`, que escanea `Makefile` y `helpers/make/*.mk` y falla si encuentra `just`.
+- **Consecuencias**: (+) Separación clara. (+) Guard automatizado, no solo convención. (-) Si make necesita algo que solo just sabe hacer, hay que mover la lógica a helpers/shell/ o helpers/python/.
+- **Reemplaza**: `none`
+
+### DEC-0022 — `helpers/` como única fuente de lógica compartida
+
+- **Fecha**: 2026-07-29
+- **Estado**: `accepted`
+- **Relacionado con specs**: `SPEC-TOOL-0001`
+- **Relacionado con tareas**: `TASK-TOOL-0002`, `TASK-TOOL-0004`, `TASK-TOOL-0005`
+- **Contexto**: `Makefile` y `Justfile` necesitan lógica compartida (preflight, esperas, manejo de MQTT). Duplicarla en ambos archivos causa divergencia.
+- **Decisión**: toda la lógica compartida vive en `helpers/` y solo allí. `Makefile` incluye `helpers/make/*.mk`. `Justfile` importa `helpers/just/*.just`. Ambos invocan `helpers/shell/*.sh` y `helpers/python/*.py`. `Makefile` y `Justfile` en raíz son thin: solo incluyen/importan, no contienen lógica.
+- **Consecuencias**: (+) Una sola fuente de verdad para cada script. (+) Si make necesita algo que está en just, se extrae a helpers. (-) Hay que mantener la disciplina de no poner lógica en los archivos raíz.
+- **Reemplaza**: `none`
+
+### DEC-0023 — Python tooling con `uv`, Python ≥3.12; nunca el intérprete del sistema
+
+- **Fecha**: 2026-07-29
+- **Estado**: `accepted`
+- **Relacionado con specs**: `SPEC-TOOL-0001`
+- **Relacionado con tareas**: `TASK-TOOL-0001`
+- **Contexto**: el sistema operativo puede tener Python 3.9 o inferior. Los scripts necesitan features de 3.12 (`X | None` en types) y dependencias gestionadas.
+- **Decisión**: `uv` gestiona Python ≥3.12 y las dependencias del proyecto. `pyproject.toml` en `helpers/python/` con `requires-python = ">=3.12"`. `.python-version` = `3.12`. Los scripts usan shebang `#!/usr/bin/env uv run`. Nunca se usa `python3` del sistema.
+- **Consecuencias**: (+) Python correcto garantizado en cualquier máquina. (+) Lock file versionado. (-) `uv` es prerequisito adicional.
+- **Reemplaza**: `none`
+
+### DEC-0024 — Tiers de test: unitarios in-source, integración (crate Rust), smoke (pytest)
+
+- **Fecha**: 2026-07-29
+- **Estado**: `accepted`
+- **Relacionado con specs**: `SPEC-TOOL-0001`, `SPEC-WRITE-0001`
+- **Relacionado con tareas**: `TASK-TOOL-0007`, `TASK-TOOL-0008`, `TASK-TOOL-0009`
+- **Contexto**: los tests deben organizarse por alcance y herramienta adecuada. Unitarios no necesitan infraestructura. Integración necesita acceso a APIs internas de los crates. Smoke necesita orquestar procesos (docker, kill -9).
+- **Decisión**: 1) Unitarios: `#[cfg(test)]` in-source en cada crate. 2) Integración: crate Rust `tests/integration/` miembro del workspace (`publish = false`), accede a APIs públicas de los crates. 3) Smoke: pytest sobre uv en `tests/smoke/`, caja negra contra docker compose. Fixtures compartidos en `tests/fixtures/`.
+- **Consecuencias**: (+) Cada tier usa la herramienta correcta. (+) Smoke puede hacer `kill -9`, esperar puertos y verificar SQLite sin depender de Rust. (-) Dos lenguajes de test (Rust + Python), pero el overlap es mínimo.
+- **Reemplaza**: `none`
+
+### DEC-0025 — TDD con ratchet de cobertura desde el día 1
+
+- **Fecha**: 2026-07-29
+- **Estado**: `accepted`
+- **Relacionado con specs**: `SPEC-TOOL-0001`, `SPEC-WRITE-0001`
+- **Relacionado con tareas**: `TASK-TOOL-0007`, `TASK-TOOL-0010`
+- **Contexto**: sin un mecanismo de cobertura, el proyecto tiende a perder cobertura sin notarlo. TDD sin gate de cobertura es aspiracional, no aplicable.
+- **Decisión**: 1) Bootstrap TDD: cada crate nace con un test que falla (`assert_eq!(2+2, 5)`). Solo se corrige al implementar. 2) Ratchet: `.coverage-floor` versionado contiene el piso mínimo. `coverage_gate.py` falla si la cobertura baja y sugiere subir el piso si el margen ≥ 0.5pp. El piso arranca en 0.0 y solo sube. 3) El gate corre en `just test-cov-gate` y en `just ci-main`. 4) `cargo-llvm-cov` como herramienta de medición.
+- **Consecuencias**: (+) Cobertura monotónicamente creciente. (+) Bootstrap TDD visible: `just test-unit` falla hasta que se implementa. (-) El primer commit post-bootstrap requiere corregir los 7 tests rojos.
+- **Reemplaza**: `none`
+
+### DEC-0026 — Hooks versionados en `.githooks/` vía `core.hooksPath`
+
+- **Fecha**: 2026-07-29
+- **Estado**: `accepted`
+- **Relacionado con specs**: `SPEC-TOOL-0001`
+- **Relacionado con tareas**: `TASK-TOOL-0006`
+- **Contexto**: los git hooks no se versionan en `.git/hooks/`. Se necesita un mecanismo para que todos los contribuidores ejecuten las mismas verificaciones sin configuración manual.
+- **Decisión**: hooks en `.githooks/` en la raíz. `just hooks-install` ejecuta `git config core.hooksPath .githooks`. `just hooks-uninstall` revierte. Los hooks delegan su lógica a `helpers/` (shell y python), no contienen lógica inline. Pre-commit: fmt + clippy rápido + boundary + validate config. Commit-msg: Conventional Commits. Pre-push: unit + integration.
+- **Consecuencias**: (+) Hooks versionados y revisables en PR. (+) Instalación en un solo comando. (-) `core.hooksPath` es local (no se pushea). Cada dev debe ejecutar `just hooks-install` una vez.
+- **Reemplaza**: `none`
+
+### DEC-0027 — Separación `docs/` (consumidor) vs `spec-native/` (contribuidor)
+
+- **Fecha**: 2026-07-29
+- **Estado**: `accepted`
+- **Relacionado con specs**: `SPEC-TOOL-0001`
+- **Relacionado con tareas**: `TASK-TOOL-0012`
+- **Contexto**: los documentos del proyecto sirven a dos audiencias distintas que no deben mezclarse.
+- **Decisión**: `docs/` (mdBook, HTML publicable) documenta cómo **usar y operar** Ixmati. Audiencia: quien integra la herramienta y quien la opera en producción. `spec-native/` documenta **por qué** está construido así. Audiencia: agentes y contribuidores. No se duplica contenido entre ambas. El runbook de producción vive en `docs/src/operations/runbook.md`. Los gates de CI/CD viven en `spec-native/pipelines/CI.md` y `CD.md`.
+- **Consecuencias**: (+) Cada audiencia encuentra su contenido sin ruido. (+) mdBook genera sitio navegable. (-) Hay que mantener la disciplina de no cruzar las fronteras.
+- **Reemplaza**: `none`
