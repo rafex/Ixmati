@@ -586,13 +586,16 @@ dependencies = [
 name = "ixmati-integration"
 version = "0.1.0"
 dependencies = [
+ "chrono",
  "ixmati-api",
  "ixmati-cache",
  "ixmati-core",
  "ixmati-projector",
  "ixmati-writer",
+ "rusqlite",
  "serde_json",
  "tokio",
+ "uuid",
 ]
 
 [[package]]
@@ -601,10 +604,12 @@ version = "0.1.0"
 dependencies = [
  "ixmati-cache",
  "ixmati-core",
+ "rumqttc",
  "serde",
  "serde_json",
  "tokio",
  "tracing",
+ "uuid",
 ]
 
 [[package]]
