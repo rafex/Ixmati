@@ -183,8 +183,8 @@ Endpoint REST y gRPC para consultar el estado de un comando async. El estado se 
 
 ```toml
 id = "TASK-WRITE-0011"
-title = "Implementar ixmati-cache con trait CacheBackend y namespaces"
-state = "todo"
+title = "Implementar ixmati-cache (modulo, trait CacheBackend, NoOp para single-store)"
+state = "done"
 owner = "team-core"
 dependencies = ["TASK-WRITE-0001", "TASK-WRITE-0005"]
 expected_files = ["crates/ixmati-cache/src/lib.rs", "crates/ixmati-cache/src/traits.rs", "crates/ixmati-cache/src/flashdb.rs"]
