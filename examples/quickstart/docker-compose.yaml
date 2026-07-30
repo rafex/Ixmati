@@ -1,0 +1,45 @@
+name: ixmati-quickstart
+
+services:
+  mosquitto:
+    image: docker.io/library/eclipse-mosquitto:2.0
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+    healthcheck:
+      test: ["CMD", "mosquitto_sub", "-t", "$$SYS/broker/version", "-C", "1", "-W", "2"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  writer:
+    build:
+      context: ../..
+      dockerfile: containers/writer/Containerfile
+    environment:
+      MQTT_BROKER: tcp://mosquitto:1883
+      STORE_NAME: pedidos
+      SQLITE_PATH: /data/pedidos.db
+      BATCH_SIZE: "100"
+      BATCH_INTERVAL_MS: "50"
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    volumes:
+      - ./db:/data:U
+
+  api:
+    build:
+      context: ../..
+      dockerfile: containers/api/Containerfile
+    ports:
+      - "8080:30000"
+    environment:
+      MQTT_BROKER: tcp://mosquitto:1883
+      API_HOST: "0.0.0.0"
+      API_PORT: "30000"
+      IXMATI_API_KEYS: ix-quickstart-key
+    depends_on:
+      mosquitto:
+        condition: service_healthy

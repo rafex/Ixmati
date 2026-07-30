@@ -7,28 +7,61 @@ use axum::{
     routing::{get, post},
 };
 use ixmati_core::{AckResponse, WriteEnvelope};
-use rumqttc::{AsyncClient, MqttOptions, QoS};
+use rumqttc::{AsyncClient, EventLoop, MqttOptions, QoS};
 use serde::Deserialize;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct AppState {
     mqtt_broker: String,
     db_path: Option<String>,
+    mqtt_client: Arc<Mutex<Option<AsyncClient>>>,
 }
 
 impl AppState {
     pub fn new(broker: &str) -> Self {
+        let (host, port) = ixmati_core::mqtt::parse_mqtt_broker(broker);
+        let (client, mut eventloop) = AsyncClient::new(
+            MqttOptions::new(&format!("api-{}", Uuid::new_v4()), &host, port),
+            100,
+        );
+
+        tokio::spawn(async move {
+            loop {
+                if eventloop.poll().await.is_err() {
+                    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                }
+            }
+        });
+
         Self {
             mqtt_broker: broker.to_string(),
             db_path: None,
+            mqtt_client: Arc::new(Mutex::new(Some(client))),
         }
     }
 
     pub fn with_db(broker: &str, db_path: &str) -> Self {
+        let (host, port) = ixmati_core::mqtt::parse_mqtt_broker(broker);
+        let (client, mut eventloop) = AsyncClient::new(
+            MqttOptions::new(&format!("api-{}", Uuid::new_v4()), &host, port),
+            100,
+        );
+
+        tokio::spawn(async move {
+            loop {
+                if eventloop.poll().await.is_err() {
+                    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                }
+            }
+        });
+
         Self {
             mqtt_broker: broker.to_string(),
             db_path: Some(db_path.to_string()),
+            mqtt_client: Arc::new(Mutex::new(Some(client))),
         }
     }
 
@@ -82,14 +115,15 @@ async fn write_handler(
         )
     })?;
 
-    let mut mqtt_options = MqttOptions::new(
-        &format!("api-{}", Uuid::new_v4()),
-        state.broker(),
-        1883,
-    );
-    mqtt_options.set_keep_alive(std::time::Duration::from_secs(5));
-
-    let (client, _eventloop) = AsyncClient::new(mqtt_options, 10);
+    let guard = state.mqtt_client.lock().await;
+    let client = guard.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ixmati_core::Error::Internal {
+                detail: "MQTT client not available".into(),
+            }),
+        )
+    })?;
 
     client
         .publish(&topic, QoS::AtLeastOnce, false, payload)
@@ -102,6 +136,7 @@ async fn write_handler(
                 }),
             )
         })?;
+    drop(guard);
 
     let ack = match cmd.ack_mode.as_str() {
         "committed" => AckResponse {

@@ -10,6 +10,7 @@ pub struct ApiConfig {
     pub host: String,
     pub port: u16,
     pub mqtt_broker: String,
+    pub db_path: Option<String>,
 }
 
 impl Default for ApiConfig {
@@ -18,12 +19,16 @@ impl Default for ApiConfig {
             host: "127.0.0.1".into(),
             port: 8080,
             mqtt_broker: "tcp://localhost:1883".into(),
+            db_path: None,
         }
     }
 }
 
 pub async fn serve(config: ApiConfig) -> std::io::Result<()> {
-    let state = rest::AppState::new(&config.mqtt_broker);
+    let mut state = rest::AppState::new(&config.mqtt_broker);
+    if let Some(ref db) = config.db_path {
+        state = rest::AppState::with_db(&config.mqtt_broker, db);
+    }
 
     let auth_config = crate::auth::AuthConfig::new(
         std::env::var("IXMATI_API_KEYS")

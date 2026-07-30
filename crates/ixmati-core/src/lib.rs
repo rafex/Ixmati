@@ -2,6 +2,7 @@ pub mod attach;
 pub mod config;
 pub mod envelope;
 pub mod error;
+pub mod mqtt;
 pub mod projection;
 pub mod store;
 

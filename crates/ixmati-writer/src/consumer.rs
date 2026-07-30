@@ -14,7 +14,8 @@ impl MqttConsumer {
     ) -> (Self, mpsc::UnboundedSender<WriteEnvelope>) {
         let (tx, rx) = mpsc::unbounded_channel();
 
-        let mut mqtt_options = MqttOptions::new(client_id, broker, 1883);
+        let (host, port) = ixmati_core::mqtt::parse_mqtt_broker(broker);
+        let mut mqtt_options = MqttOptions::new(client_id, &host, port);
         mqtt_options.set_keep_alive(std::time::Duration::from_secs(5));
 
         let (client, mut eventloop) = AsyncClient::new(mqtt_options, 100);
