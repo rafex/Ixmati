@@ -2,6 +2,7 @@ use axum::{
     Router,
     extract::{Path, Query, State},
     http::StatusCode,
+    middleware,
     response::Json,
     routing::{get, post},
 };
@@ -36,12 +37,22 @@ impl AppState {
     }
 }
 
-pub fn routes(state: AppState) -> Router {
-    Router::new()
+pub fn routes(state: AppState, auth_config: crate::auth::AuthConfig) -> Router {
+    let protected = Router::new()
         .route("/write", post(write_handler))
+        .route_layer(middleware::from_fn_with_state(
+            auth_config,
+            crate::auth::require_auth,
+        ));
+
+    let public = Router::new()
         .route("/writes/{store}/{idempotency_key}", get(write_status_handler))
         .route("/read", get(read_handler))
-        .route("/health", get(health_handler))
+        .route("/health", get(health_handler));
+
+    Router::new()
+        .merge(protected)
+        .merge(public)
         .with_state(state)
 }
 

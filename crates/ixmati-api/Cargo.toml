@@ -18,3 +18,5 @@ prost.workspace = true
 rumqttc.workspace = true
 rusqlite.workspace = true
 tracing-subscriber.workspace = true
+chrono.workspace = true
+tower = "0"

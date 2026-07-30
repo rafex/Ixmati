@@ -1,6 +1,7 @@
 pub mod rest;
 pub mod status;
 pub mod health;
+pub mod auth;
 
 use axum::Router;
 use std::net::SocketAddr;
@@ -24,8 +25,21 @@ impl Default for ApiConfig {
 pub async fn serve(config: ApiConfig) -> std::io::Result<()> {
     let state = rest::AppState::new(&config.mqtt_broker);
 
+    let auth_config = crate::auth::AuthConfig::new(
+        std::env::var("IXMATI_API_KEYS")
+            .unwrap_or_default()
+            .split(',')
+            .filter(|k| !k.is_empty())
+            .map(|k| crate::auth::ApiKey {
+                key_id: k.trim().to_string(),
+                store_access: Vec::new(),
+                created_at: chrono::Utc::now(),
+            })
+            .collect(),
+    );
+
     let app = Router::new()
-        .merge(rest::routes(state));
+        .merge(rest::routes(state, auth_config));
 
     let addr: SocketAddr = format!("{}:{}", config.host, config.port)
         .parse()

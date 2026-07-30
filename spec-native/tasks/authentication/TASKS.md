@@ -9,7 +9,7 @@ artifact_type = "task_file"
 initiative = "authentication"
 spec_id = "SPEC-AUTH-0001"
 owner = "team-auth"
-state = "in_progress"
+state = "done"
 ```
 
 ## Metadata
@@ -42,7 +42,7 @@ rutas protegidas.
 ```toml
 id = "TASK-AUTH-0002"
 title = "Implementar middleware de autorizacion"
-state = "in_progress"
+state = "done"
 owner = "team-auth"
 dependencies = ["TASK-AUTH-0001"]
 expected_files = ["src/auth/middleware.*"]
@@ -58,7 +58,7 @@ privados.
 ```toml
 id = "TASK-AUTH-0003"
 title = "Documentar setup operativo"
-state = "todo"
+state = "done"
 owner = "platform"
 dependencies = ["TASK-AUTH-0002"]
 expected_files = ["spec-native/COMMANDS.md", "README.md"]

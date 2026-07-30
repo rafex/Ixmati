@@ -109,6 +109,34 @@ sqlite3 /data/pedidos.db "PRAGMA integrity_check;"
 stat -f%z /data/pedidos.db-wal
 ```
 
+## Autenticación
+
+```bash
+# Arrancar la API con API keys (separadas por coma)
+IXMATI_API_KEYS="ix-key-1,ix-key-2" cargo run -p ixmati-api
+
+# Llamada autenticada a POST /write
+curl -X POST http://localhost:8080/write \
+  -H "Authorization: ApiKey ix-key-1" \
+  -H "Content-Type: application/json" \
+  -d '{"op":"upsert","store":"pedidos","entity":"pedido","key":"p1","version":1,"ts":"2026-01-01T00:00:00Z","idempotency_key":"550e8400-e29b-41d4-a716-446655440000","ack_mode":"accepted","payload":{}}'
+
+# Llamada con Bearer token
+curl -X POST http://localhost:8080/write \
+  -H "Authorization: Bearer ix-session-token" \
+  -H "Content-Type: application/json" \
+  -d '{...}'
+
+# Sin auth → rechazo 401
+curl -X POST http://localhost:8080/write \
+  -H "Content-Type: application/json" \
+  -d '{...}'
+
+# Rutas públicas (no requieren auth)
+curl http://localhost:8080/health
+curl http://localhost:8080/writes/pedidos/550e8400-e29b-41d4-a716-446655440000
+```
+
 ### Qué hace cada just recipe por debajo
 
 | Recipe | Comandos |
