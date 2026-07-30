@@ -1,0 +1,21 @@
+# containers/quadlet/ixmati-writer@.container
+# unit templada: 1 instancia por store
+# systemctl --user start ixmati-writer@pedidos
+# systemctl --user start ixmati-writer@usuarios
+
+[Container]
+Image=localhost/ixmati-writer:local
+Network=ixmati.network
+Environment=MQTT_HOST=ixmati-mosquitto
+Environment=MQTT_PORT=30200
+Environment=STORE_NAME=%i
+Environment=SQLITE_PATH=/data/%i.db
+Volume=ixmati-store-%i.volume:/data:U
+Volume=ixmati-cache.volume:/cache:U
+Requires=ixmati-mosquitto.service
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target

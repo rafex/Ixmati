@@ -1,0 +1,4 @@
+# containers/quadlet/ixmati-store@.volume
+# volumen por store. Instanciar: ixmati-store-pedidos, ixmati-store-usuarios, etc.
+
+[Volume]

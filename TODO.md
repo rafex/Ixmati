@@ -2,9 +2,9 @@
 
 Tablero de tareas activo. Persiste entre sesiones.
 
-## Active — Tooling (SPEC-TOOL-0001)
+## Active — Containers (SPEC-CONTAINERS-0001)
 
-- [ ] `TASK-TOOL-0013` — Rellenar spec-native/pipelines/CI.md y CD.md con gates reales
+- [ ] `TASK-CONT-0012` — Validación end-to-end contra 192.168.3.175
 
 ## Active — Write Engine (SPEC-WRITE-0001)
 
@@ -32,11 +32,16 @@ Tablero de tareas activo. Persiste entre sesiones.
 - [ ] `TASK-WRITE-0024` — ixmati-supervisor + K8s manifests
 - [ ] `TASK-WRITE-0025` — Tests de consistencia eventual
 
+## Active — Tooling (SPEC-TOOL-0001)
+
+- [ ] `TASK-TOOL-0013` — Rellenar spec-native/pipelines/CI.md y CD.md
+
 ## Cancelled / Replaced
 
 - [x] `TASK-WRITE-0002` — Spike comparativa Opción A vs B (cerrada por diseño)
 - [x] `TASK-WRITE-0013` — ixmati-resync (reemplazada por reconciler fan-in)
 
-## Done (Tooling)
+## Done
 
-- [x] `TASK-TOOL-0001`..`TASK-TOOL-0012`, `TASK-TOOL-0014` — Scaffolding completo
+- [x] `TASK-TOOL-0001`..`TASK-TOOL-0012`, `TASK-TOOL-0014` — Scaffolding tooling
+- [x] `TASK-CONT-0001`..`TASK-CONT-0011` — Scaffolding containers

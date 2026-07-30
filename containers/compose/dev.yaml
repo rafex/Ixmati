@@ -1,0 +1,25 @@
+# containers/compose/dev.yaml — entorno de desarrollo (solo Mosquitto)
+
+name: ixmati-dev
+
+services:
+  mosquitto:
+    image: localhost/ixmati-mosquitto:local
+    build:
+      context: ../..
+      dockerfile: containers/mosquitto/Containerfile
+    ports:
+      - "30200:30200"
+      - "30201:30201"
+    volumes:
+      - mosquitto_data:/mosquitto/data:U
+      - mosquitto_log:/mosquitto/log:U
+    healthcheck:
+      test: ["CMD", "mosquitto_sub", "-t", "$$SYS/broker/version", "-C", "1", "-W", "2"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  mosquitto_data:
+  mosquitto_log:

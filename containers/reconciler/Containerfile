@@ -1,0 +1,12 @@
+# containers/reconciler/Containerfile — ixmati-reconciler (CLI, no servicio)
+FROM localhost/ixmati-builder:local AS build
+FROM docker.io/library/debian:trixie-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY --from=build /out/ixmati-reconciler /usr/local/bin/ixmati-reconciler
+
+USER 1000:1000
+ENTRYPOINT ["ixmati-reconciler"]
+CMD ["--help"]

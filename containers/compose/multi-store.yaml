@@ -1,0 +1,104 @@
+# containers/compose/multi-store.yaml — stack, 3 stores + projector (ejemplo: pedidos, usuarios, inventario)
+
+name: ixmati-multi
+
+x-store: &store-template
+  environment:
+    - MQTT_HOST=mosquitto
+    - MQTT_PORT=30200
+  depends_on:
+    mosquitto:
+      condition: service_healthy
+  volumes:
+    - cache_data:/cache:U
+
+services:
+  mosquitto:
+    image: localhost/ixmati-mosquitto:local
+    build:
+      context: ../..
+      dockerfile: containers/mosquitto/Containerfile
+    ports:
+      - "30200:30200"
+    volumes:
+      - mosquitto_data:/mosquitto/data:U
+    healthcheck:
+      test: ["CMD", "mosquitto_sub", "-t", "$$SYS/broker/version", "-C", "1", "-W", "2"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  api:
+    image: localhost/ixmati-api:local
+    build:
+      context: ../..
+      dockerfile: containers/api/Containerfile
+    ports:
+      - "30000:30000"
+      - "30100:30100"
+    environment:
+      - MQTT_HOST=mosquitto
+      - MQTT_PORT=30200
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    volumes:
+      - cache_data:/cache:U
+
+  writer-pedidos:
+    image: localhost/ixmati-writer:local
+    build:
+      context: ../..
+      dockerfile: containers/writer/Containerfile
+    <<: *store-template
+    environment:
+      - MQTT_HOST=mosquitto
+      - MQTT_PORT=30200
+      - STORE_NAME=pedidos
+      - SQLITE_PATH=/data/pedidos.db
+    volumes:
+      - store_pedidos:/data:U
+      - cache_data:/cache:U
+    deploy:
+      replicas: 1
+
+  writer-usuarios:
+    image: localhost/ixmati-writer:local
+    <<: *store-template
+    environment:
+      - MQTT_HOST=mosquitto
+      - MQTT_PORT=30200
+      - STORE_NAME=usuarios
+      - SQLITE_PATH=/data/usuarios.db
+    volumes:
+      - store_usuarios:/data:U
+      - cache_data:/cache:U
+    deploy:
+      replicas: 1
+
+  writer-inventario:
+    image: localhost/ixmati-writer:local
+    <<: *store-template
+    environment:
+      - MQTT_HOST=mosquitto
+      - MQTT_PORT=30200
+      - STORE_NAME=inventario
+      - SQLITE_PATH=/data/inventario.db
+    volumes:
+      - store_inventario:/data:U
+      - cache_data:/cache:U
+    deploy:
+      replicas: 1
+
+  projector:
+    image: localhost/ixmati-projector:local
+    <<: *store-template
+    volumes:
+      - cache_data:/cache:U
+
+volumes:
+  mosquitto_data:
+  store_pedidos:
+  store_usuarios:
+  store_inventario:
+  cache_data:

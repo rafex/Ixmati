@@ -1,0 +1,13 @@
+# litestream.yml — config de replicacion (sobrescribir destinos via env)
+
+dbs:
+  - path: /data/ixmati.db
+    replicas:
+      - type: s3
+        bucket: ${LITESTREAM_S3_BUCKET}
+        path: ${LITESTREAM_STORE_NAME}
+        region: ${LITESTREAM_S3_REGION:-us-east-1}
+        access-key-id: ${LITESTREAM_ACCESS_KEY_ID}
+        secret-access-key: ${LITESTREAM_SECRET_ACCESS_KEY}
+      - type: file
+        path: ${LITESTREAM_FILESYSTEM_PATH:-/backup}

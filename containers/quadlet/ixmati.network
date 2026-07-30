@@ -1,0 +1,6 @@
+# containers/quadlet/ixmati.network
+# red aislada para todos los servicios Ixmati
+
+[Network]
+Driver=bridge
+Subnet=10.89.1.0/24

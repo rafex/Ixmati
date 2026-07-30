@@ -455,3 +455,55 @@ Registro de decisiones persistentes del proyecto.
 - **Decisión**: `docs/` (mdBook, HTML publicable) documenta cómo **usar y operar** Ixmati. Audiencia: quien integra la herramienta y quien la opera en producción. `spec-native/` documenta **por qué** está construido así. Audiencia: agentes y contribuidores. No se duplica contenido entre ambas. El runbook de producción vive en `docs/src/operations/runbook.md`. Los gates de CI/CD viven en `spec-native/pipelines/CI.md` y `CD.md`.
 - **Consecuencias**: (+) Cada audiencia encuentra su contenido sin ruido. (+) mdBook genera sitio navegable. (-) Hay que mantener la disciplina de no cruzar las fronteras.
 - **Reemplaza**: `none`
+
+---
+
+### DEC-0028 — Podman rootless como runtime único de contenedores
+
+- **Fecha**: 2026-07-29
+- **Estado**: `accepted`
+- **Relacionado con specs**: `SPEC-CONTAINERS-0001`
+- **Contexto**: el host de producción es un Linux amd64 con Podman 5.4.2 rootless. Docker no está disponible ni es necesario.
+- **Decisión**: Podman rootless es el único runtime de contenedores soportado. Target `linux/amd64`. Builds ejecutan nativamente en el host remoto vía túnel SSH. En CI se usa podman compose en vez del bloque `services:`.
+- **Consecuencias**: (+) Un solo runtime en todos los entornos. (+) Builds nativos amd64 sin QEMU. (-) El túnel SSH debe estar activo para cualquier operación de contenedor.
+- **Reemplaza**: `none`
+
+### DEC-0029 — `containers/` una carpeta por imagen, `Containerfile` + symlink
+
+- **Fecha**: 2026-07-29
+- **Estado**: `accepted`
+- **Relacionado con specs**: `SPEC-CONTAINERS-0001`
+- **Decisión**: `containers/` como raíz. Una carpeta por imagen con `Containerfile` (idiomático Podman) + symlink `Dockerfile → Containerfile` para compatibilidad.
+- **Reemplaza**: `none`
+
+### DEC-0030 — Builder cargo-chef + runtime `debian:trixie-slim`
+
+- **Fecha**: 2026-07-29
+- **Estado**: `accepted`
+- **Relacionado con specs**: `SPEC-CONTAINERS-0001`
+- **Decisión**: Builder único con cargo-chef compila los 5 binarios una vez. Runtime `debian:trixie-slim` (glibc, seguro para FlashDB FFI). Musl diferido hasta cerrar DEC-0009.
+- **Reemplaza**: `none`
+
+### DEC-0031 — Compose dev/test, Quadlet producción
+
+- **Fecha**: 2026-07-29
+- **Estado**: `accepted`
+- **Relacionado con specs**: `SPEC-CONTAINERS-0001`
+- **Decisión**: `podman compose` para dev/test. Quadlet (systemd rootless) para producción. `ixmati-writer@.container` como unit templada: `systemctl --user start ixmati-writer@pedidos`.
+- **Reemplaza**: `none`
+
+### DEC-0032 — Puertos por rango funcional con registro
+
+- **Fecha**: 2026-07-29
+- **Estado**: `accepted`
+- **Relacionado con specs**: `SPEC-CONTAINERS-0001`
+- **Decisión**: Web 30000-30099, API 30100-30199, DB 30200-30299, Temp 30300-30399. Mosquitto en DB (es almacenamiento persistente). Reservados documentados: 30080, 30081, 30083, 30300.
+- **Reemplaza**: `none`
+
+### DEC-0033 — Builds nativos amd64 vía túnel SSH + `.containerignore`
+
+- **Fecha**: 2026-07-29
+- **Estado**: `accepted`
+- **Relacionado con specs**: `SPEC-CONTAINERS-0001`
+- **Decisión**: Builds siempre contra el remoto. Guard `podman_remote.sh` aborta si target ≠ amd64. `.containerignore` excluye `target/`, `.git/`, `docs/book/`.
+- **Reemplaza**: `none`

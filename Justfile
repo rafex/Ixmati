@@ -16,6 +16,7 @@ import 'helpers/just/hooks.just'
 import 'helpers/just/docs.just'
 import 'helpers/just/ci.just'
 import 'helpers/just/release.just'
+import 'helpers/just/containers.just'
 
 # ── top-level aliases ──
 

@@ -1,0 +1,17 @@
+# containers/quadlet/ixmati-api.container
+
+[Container]
+Image=localhost/ixmati-api:local
+Network=ixmati.network
+PublishPort=30000:30000
+PublishPort=30100:30100
+Environment=MQTT_HOST=ixmati-mosquitto
+Environment=MQTT_PORT=30200
+Volume=ixmati-cache.volume:/cache:U
+Requires=ixmati-mosquitto.service
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target

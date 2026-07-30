@@ -1,0 +1,90 @@
+# containers/compose/single-store.yaml — stack completo, 1 store
+
+name: ixmati-single
+
+services:
+  mosquitto:
+    image: localhost/ixmati-mosquitto:local
+    build:
+      context: ../..
+      dockerfile: containers/mosquitto/Containerfile
+    ports:
+      - "30200:30200"
+    volumes:
+      - mosquitto_data:/mosquitto/data:U
+    healthcheck:
+      test: ["CMD", "mosquitto_sub", "-t", "$$SYS/broker/version", "-C", "1", "-W", "2"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  api:
+    image: localhost/ixmati-api:local
+    build:
+      context: ../..
+      dockerfile: containers/api/Containerfile
+    ports:
+      - "30000:30000"
+      - "30100:30100"
+    environment:
+      - MQTT_HOST=mosquitto
+      - MQTT_PORT=30200
+      - STORES_CONFIG=/config/stores.toml
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    volumes:
+      - ./config/stores.toml:/config/stores.toml:ro
+      - store_data:/data:U
+      - cache_data:/cache:U
+
+  writer:
+    image: localhost/ixmati-writer:local
+    build:
+      context: ../..
+      dockerfile: containers/writer/Containerfile
+    environment:
+      - MQTT_HOST=mosquitto
+      - MQTT_PORT=30200
+      - STORE_NAME=default
+      - SQLITE_PATH=/data/default.db
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    volumes:
+      - store_data:/data:U
+      - cache_data:/cache:U
+
+    deploy:
+      replicas: 1
+
+  litestream:
+    image: localhost/ixmati-litestream:local
+    build:
+      context: ../..
+      dockerfile: containers/litestream/Containerfile
+    environment:
+      - LITESTREAM_STORE_NAME=default
+    depends_on:
+      - writer
+    volumes:
+      - store_data:/data:U
+
+  projector:
+    image: localhost/ixmati-projector:local
+    build:
+      context: ../..
+      dockerfile: containers/projector/Containerfile
+    environment:
+      - MQTT_HOST=mosquitto
+      - MQTT_PORT=30200
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    volumes:
+      - cache_data:/cache:U
+
+volumes:
+  mosquitto_data:
+  store_data:
+  cache_data:

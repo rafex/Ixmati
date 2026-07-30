@@ -1,0 +1,8 @@
+# containers/mosquitto/Containerfile — broker MQTT persistente
+FROM docker.io/library/eclipse-mosquitto:2.0
+
+COPY mosquitto.conf /mosquitto/config/mosquitto.conf
+
+EXPOSE 30200 30201
+
+# mosquitto.conf usa persistencia en disco: persistence true, QoS 1, autosave

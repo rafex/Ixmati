@@ -1,0 +1,15 @@
+# containers/quadlet/ixmati-projector.container
+
+[Container]
+Image=localhost/ixmati-projector:local
+Network=ixmati.network
+Environment=MQTT_HOST=ixmati-mosquitto
+Environment=MQTT_PORT=30200
+Volume=ixmati-cache.volume:/cache:U
+Requires=ixmati-mosquitto.service
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target

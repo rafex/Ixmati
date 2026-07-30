@@ -1,0 +1,37 @@
+# containers/compose/test.yaml — infraestructura para smoke tests (rango Temp)
+
+name: ixmati-test
+
+services:
+  mosquitto:
+    image: localhost/ixmati-mosquitto:local
+    build:
+      context: ../..
+      dockerfile: containers/mosquitto/Containerfile
+    ports:
+      - "30310:30200"
+    volumes:
+      - mosquitto_data:/mosquitto/data:U
+    healthcheck:
+      test: ["CMD", "mosquitto_sub", "-t", "$$SYS/broker/version", "-C", "1", "-W", "2"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  api:
+    image: localhost/ixmati-api:local
+    build:
+      context: ../..
+      dockerfile: containers/api/Containerfile
+    ports:
+      - "30311:30000"
+      - "30312:30100"
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    volumes:
+      - test_store:/data:U
+
+volumes:
+  mosquitto_data:
+  test_store:

@@ -1,0 +1,19 @@
+# containers/quadlet/ixmati-mosquitto.container
+
+[Container]
+Image=localhost/ixmati-mosquitto:local
+Network=ixmati.network
+PublishPort=30200:30200
+PublishPort=30201:30201
+Volume=ixmati-mosquitto-data.volume:/mosquitto/data:U
+Volume=ixmati-mosquitto-log.volume:/mosquitto/log:U
+HealthCmd=mosquitto_sub -t $$SYS/broker/version -C 1 -W 2
+HealthInterval=10s
+HealthTimeout=5s
+HealthRetries=3
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target

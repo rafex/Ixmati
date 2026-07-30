@@ -1,0 +1,33 @@
+# .containerignore — minimiza el contexto que viaja por SSH al host remoto
+
+# Build artifacts (enormes, nunca deben ir al contenedor)
+target/
+dist/
+
+# Git
+.git/
+.gitignore
+
+# Python tooling (no se usa en el contenedor)
+.specnative/.venv/
+helpers/python/.venv/
+helpers/python/__pycache__/
+helpers/python/tests/
+helpers/python/*.pyc
+
+# Docs (no se usan en runtime)
+docs/book/
+docs/src/
+
+# Config local y fixtures
+tests/fixtures/
+config/*.example.*
+*.tmp
+*.log
+
+# Desarrollo
+.opencode/
+.claude/
+codex.toml
+TODO.md
+spec-native/
