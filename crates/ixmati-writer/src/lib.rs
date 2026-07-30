@@ -3,6 +3,7 @@ pub mod batcher;
 pub mod dedup;
 pub mod outbox;
 pub mod write_engine;
+pub mod event_publisher;
 
 use ixmati_core::{EventEnvelope, StoreConfig, WriteEnvelope};
 
