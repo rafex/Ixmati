@@ -26,5 +26,10 @@ ci-main: ci-pr
 	@make dist-validate
 	@echo "$(COLOR_GREEN)[CI] main OK$(COLOR_RESET)"
 
+.PHONY: ci-allinone
+ci-allinone: ci-pr containers-builder containers-allinone
+	@echo "$(COLOR_GREEN)[CI] allinone image built$(COLOR_RESET)"
+	@$(PODMAN) images | grep ixmati-allinone
+
 .PHONY: ci
 ci: ci-main

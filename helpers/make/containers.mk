@@ -60,6 +60,15 @@ containers-compile:
 	$(PODMAN) rm "$$CONTAINER_ID" 2>/dev/null; \
 	echo "$(COLOR_GREEN)[CONTAINERS] binarios amd64 listos$(COLOR_RESET)"
 
+# ── imagen all-in-one (Mosquitto + API + Writer + Projector en un container) ──
+.PHONY: containers-allinone
+containers-allinone: containers-builder
+	@echo "$(COLOR_GREEN)[CONTAINERS] all-in-one (Mosquitto + API + Writer + Projector)$(COLOR_RESET)"
+	$(PODMAN) build \
+		-f $(CONTAINER_DIR)/allinone/Containerfile \
+		-t $(IMAGE_PREFIX)-allinone:$(IMAGE_TAG) \
+		$(REPO_ROOT)
+
 # ── todas las imagenes ──
 .PHONY: containers-build
 containers-build: containers-builder containers-services containers-infra

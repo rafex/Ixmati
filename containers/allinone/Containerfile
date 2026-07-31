@@ -1,0 +1,43 @@
+# containers/allinone/Containerfile — imagen all-in-one (Mosquitto + API + Writer + Projector)
+#
+# Un solo container con todo lo necesario para operar.
+# Solo necesita configuracion (env vars) y volumen de datos.
+#
+# Build:
+#   make containers-allinone
+#
+# Run:
+#   docker run -d -p 30000:30000 -v ixmati-data:/var/lib/ixmati localhost/ixmati-allinone:local
+
+FROM localhost/ixmati-builder:local AS build
+FROM docker.io/library/debian:trixie-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        mosquitto mosquitto-clients \
+        supervisor \
+        ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=build /usr/local/bin/ixmati-api /usr/local/bin/
+COPY --from=build /usr/local/bin/ixmati-writer /usr/local/bin/
+COPY --from=build /usr/local/bin/ixmati-projector /usr/local/bin/
+COPY --from=build /usr/local/bin/ixmati-supervisor /usr/local/bin/
+COPY --from=build /usr/local/bin/ixmati-reconciler /usr/local/bin/
+
+COPY containers/allinone/supervisord.conf /etc/supervisor/conf.d/ixmati.conf
+COPY containers/allinone/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+COPY config/stores.toml /etc/ixmati/stores.toml
+COPY config/projections.toml /etc/ixmati/projections.toml
+COPY config/mosquitto/mosquitto.conf /etc/mosquitto/conf.d/ixmati.conf
+
+RUN mkdir -p /var/lib/ixmati/stores /var/lib/ixmati/cache /var/log/ixmati \
+    && useradd --system --no-create-home --shell /usr/sbin/nologin ixmati \
+    && chown -R ixmati:ixmati /var/lib/ixmati /var/log/ixmati
+
+EXPOSE 30000
+VOLUME ["/var/lib/ixmati"]
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+CMD ["supervisord", "-n", "-c", "/etc/supervisor/supervisord.conf"]
