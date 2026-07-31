@@ -6,12 +6,7 @@ include $(dir $(lastword $(MAKEFILE_LIST)))/common.mk
 
 VERSION_FILE := $(REPO_ROOT)/VERSION
 VERSION      := $(shell cat $(VERSION_FILE) 2>/dev/null || echo "0.0.0")
-UNAME_M      := $(shell uname -m)
-ifeq ($(UNAME_M),arm64)
-DIST_ARCH    := arm64
-else
 DIST_ARCH    := amd64
-endif
 DIST_NAME    := ixmati-$(VERSION)-linux-$(DIST_ARCH)
 
 EXPECTED_BINS    := ixmati-api ixmati-writer ixmati-projector ixmati-supervisor ixmati-reconciler

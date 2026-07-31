@@ -45,6 +45,21 @@ containers-infra:
 		-t $(IMAGE_PREFIX)-litestream:$(IMAGE_TAG) \
 		$(CONTAINER_DIR)/litestream
 
+# ── compilar binarios dentro del builder container ──
+.PHONY: containers-compile
+containers-compile:
+	@echo "$(COLOR_GREEN)[CONTAINERS] extrayendo binarios linux/amd64 del builder...$(COLOR_RESET)"
+	@mkdir -p $(TARGET_DIR)/release
+	@CONTAINER_ID=$$($(PODMAN) create $(IMAGE_PREFIX)-builder:$(IMAGE_TAG)); \
+	echo "  container=$$CONTAINER_ID"; \
+	for binary in ixmati-api ixmati-writer ixmati-projector ixmati-supervisor ixmati-reconciler; do \
+		$(PODMAN) cp "$$CONTAINER_ID:/usr/local/bin/$$binary" "$(TARGET_DIR)/release/$$binary" 2>/dev/null && \
+			ls -lh "$(TARGET_DIR)/release/$$binary" || \
+			echo "  $(COLOR_YELLOW)$$binary fallo$(COLOR_RESET)"; \
+	done; \
+	$(PODMAN) rm "$$CONTAINER_ID" 2>/dev/null; \
+	echo "$(COLOR_GREEN)[CONTAINERS] binarios amd64 listos$(COLOR_RESET)"
+
 # ── todas las imagenes ──
 .PHONY: containers-build
 containers-build: containers-builder containers-services containers-infra

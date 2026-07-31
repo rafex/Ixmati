@@ -5,7 +5,7 @@ FROM docker.io/library/debian:trixie-slim
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 
-COPY --from=build /out/ixmati-supervisor /usr/local/bin/ixmati-supervisor
+COPY --from=build /usr/local/bin/ixmati-supervisor /usr/local/bin/ixmati-supervisor
 
 USER 1000:1000
 ENTRYPOINT ["ixmati-supervisor"]

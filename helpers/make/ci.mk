@@ -1,8 +1,8 @@
 # helpers/make/ci.mk — CI local (independiente de GitHub Actions)
 #
 # Uso:
-#   make ci-pr     → gates rapidos (fmt, clippy, tests)
-#   make ci-main   → CI completo (build release, dist, validacion)
+#   make ci-pr     → gates rapidos (fmt, clippy, tests) — no requiere podman
+#   make ci-main   → CI completo (container compile, dist, validacion) — requiere podman
 #   make ci        → alias de ci-main
 
 include $(dir $(lastword $(MAKEFILE_LIST)))/common.mk
@@ -18,8 +18,9 @@ ci-pr:
 
 .PHONY: ci-main
 ci-main: ci-pr
-	@echo "$(COLOR_BLUE)[CI] main gates...$(COLOR_RESET)"
-	@$(CARGO) build --release --workspace
+	@echo "$(COLOR_BLUE)[CI] main gates (container linux/amd64)...$(COLOR_RESET)"
+	@make containers-builder
+	@make containers-compile
 	@make dist
 	@make dist-checksums
 	@make dist-validate
