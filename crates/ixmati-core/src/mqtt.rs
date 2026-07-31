@@ -1,10 +1,12 @@
 pub fn parse_mqtt_broker(url: &str) -> (String, u16) {
-    let cleaned = url.trim_start_matches("tcp://").trim_start_matches("mqtt://");
+    let cleaned = url
+        .trim_start_matches("tcp://")
+        .trim_start_matches("mqtt://");
 
-    if let Some((host, port_str)) = cleaned.rsplit_once(':') {
-        if let Ok(port) = port_str.parse::<u16>() {
-            return (host.to_string(), port);
-        }
+    if let Some((host, port_str)) = cleaned.rsplit_once(':')
+        && let Ok(port) = port_str.parse::<u16>()
+    {
+        return (host.to_string(), port);
     }
 
     (cleaned.to_string(), 1883)

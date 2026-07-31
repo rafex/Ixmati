@@ -84,20 +84,18 @@ impl HealthChecker {
 
     fn check_sqlite(&self, path: &str) -> ComponentHealth {
         match rusqlite::Connection::open(path) {
-            Ok(conn) => {
-                match conn.query_row("SELECT 1", [], |_| Ok(())) {
-                    Ok(()) => ComponentHealth {
-                        name: "sqlite".into(),
-                        status: Health::Ok,
-                        detail: Some(format!("connected to {}", path)),
-                    },
-                    Err(e) => ComponentHealth {
-                        name: "sqlite".into(),
-                        status: Health::Degraded,
-                        detail: Some(e.to_string()),
-                    },
-                }
-            }
+            Ok(conn) => match conn.query_row("SELECT 1", [], |_| Ok(())) {
+                Ok(()) => ComponentHealth {
+                    name: "sqlite".into(),
+                    status: Health::Ok,
+                    detail: Some(format!("connected to {}", path)),
+                },
+                Err(e) => ComponentHealth {
+                    name: "sqlite".into(),
+                    status: Health::Degraded,
+                    detail: Some(e.to_string()),
+                },
+            },
             Err(e) => ComponentHealth {
                 name: "sqlite".into(),
                 status: Health::Unavailable,
@@ -114,7 +112,9 @@ impl HealthChecker {
             .trim_start_matches("mqtt://");
 
         match TcpStream::connect_timeout(
-            &addr.parse().unwrap_or_else(|_| "127.0.0.1:1883".parse().unwrap()),
+            &addr
+                .parse()
+                .unwrap_or_else(|_| "127.0.0.1:1883".parse().unwrap()),
             Duration::from_secs(2),
         ) {
             Ok(_) => ComponentHealth {
@@ -160,10 +160,7 @@ mod tests {
 
     #[test]
     fn health_check_with_db_and_mqtt() {
-        let db_path = format!(
-            "{}/ixmati-health-test.db",
-            std::env::temp_dir().display()
-        );
+        let db_path = format!("{}/ixmati-health-test.db", std::env::temp_dir().display());
 
         let conn = rusqlite::Connection::open(&db_path).unwrap();
         conn.execute_batch("CREATE TABLE IF NOT EXISTS _health (id INTEGER PRIMARY KEY);")

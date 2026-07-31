@@ -27,12 +27,8 @@ impl Outbox {
         )
     }
 
-    pub fn insert(
-        conn: &Connection,
-        event: &EventEnvelope,
-    ) -> rusqlite::Result<i64> {
-        let payload = serde_json::to_vec(&event.payload)
-            .unwrap_or_default();
+    pub fn insert(conn: &Connection, event: &EventEnvelope) -> rusqlite::Result<i64> {
+        let payload = serde_json::to_vec(&event.payload).unwrap_or_default();
 
         conn.execute(
             "INSERT INTO _outbox (event_id, event_type, store, entity, key, version, occurred_at, payload)
@@ -52,10 +48,7 @@ impl Outbox {
         Ok(conn.last_insert_rowid())
     }
 
-    pub fn mark_published(
-        conn: &Connection,
-        outbox_id: i64,
-    ) -> rusqlite::Result<()> {
+    pub fn mark_published(conn: &Connection, outbox_id: i64) -> rusqlite::Result<()> {
         conn.execute(
             "UPDATE _outbox SET published_at = datetime('now') WHERE id = ?1",
             [outbox_id],

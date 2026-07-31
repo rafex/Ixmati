@@ -83,10 +83,7 @@ impl StoreConfig {
         let mut errors = Vec::new();
 
         if self.name.contains('/') {
-            errors.push(format!(
-                "store '{}': name must not contain '/'",
-                self.name
-            ));
+            errors.push(format!("store '{}': name must not contain '/'", self.name));
         }
         if self.name.contains(char::is_whitespace) {
             errors.push(format!(

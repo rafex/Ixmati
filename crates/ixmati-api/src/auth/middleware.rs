@@ -91,10 +91,7 @@ mod tests {
 
         let app = Router::new()
             .route("/test", get(|| async { "ok" }))
-            .route_layer(axum::middleware::from_fn_with_state(
-                config,
-                require_auth,
-            ));
+            .route_layer(axum::middleware::from_fn_with_state(config, require_auth));
 
         let response = app
             .oneshot(Request::builder().uri("/test").body(Body::empty()).unwrap())
@@ -110,10 +107,7 @@ mod tests {
 
         let app = Router::new()
             .route("/test", get(|| async { "ok" }))
-            .route_layer(axum::middleware::from_fn_with_state(
-                config,
-                require_auth,
-            ));
+            .route_layer(axum::middleware::from_fn_with_state(config, require_auth));
 
         let response = app
             .oneshot(Request::builder().uri("/test").body(Body::empty()).unwrap())
@@ -133,10 +127,7 @@ mod tests {
 
         let app = Router::new()
             .route("/test", get(|| async { "ok" }))
-            .route_layer(axum::middleware::from_fn_with_state(
-                config,
-                require_auth,
-            ));
+            .route_layer(axum::middleware::from_fn_with_state(config, require_auth));
 
         let response = app
             .oneshot(
@@ -162,10 +153,7 @@ mod tests {
 
         let app = Router::new()
             .route("/test", get(|| async { "ok" }))
-            .route_layer(axum::middleware::from_fn_with_state(
-                config,
-                require_auth,
-            ));
+            .route_layer(axum::middleware::from_fn_with_state(config, require_auth));
 
         let response = app
             .oneshot(

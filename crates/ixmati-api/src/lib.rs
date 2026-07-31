@@ -1,7 +1,7 @@
+pub mod auth;
+pub mod health;
 pub mod rest;
 pub mod status;
-pub mod health;
-pub mod auth;
 
 use axum::Router;
 use std::net::SocketAddr;
@@ -43,8 +43,7 @@ pub async fn serve(config: ApiConfig) -> std::io::Result<()> {
             .collect(),
     );
 
-    let app = Router::new()
-        .merge(rest::routes(state, auth_config));
+    let app = Router::new().merge(rest::routes(state, auth_config));
 
     let addr: SocketAddr = format!("{}:{}", config.host, config.port)
         .parse()

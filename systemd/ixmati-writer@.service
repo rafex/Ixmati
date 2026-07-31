@@ -1,0 +1,23 @@
+[Unit]
+Description=Ixmati Writer for store %i
+After=network.target mosquitto.service
+Requires=mosquitto.service
+Documentation=https://github.com/rafex/Ixmati
+
+[Service]
+Type=simple
+User=ixmati
+Group=ixmati
+ExecStart=/usr/local/bin/ixmati-writer
+Environment=MQTT_BROKER=tcp://localhost:1883
+Environment=STORE_NAME=%i
+Environment=SQLITE_PATH=/var/lib/ixmati/stores/%i.db
+Environment=BATCH_SIZE=100
+Environment=BATCH_INTERVAL_MS=50
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

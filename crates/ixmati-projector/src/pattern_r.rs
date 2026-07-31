@@ -3,11 +3,7 @@
 use ixmati_cache::CacheBackend;
 use ixmati_core::{EventEnvelope, ProjectionConfig};
 
-pub fn process_r<B: CacheBackend>(
-    cache: &B,
-    projection: &ProjectionConfig,
-    event: &EventEnvelope,
-) {
+pub fn process_r<B: CacheBackend>(cache: &B, projection: &ProjectionConfig, event: &EventEnvelope) {
     // Pattern R reads from all source stores and builds a merged projection.
     // For each source store, fetch the entity referenced by target_key.
     let mut projection_payload = serde_json::Map::new();

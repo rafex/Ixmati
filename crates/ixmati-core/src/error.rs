@@ -4,10 +4,18 @@ use thiserror::Error;
 #[derive(Error, Debug, Serialize)]
 pub enum Error {
     #[error("version conflict: {detail}")]
-    VersionConflict { detail: String, store: String, idempotency_key: String },
+    VersionConflict {
+        detail: String,
+        store: String,
+        idempotency_key: String,
+    },
 
     #[error("duplicate: {detail}")]
-    Duplicate { detail: String, store: String, idempotency_key: String },
+    Duplicate {
+        detail: String,
+        store: String,
+        idempotency_key: String,
+    },
 
     #[error("store not found: {store}")]
     StoreNotFound { store: String },
@@ -16,7 +24,11 @@ pub enum Error {
     EntityNotFound { store: String, entity: String },
 
     #[error("write rejected: {detail}")]
-    WriteRejected { detail: String, store: String, idempotency_key: String },
+    WriteRejected {
+        detail: String,
+        store: String,
+        idempotency_key: String,
+    },
 
     #[error("queue full: {store}")]
     QueueFull { store: String },

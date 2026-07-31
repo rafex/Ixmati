@@ -28,14 +28,13 @@ fn make_cmd(store: &str, key: &str, version: u64, idem: &str) -> WriteEnvelope {
 #[test]
 fn crash_recovery_no_data_loss() {
     let db_path = temp_db("crash_no_loss.db");
-    let store = "pedidos";
-    let store_name = store;
+    let store_name = "pedidos";
 
     // Phase 1: write data normally
     {
         let mut conn = Connection::open(&db_path).unwrap();
         conn.execute_batch("PRAGMA journal_mode=WAL;").unwrap();
-        WriteEngine::ensure_schema(&conn, &store_name).unwrap();
+        WriteEngine::ensure_schema(&conn, store_name).unwrap();
 
         let cmds: Vec<_> = (1..=10)
             .map(|i| make_cmd("pedidos", &format!("ped_{}", i), 1, &format!("ik-{}", i)))
@@ -73,7 +72,7 @@ fn crash_during_batch_atomicity() {
     {
         let mut conn = Connection::open(&db_path).unwrap();
         conn.execute_batch("PRAGMA journal_mode=WAL;").unwrap();
-        WriteEngine::ensure_schema(&conn, &store_name).unwrap();
+        WriteEngine::ensure_schema(&conn, store_name).unwrap();
 
         let cmds: Vec<_> = (1..=5)
             .map(|i| make_cmd("pedidos", &format!("ped_{}", i), 1, &format!("ik-{}", i)))
@@ -117,16 +116,24 @@ fn wal_checkpoint_preserves_data() {
     {
         let mut conn = Connection::open(&db_path).unwrap();
         conn.execute_batch("PRAGMA journal_mode=WAL;").unwrap();
-        WriteEngine::ensure_schema(&conn, &store_name).unwrap();
+        WriteEngine::ensure_schema(&conn, store_name).unwrap();
 
         let cmds: Vec<_> = (1..=3)
-            .map(|i| make_cmd("pedidos", &format!("ped_{}", i), 1, &format!("ik-wal-{}", i)))
+            .map(|i| {
+                make_cmd(
+                    "pedidos",
+                    &format!("ped_{}", i),
+                    1,
+                    &format!("ik-wal-{}", i),
+                )
+            })
             .collect();
 
         WriteEngine::process_batch(&mut conn, &cmds).unwrap();
 
         // Force WAL checkpoint
-        conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);").unwrap();
+        conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);")
+            .unwrap();
     }
 
     {
@@ -160,7 +167,7 @@ fn version_order_preserved_after_recovery() {
     {
         let mut conn = Connection::open(&db_path).unwrap();
         conn.execute_batch("PRAGMA journal_mode=WAL;").unwrap();
-        WriteEngine::ensure_schema(&conn, &store_name).unwrap();
+        WriteEngine::ensure_schema(&conn, store_name).unwrap();
 
         // Write versions 1, 2, 3 for same key
         for v in 1..=3 {
@@ -192,12 +199,11 @@ fn version_order_preserved_after_recovery() {
 #[test]
 fn empty_db_after_clean_removal() {
     let db_path = temp_db("crash_empty.db");
-    let store_name = "vacio";
 
     {
         let conn = Connection::open(&db_path).unwrap();
         conn.execute_batch("PRAGMA journal_mode=WAL;").unwrap();
-        WriteEngine::ensure_schema(&conn, &store_name).unwrap();
+        WriteEngine::ensure_schema(&conn, "vacio").unwrap();
     }
 
     // Delete the db file (simulates intentional reset)
@@ -205,11 +211,9 @@ fn empty_db_after_clean_removal() {
 
     {
         let conn = Connection::open(&db_path).unwrap();
-        WriteEngine::ensure_schema(&conn, &store_name).unwrap();
+        WriteEngine::ensure_schema(&conn, "vacio").unwrap();
 
-        let mut stmt = conn
-            .prepare("SELECT COUNT(*) FROM _idempotency")
-            .unwrap();
+        let mut stmt = conn.prepare("SELECT COUNT(*) FROM _idempotency").unwrap();
         let count: i64 = stmt.query_row([], |row| row.get(0)).unwrap();
         assert_eq!(count, 0);
     }

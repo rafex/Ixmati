@@ -80,11 +80,7 @@ mod tests {
         )
         .unwrap();
 
-        let status = StatusQuery::query(
-            "file::memory:?cache=shared",
-            "pedidos",
-            "ik-nonexistent",
-        );
+        let status = StatusQuery::query("file::memory:?cache=shared", "pedidos", "ik-nonexistent");
 
         assert!(status.is_err());
     }

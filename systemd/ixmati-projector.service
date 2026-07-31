@@ -1,0 +1,19 @@
+[Unit]
+Description=Ixmati Projector (read models)
+After=network.target mosquitto.service ixmati-api.service
+Requires=mosquitto.service
+Documentation=https://github.com/rafex/Ixmati
+
+[Service]
+Type=simple
+User=ixmati
+Group=ixmati
+ExecStart=/usr/local/bin/ixmati-projector
+Environment=MQTT_BROKER=tcp://localhost:1883
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

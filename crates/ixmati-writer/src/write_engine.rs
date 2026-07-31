@@ -3,9 +3,9 @@ use ixmati_core::{AckResponse, EventEnvelope, WriteEnvelope};
 use rusqlite::Connection;
 use uuid::Uuid;
 
+use crate::BatchResult;
 use crate::dedup::{IdempotencyStatus, IdempotencyTracker};
 use crate::outbox::Outbox;
-use crate::BatchResult;
 
 pub struct WriteEngine;
 
@@ -61,11 +61,11 @@ impl WriteEngine {
             let current_version =
                 IdempotencyTracker::current_version(&tx, &cmd.store, &cmd.entity, &cmd.key)?;
 
-            if let Some(stored) = current_version {
-                if cmd.version <= stored {
-                    result.version_conflicts += 1;
-                    continue;
-                }
+            if let Some(stored) = current_version
+                && cmd.version <= stored
+            {
+                result.version_conflicts += 1;
+                continue;
             }
 
             match cmd.op.as_str() {
@@ -203,14 +203,11 @@ mod tests {
     fn version_conflict_rejected() {
         let mut conn = setup_db();
 
-        WriteEngine::process_batch(&mut conn, &[make_cmd("upsert", "ped_1", 5, "ik-1")])
-            .unwrap();
+        WriteEngine::process_batch(&mut conn, &[make_cmd("upsert", "ped_1", 5, "ik-1")]).unwrap();
 
-        let result = WriteEngine::process_batch(
-            &mut conn,
-            &[make_cmd("upsert", "ped_1", 3, "ik-2")],
-        )
-        .unwrap();
+        let result =
+            WriteEngine::process_batch(&mut conn, &[make_cmd("upsert", "ped_1", 3, "ik-2")])
+                .unwrap();
         assert_eq!(result.version_conflicts, 1);
         assert_eq!(result.committed, 0);
     }
@@ -219,14 +216,11 @@ mod tests {
     fn higher_version_accepted() {
         let mut conn = setup_db();
 
-        WriteEngine::process_batch(&mut conn, &[make_cmd("upsert", "ped_1", 1, "ik-1")])
-            .unwrap();
+        WriteEngine::process_batch(&mut conn, &[make_cmd("upsert", "ped_1", 1, "ik-1")]).unwrap();
 
-        let result = WriteEngine::process_batch(
-            &mut conn,
-            &[make_cmd("upsert", "ped_1", 2, "ik-2")],
-        )
-        .unwrap();
+        let result =
+            WriteEngine::process_batch(&mut conn, &[make_cmd("upsert", "ped_1", 2, "ik-2")])
+                .unwrap();
         assert_eq!(result.committed, 1);
         assert_eq!(result.version_conflicts, 0);
     }
@@ -235,14 +229,11 @@ mod tests {
     fn delete_removes_entity() {
         let mut conn = setup_db();
 
-        WriteEngine::process_batch(&mut conn, &[make_cmd("upsert", "ped_1", 1, "ik-1")])
-            .unwrap();
+        WriteEngine::process_batch(&mut conn, &[make_cmd("upsert", "ped_1", 1, "ik-1")]).unwrap();
 
-        let result = WriteEngine::process_batch(
-            &mut conn,
-            &[make_cmd("delete", "ped_1", 2, "ik-2")],
-        )
-        .unwrap();
+        let result =
+            WriteEngine::process_batch(&mut conn, &[make_cmd("delete", "ped_1", 2, "ik-2")])
+                .unwrap();
         assert_eq!(result.committed, 1);
         assert_eq!(result.events[0].event_type, "pedido.eliminado");
     }
@@ -251,8 +242,7 @@ mod tests {
     fn events_in_outbox_are_fetchable() {
         let mut conn = setup_db();
 
-        WriteEngine::process_batch(&mut conn, &[make_cmd("upsert", "ped_1", 1, "ik-1")])
-            .unwrap();
+        WriteEngine::process_batch(&mut conn, &[make_cmd("upsert", "ped_1", 1, "ik-1")]).unwrap();
 
         let rows = Outbox::fetch_unpublished(&conn, "pedidos", 10).unwrap();
         assert_eq!(rows.len(), 1);

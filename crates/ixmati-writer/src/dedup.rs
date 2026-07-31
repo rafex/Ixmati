@@ -39,10 +39,7 @@ impl IdempotencyTracker {
         }
     }
 
-    pub fn record(
-        conn: &Connection,
-        envelope: &WriteEnvelope,
-    ) -> rusqlite::Result<()> {
+    pub fn record(conn: &Connection, envelope: &WriteEnvelope) -> rusqlite::Result<()> {
         conn.execute(
             "INSERT OR IGNORE INTO _idempotency (idempotency_key, store, entity, key, version)
              VALUES (?1, ?2, ?3, ?4, ?5)",
@@ -123,9 +120,7 @@ mod tests {
         let status = IdempotencyTracker::check(&conn, &cmd).unwrap();
         assert_eq!(
             status,
-            IdempotencyStatus::AlreadyApplied {
-                stored_version: 1
-            }
+            IdempotencyStatus::AlreadyApplied { stored_version: 1 }
         );
     }
 
@@ -157,8 +152,7 @@ mod tests {
         IdempotencyTracker::record(&conn, &make_cmd("ped_1", 3, "ik-2")).unwrap();
         IdempotencyTracker::record(&conn, &make_cmd("ped_1", 2, "ik-3")).unwrap();
 
-        let v = IdempotencyTracker::current_version(&conn, "pedidos", "pedido", "ped_1")
-            .unwrap();
+        let v = IdempotencyTracker::current_version(&conn, "pedidos", "pedido", "ped_1").unwrap();
         assert_eq!(v, Some(3));
     }
 }

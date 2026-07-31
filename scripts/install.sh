@@ -1,27 +1,21 @@
 #!/usr/bin/env bash
-# Ixmati installer — wrapper bash mínimo
-# Uso:
-#   curl -sSL https://raw.githubusercontent.com/rafex/Ixmati/main/scripts/install.sh | bash
-#   ./install.sh --version 0.1.0 --prefix /usr/local --no-systemd
+# Ixmati installer — wrapper minimo
+# Uso offline: sudo ./install.sh
+# Uso online:  curl -sSL <url>/install.sh | sudo bash
 set -euo pipefail
 
-REPO="rafex/Ixmati"
-VERSION="${IXMATI_VERSION:-latest}"
-export IXMATI_VERSION="$VERSION"
-
-# ── instalar uv si no existe ──
-if ! command -v uv &>/dev/null; then
-    echo "[installer] instalando uv..."
-    curl -LsSf https://astral.sh/uv/install.sh | sh
-    export PATH="$HOME/.local/bin:$PATH"
+if [ "$(id -u)" -ne 0 ]; then
+    echo "Ejecuta como root: sudo ./install.sh"
+    exit 1
 fi
 
-echo "[installer] Ixmati v${VERSION}"
-echo ""
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# ── modo offline: installer.py ya está en el tar.gz ──
-if [ -f "installer.py" ]; then
-    uv run installer.py "$@"
+if [ -f "$SCRIPT_DIR/installer.py" ]; then
+    python3 "$SCRIPT_DIR/installer.py" "$@"
+elif [ -f "$SCRIPT_DIR/helpers/python/installer.py" ]; then
+    python3 "$SCRIPT_DIR/helpers/python/installer.py" "$@"
 else
-    uv run --with click --from "git+https://github.com/${REPO}" installer.py "$@"
+    echo "[ERROR] installer.py no encontrado"
+    exit 1
 fi

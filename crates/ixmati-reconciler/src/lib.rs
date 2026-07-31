@@ -1,9 +1,10 @@
-use ixmati_core::ProjectionRegistry;
 use ixmati_cache::CacheBackend;
+use ixmati_core::ProjectionRegistry;
 use std::sync::Arc;
 
 pub struct Reconciler<B: CacheBackend> {
     registry: ProjectionRegistry,
+    #[allow(dead_code)]
     cache: Arc<B>,
 }
 

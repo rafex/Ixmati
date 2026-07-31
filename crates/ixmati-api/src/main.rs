@@ -18,8 +18,7 @@ async fn main() -> std::io::Result<()> {
             .ok()
             .and_then(|p| p.parse().ok())
             .unwrap_or(30000),
-        mqtt_broker: std::env::var("MQTT_BROKER")
-            .unwrap_or_else(|_| "tcp://localhost:1883".into()),
+        mqtt_broker: std::env::var("MQTT_BROKER").unwrap_or_else(|_| "tcp://localhost:1883".into()),
         db_path,
     };
 

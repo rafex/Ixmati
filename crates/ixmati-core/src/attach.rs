@@ -32,10 +32,7 @@ impl ReadOnlyConnection {
         self.conn.execute_batch(&sql)
     }
 
-    pub fn cross_store_query(
-        &self,
-        sql: &str,
-    ) -> rusqlite::Result<Vec<Vec<String>>> {
+    pub fn cross_store_query(&self, sql: &str) -> rusqlite::Result<Vec<Vec<String>>> {
         let mut stmt = self.conn.prepare(sql)?;
         let col_count = stmt.column_count();
 
@@ -57,8 +54,8 @@ impl ReadOnlyConnection {
 // Guard to assert ATTACH is blocked on write connections
 impl WriteConnectionGuard {
     pub fn ensure_no_attach(conn: &Connection) -> rusqlite::Result<()> {
-        let writer: bool = conn
-            .pragma_query_value(None, "query_only", |row| row.get::<_, bool>(0))?;
+        let writer: bool =
+            conn.pragma_query_value(None, "query_only", |row| row.get::<_, bool>(0))?;
         if writer {
             let readonly: bool = false;
             conn.pragma_update(None, "query_only", !readonly)?;
@@ -72,7 +69,8 @@ impl WriteConnectionGuard {
             Err(e) if e.to_string().contains("not authorized") => Ok(()),
             Err(e) => Err(format!("unexpected error: {}", e)),
             Ok(()) => {
-                conn.execute_batch(&format!("DETACH DATABASE {}", name)).ok();
+                conn.execute_batch(&format!("DETACH DATABASE {}", name))
+                    .ok();
                 Err("ATTACH should be blocked on write connections".into())
             }
         }
@@ -94,8 +92,11 @@ mod tests {
             "CREATE TABLE IF NOT EXISTS test_data (id INTEGER PRIMARY KEY, value TEXT);",
         )
         .unwrap();
-        conn.execute("INSERT OR REPLACE INTO test_data (id, value) VALUES (1, 'hello')", [])
-            .unwrap();
+        conn.execute(
+            "INSERT OR REPLACE INTO test_data (id, value) VALUES (1, 'hello')",
+            [],
+        )
+        .unwrap();
         path
     }
 
@@ -106,7 +107,9 @@ mod tests {
 
         let conn = ReadOnlyConnection::open(&db_a, &[("store_b", &db_b)]).unwrap();
 
-        let rows = conn.cross_store_query("SELECT value FROM test_data").unwrap();
+        let rows = conn
+            .cross_store_query("SELECT value FROM test_data")
+            .unwrap();
         assert_eq!(rows.len(), 1);
 
         let rows = conn

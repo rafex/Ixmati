@@ -29,10 +29,7 @@ impl EventPublisher {
         let mut published = 0;
 
         for row in &rows {
-            let topic = format!(
-                "ixmati/evt/{}/{}/{}",
-                row.store, row.entity, row.key
-            );
+            let topic = format!("ixmati/evt/{}/{}/{}", row.store, row.entity, row.key);
 
             let payload = row.payload.clone();
 
@@ -60,11 +57,7 @@ impl EventPublisher {
         Ok(published)
     }
 
-    pub async fn publish_loop(
-        publisher: Arc<EventPublisher>,
-        store: String,
-        interval_ms: u64,
-    ) {
+    pub async fn publish_loop(publisher: Arc<EventPublisher>, store: String, interval_ms: u64) {
         let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(interval_ms));
 
         loop {

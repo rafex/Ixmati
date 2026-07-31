@@ -1,0 +1,23 @@
+# Ixmati — projections.toml
+# Declaración de proyecciones (opt-in).
+# Si no necesitas proyecciones, deja este archivo vacío o con solo comentarios.
+
+# Pattern R: referencia + lookup (eager loading)
+# [[projections]]
+# name = "pedidos_con_usuario"
+# pattern = "R"
+# source_stores = ["pedidos", "usuarios"]
+# target_key = "pedido_id"
+# ttl_seconds = 300
+
+# Pattern M: materializado (copia campos desde otros stores)
+# [[projections]]
+# name = "usuarios_materializados"
+# pattern = "M"
+# source_stores = ["usuarios"]
+# target_key = "usuario_id"
+# ttl_seconds = 600
+# [[projections.copy_fields]]
+# source_store = "usuarios"
+# source_entity = "usuario"
+# fields = ["nombre", "email"]

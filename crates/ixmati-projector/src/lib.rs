@@ -21,18 +21,10 @@ impl<B: CacheBackend> ProjectorEngine<B> {
         for proj in projections {
             match proj.pattern {
                 ixmati_core::ProjectionPattern::R => {
-                    pattern_r::process_r(
-                        &*self.cache,
-                        proj,
-                        event,
-                    );
+                    pattern_r::process_r(&*self.cache, proj, event);
                 }
                 ixmati_core::ProjectionPattern::M => {
-                    pattern_m::process_m(
-                        &*self.cache,
-                        proj,
-                        event,
-                    );
+                    pattern_m::process_m(&*self.cache, proj, event);
                 }
             }
         }

@@ -1,5 +1,5 @@
 pub mod middleware;
 pub mod session;
 
-pub use middleware::{require_auth, AuthConfig};
+pub use middleware::{AuthConfig, require_auth};
 pub use session::{ApiKey, AuthCredentials, Session};

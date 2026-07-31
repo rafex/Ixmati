@@ -1,4 +1,3 @@
-use ixmati_core::mqtt::parse_mqtt_broker;
 use ixmati_writer::batcher::Batcher;
 use ixmati_writer::consumer::MqttConsumer;
 use ixmati_writer::event_publisher::EventPublisher;
@@ -17,7 +16,8 @@ async fn main() -> std::io::Result<()> {
         .json()
         .init();
 
-    let mqtt_broker = std::env::var("MQTT_BROKER").unwrap_or_else(|_| "tcp://localhost:1883".into());
+    let mqtt_broker =
+        std::env::var("MQTT_BROKER").unwrap_or_else(|_| "tcp://localhost:1883".into());
     let store_name = std::env::var("STORE_NAME").unwrap_or_else(|_| "pedidos".into());
     let db_path = std::env::var("SQLITE_PATH").unwrap_or_else(|_| "/data/pedidos.db".into());
     let batch_size: usize = std::env::var("BATCH_SIZE")
@@ -40,13 +40,11 @@ async fn main() -> std::io::Result<()> {
     );
 
     {
-        let mut conn = Connection::open(&db_path).map_err(|e| {
-            std::io::Error::new(std::io::ErrorKind::Other, format!("SQLite: {}", e))
-        })?;
+        let conn = Connection::open(&db_path)
+            .map_err(|e| std::io::Error::other(format!("SQLite: {}", e)))?;
         conn.execute_batch("PRAGMA journal_mode=WAL;").ok();
-        WriteEngine::ensure_schema(&conn, &store_name).map_err(|e| {
-            std::io::Error::new(std::io::ErrorKind::Other, format!("Schema: {}", e))
-        })?;
+        WriteEngine::ensure_schema(&conn, &store_name)
+            .map_err(|e| std::io::Error::other(format!("Schema: {}", e)))?;
     }
 
     let topic = format!("ixmati/cmd/{}/#", store_name);
@@ -62,9 +60,7 @@ async fn main() -> std::io::Result<()> {
     });
 
     let conn = Arc::new(Mutex::new(
-        Connection::open(&db_path).map_err(|e| {
-            std::io::Error::new(std::io::ErrorKind::Other, format!("SQLite: {}", e))
-        })?,
+        Connection::open(&db_path).map_err(|e| std::io::Error::other(format!("SQLite: {}", e)))?,
     ));
 
     loop {

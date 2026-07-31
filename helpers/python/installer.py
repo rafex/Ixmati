@@ -1,31 +1,21 @@
-#!/usr/bin/env uv run
-# installer.py — Ixmati installer for Linux servers
-#
-# Modo online:  uv run installer.py --version 0.1.0
-# Modo offline: uv run installer.py --offline --tarball ixmati-0.1.0-linux-amd64.tar.gz
-# 
-# Acciones:
-#  1. Descarga el tarball desde GitHub Releases (modo online)
-#  2. Extrae binarios a /usr/local/bin/
-#  3. Crea usuario ixmati e instala systemd units
-#  4. Configura directorios de datos y Mosquitto
-#  5. Habilita e inicia servicios
+#!/usr/bin/env python3
+"""installer.py — Ixmati installer (native systemd, no containers)
 
-import hashlib
+Modo offline (desde el tar.gz):
+    sudo ./install.sh
+
+Modo online:
+    curl -sSL https://raw.githubusercontent.com/rafex/Ixmati/main/scripts/install.sh | sudo bash
+"""
+
 import os
 import platform
 import shlex
 import shutil
 import subprocess
 import sys
-import tarfile
-import tempfile
 from pathlib import Path
-from typing import Optional
-
-# --version --version
-REPO = "rafex/Ixmati"
-DEFAULT_VERSION = "0.1.0"
+from typing import NoReturn
 
 BINARIES = [
     "ixmati-api",
@@ -35,31 +25,42 @@ BINARIES = [
     "ixmati-reconciler",
 ]
 
+SYSTEMD_UNITS = [
+    "ixmati-api.service",
+    "ixmati-writer@.service",
+    "ixmati-projector.service",
+]
+
+CONFIG_FILES = [
+    "stores.toml",
+    "projections.toml",
+]
+
 
 def log(msg: str) -> None:
-    print(f"[installer] {msg}")
+    print(f"  \033[34m[ixmati]\033[0m {msg}")
 
 
 def ok(msg: str) -> None:
-    print(f"  \033[32m✓\033[0m {msg}")
+    print(f"    \033[32m✓\033[0m {msg}")
 
 
 def warn(msg: str) -> None:
-    print(f"  \033[33m⚠\033[0m {msg}")
+    print(f"    \033[33m⚠\033[0m {msg}")
 
 
-def die(msg: str) -> None:
-    print(f"\033[31m[ERROR]\033[0m {msg}", file=sys.stderr)
-    sys.exit(1)
+def die(msg: str) -> NoReturn:
+    print(f"  \033[31m[ERROR]\033[0m {msg}", file=sys.stderr)
+    raise SystemExit(1)  # unreachable; satisfies type checker for die()
 
 
-def run(cmd: list[str], check: bool = True) -> subprocess.CompletedProcess:
-    log(f"$ {shlex.join(cmd)}")
+def run(cmd: list[str], check: bool = True, quiet: bool = False) -> subprocess.CompletedProcess:
+    if not quiet:
+        log(f"$ {shlex.join(cmd)}")
     return subprocess.run(cmd, check=check)
 
 
 def detect_arch() -> str:
-    """Detecta arquitectura: amd64 o arm64."""
     machine = platform.machine()
     if machine in ("x86_64", "AMD64"):
         return "amd64"
@@ -68,236 +69,210 @@ def detect_arch() -> str:
     die(f"Arquitectura no soportada: {machine}")
 
 
-def download_tarball(version: str, arch: str, dest: Path) -> Path:
-    """Descarga el tarball desde GitHub Releases."""
-    file_name = f"ixmati-{version}-linux-{arch}.tar.gz"
-    url = f"https://github.com/{REPO}/releases/download/v{version}/{file_name}"
-
-    log(f"descargando {url}")
-    result = run(
-        ["curl", "-sSL", "-o", str(dest / file_name), url],
-        check=False,
-    )
-    if result.returncode != 0:
-        die(f"no se pudo descargar {url}")
-
-    ok(f"{file_name} descargado")
-    return dest / file_name
+def detect_os() -> str:
+    system = platform.system()
+    if system != "Linux":
+        die(f"Sistema no soportado: {system}. Ixmati requiere Linux.")
+    return system
 
 
-def verify_checksum(tarball: Path, version: str) -> None:
-    """Verifica SHA256 del tarball."""
-    sha_url = (
-        f"https://github.com/{REPO}/releases/download/v{version}/{tarball.name}.sha256"
-    )
-    result = subprocess.run(
-        ["curl", "-sSL", sha_url],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        warn("no se pudo verificar checksum (saltando)")
-        return
+def find_base_dir() -> Path:
+    script = Path(__file__).resolve()
+    candidate = script.parent
+    if (candidate / "install.sh").exists() or (candidate / "bin").exists():
+        return candidate
 
-    expected_hash = result.stdout.strip().split()[0]
-    actual_hash = hashlib.sha256(tarball.read_bytes()).hexdigest()
+    for path in script.parents:
+        if (path / "bin").exists():
+            return path
 
-    if actual_hash == expected_hash:
-        ok(f"checksum verificado: {actual_hash[:16]}...")
-    else:
-        die(f"checksum no coincide: esperado={expected_hash[:16]}..., actual={actual_hash[:16]}...")
+    die("no se encontró el directorio de instalación (busca bin/ en padres de installer.py)")
 
 
-def extract_binaries(tarball: Path, prefix: Path) -> None:
-    """Extrae binarios del tarball a prefix/bin/."""
-    log(f"extrayendo a {prefix}/bin/")
-    (prefix / "bin").mkdir(parents=True, exist_ok=True)
-
-    with tarfile.open(tarball, "r:gz") as tar:
-        for member in tar.getmembers():
-            name = Path(member.name).name
-            if name in BINARIES:
-                tar.extract(member, prefix / "bin")
-                (prefix / "bin" / name).chmod(0o755)
-                ok(f"  {name}")
-            elif member.name.endswith(("stores.example.toml", "projections.example.toml")):
-                config_dir = Path("/etc/ixmati")
-                config_dir.mkdir(parents=True, exist_ok=True)
-                target = config_dir / Path(member.name).name
-                tar.extract(member, config_dir)
-                ok(f"  config: {target}")
-
-
-def create_user(username: str = "ixmati") -> None:
-    """Crea el usuario de servicio si no existe."""
-    result = subprocess.run(["id", username], check=False, capture_output=True)
+def install_mosquitto() -> None:
+    log("verificando Mosquitto...")
+    result = subprocess.run(["which", "mosquitto"], check=False, capture_output=True)
     if result.returncode == 0:
-        ok(f"usuario {username} ya existe")
+        ok("Mosquitto ya instalado")
         return
 
-    log(f"creando usuario {username}")
-    run(["useradd", "--system", "--no-create-home", "--shell", "/usr/sbin/nologin", username])
-    ok(f"usuario {username} creado")
+    log("instalando Mosquitto...")
+    if shutil.which("apt-get"):
+        run(["apt-get", "update", "-qq"])
+        run(["apt-get", "install", "-y", "-qq", "mosquitto", "mosquitto-clients"])
+    elif shutil.which("dnf"):
+        run(["dnf", "install", "-y", "mosquitto"])
+    elif shutil.which("yum"):
+        run(["yum", "install", "-y", "mosquitto"])
+    else:
+        die("no se detectó apt-get, dnf ni yum. Instala Mosquitto manualmente.")
+    ok("Mosquitto instalado")
+
+
+def configure_mosquitto(base_dir: Path) -> None:
+    log("configurando Mosquitto...")
+    conf_src = base_dir / "config" / "mosquitto" / "mosquitto.conf"
+    conf_dst = Path("/etc/mosquitto/conf.d/ixmati.conf")
+
+    if conf_src.exists():
+        conf_dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(conf_src, conf_dst)
+        ok(f"mosquitto.conf → {conf_dst}")
+    else:
+        warn("mosquitto.conf no encontrado en artefacto")
+
+
+def install_binaries(base_dir: Path) -> None:
+    log("instalando binarios...")
+    bin_dir = Path("/usr/local/bin")
+    bin_dir.mkdir(parents=True, exist_ok=True)
+
+    src_bin = base_dir / "bin"
+    for binary in BINARIES:
+        src = src_bin / binary
+        if src.exists():
+            dst = bin_dir / binary
+            shutil.copy2(src, dst)
+            dst.chmod(0o755)
+            ok(binary)
+        else:
+            warn(f"{binary} no encontrado")
+
+
+def install_config(base_dir: Path) -> None:
+    log("instalando configuración...")
+    etc_ixmati = Path("/etc/ixmati")
+    etc_ixmati.mkdir(parents=True, exist_ok=True)
+
+    src_config = base_dir / "config"
+    for cfg_file in CONFIG_FILES:
+        src = src_config / cfg_file
+        dst = etc_ixmati / cfg_file
+        if src.exists():
+            shutil.copy2(src, dst)
+            ok(f"{cfg_file} → {dst}")
+
+    mosquitto_conf = src_config / "mosquitto" / "mosquitto.conf"
+    mosquitto_dst = etc_ixmati / "mosquitto" / "mosquitto.conf"
+    if mosquitto_conf.exists():
+        mosquitto_dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(mosquitto_conf, mosquitto_dst)
+        ok(f"mosquitto.conf → {mosquitto_dst}")
+
+
+def install_systemd_units(base_dir: Path) -> None:
+    log("instalando unidades systemd...")
+    unit_dir = Path("/etc/systemd/system")
+    unit_dir.mkdir(parents=True, exist_ok=True)
+
+    src_units = base_dir / "systemd"
+    for unit_file in SYSTEMD_UNITS:
+        src = src_units / unit_file
+        dst = unit_dir / unit_file
+        if src.exists():
+            shutil.copy2(src, dst)
+            ok(unit_file)
+        else:
+            warn(f"{unit_file} no encontrado")
+
+    run(["systemctl", "daemon-reload"])
+
+
+def create_user() -> None:
+    log("configurando usuario ixmati...")
+    result = subprocess.run(["id", "ixmati"], check=False, capture_output=True)
+    if result.returncode == 0:
+        ok("usuario ixmati ya existe")
+    else:
+        run(["useradd", "--system", "--no-create-home", "--shell", "/usr/sbin/nologin", "ixmati"])
+        ok("usuario ixmati creado")
 
 
 def create_directories() -> None:
-    """Crea directorios de datos con permisos correctos."""
+    log("creando directorios de datos...")
     dirs = [
         ("/var/lib/ixmati/stores", "ixmati", "ixmati"),
         ("/var/lib/ixmati/cache", "ixmati", "ixmati"),
         ("/var/log/ixmati", "ixmati", "ixmati"),
-        ("/etc/ixmati", "root", "root"),
     ]
     for path, owner, group in dirs:
         Path(path).mkdir(parents=True, exist_ok=True)
         run(["chown", f"{owner}:{group}", path])
-        ok(f"directorio {path}")
+        ok(path)
 
 
-def install_quadlet_units() -> None:
-    """Instala unidades quadlet de systemd."""
-    quadlet_dir = Path.home() / ".config/containers/systemd"
-    units_dir = Path("/etc/ixmati/quadlet")
-    units_dir.mkdir(parents=True, exist_ok=True)
+def start_services() -> None:
+    log("iniciando servicios...")
+    svc_list = ["mosquitto", "ixmati-api", "ixmati-writer@default"]
 
-    # Copia unidades quadlet de referencia
-    repo_quadlet = Path("/tmp/ixmati-quadlet")
-    if repo_quadlet.exists():
-        for unit in repo_quadlet.glob("ixmati-*"):
-            shutil.copy(unit, units_dir)
+    for svc in svc_list:
+        sysctl = svc.replace("@", "\\x40")
+        run(["systemctl", "enable", svc], check=False, quiet=True)
+        run(["systemctl", "start", svc], check=False, quiet=True)
 
-    # Si estamos en el repo extraído
-    tarball_quadlet = Path(".").absolute()
-    for unit in tarball_quadlet.glob("containers/quadlet/ixmati-*"):
-        shutil.copy(unit, units_dir)
-        ok(f"  quadlet: {unit.name}")
+    run(["systemctl", "daemon-reload"], quiet=True)
 
-    run(["systemctl", "--user", "daemon-reload"], check=False)
-    ok("systemd daemon-reload")
-
-
-def enable_services() -> None:
-    """Habilita servicios systemd de Mosquitto y Ixmati."""
-    services = ["mosquitto"]
-    for svc in services:
-        result = subprocess.run(["systemctl", "enable", svc], check=False, capture_output=True)
-        if result.returncode == 0:
-            ok(f"  {svc}.service enabled")
-        else:
-            warn(f"  {svc}.service no disponible")
-
-    # Quadlet units (rootless, --user)
-    quadlet_units = ["ixmati-api", "ixmati-mosquitto", "ixmati-projector"]
-    for unit in quadlet_units:
-        run(
-            ["systemctl", "--user", "enable", f"{unit}.service"],
-            check=False,
+    for svc in svc_list:
+        result = subprocess.run(
+            ["systemctl", "is-active", svc],
+            check=False, capture_output=True, text=True,
         )
+        status = result.stdout.strip() if result.returncode == 0 else "inactive"
+        icon = "✓" if status == "active" else "✗"
+        print(f"    {icon} {svc} → {status}")
 
 
-def install_mosquitto() -> None:
-    """Instala y configura Mosquitto si no existe."""
-    result = subprocess.run(["which", "mosquitto"], check=False, capture_output=True, text=True)
-    if result.returncode == 0:
-        ok(f"Mosquitto ya instalado: {result.stdout.strip()}")
-        return
-
-    log("instalando Mosquitto...")
-    run(["apt-get", "update", "-qq"])
-    run(["apt-get", "install", "-y", "-qq", "mosquitto", "mosquitto-clients"])
-
-    config = """/etc/mosquitto/conf.d/ixmati.conf
-listener 1883
-protocol mqtt
-persistence true
-persistence_location /var/lib/mosquitto/
-allow_anonymous false
-log_dest syslog
-"""
-    Path("/etc/mosquitto/conf.d/ixmati.conf").write_text(config)
-    ok("Mosquitto configurado")
-
-
-def show_next_steps(prefix: Path) -> None:
-    """Muestra instrucciones post-instalación."""
+def show_final_message() -> None:
     print("")
     print("=" * 60)
-    print("  Ixmati instalado correctamente")
+    print("  \033[32mIxmati instalado correctamente\033[0m")
     print("=" * 60)
     print("")
-    print("  Binarios:")
-    for binary in BINARIES:
-        path = prefix / "bin" / binary
-        if path.exists():
-            print(f"    {path}")
+    print("  Health check:")
+    print("    curl http://localhost:30000/health")
     print("")
-    print("  Configuración:")
-    print(f"    /etc/ixmati/stores.example.toml")
-    print(f"    /etc/ixmati/projections.example.toml")
+    print("  Escribir un comando:")
+    print('    curl -X POST http://localhost:30000/write \\')
+    print('      -H "Authorization: ApiKey ix-default-key" \\')
+    print('      -H "Content-Type: application/json" \\')
+    print('      -d \'{"op":"upsert","store":"default","entity":"test","key":"k1","version":1,')
+    print('           "ts":"2026-01-01T00:00:00Z","idempotency_key":"$(uuidgen)",')
+    print('           "ack_mode":"accepted","payload":{"hello":"world"}}\'')
     print("")
-    print("  Siguientes pasos:")
-    print(f"    1. cp /etc/ixmati/stores.example.toml /etc/ixmati/stores.toml")
-    print(f"    2. Editar /etc/ixmati/stores.toml con tus stores")
-    print(f"    3. systemctl --user start ixmati-mosquitto.service")
-    print(f"    4. systemctl --user start ixmati-api.service")
-    print(f"    5. systemctl --user start ixmati-writer@pedidos.service")
-    print(f"    6. curl http://localhost:30000/health")
+    print("  Logs:")
+    print("    journalctl -u ixmati-api -f")
+    print("    journalctl -u ixmati-writer@default -f")
+    print("")
+    print("  Agregar más stores:")
+    print("    vim /etc/ixmati/stores.toml")
+    print("    systemctl enable ixmati-writer@<nuevo-store>")
+    print("    systemctl start ixmati-writer@<nuevo-store>")
     print("")
 
 
 def main() -> None:
-    version = os.environ.get("IXMATI_VERSION", DEFAULT_VERSION)
-    prefix = Path(os.environ.get("IXMATI_PREFIX", "/usr/local"))
-    offline = "--offline" in sys.argv
-    tarball_arg: Optional[str] = None
-    no_systemd = "--no-systemd" in sys.argv
-    no_mosquitto = "--no-mosquitto" in sys.argv
-
-    for i, arg in enumerate(sys.argv[1:], 1):
-        if arg == "--version" and i + 1 <= len(sys.argv):
-            version = sys.argv[i + 1]
-        elif arg == "--prefix" and i + 1 <= len(sys.argv):
-            prefix = Path(sys.argv[i + 1])
-        elif arg == "--tarball" and i + 1 <= len(sys.argv):
-            tarball_arg = sys.argv[i + 1]
-
     if os.geteuid() != 0:
-        die("debes ejecutar como root (usa sudo)")
+        die("debes ejecutar como root (sudo)")
+
+    if platform.system() != "Linux":
+        die("Ixmati solo funciona en Linux")
 
     arch = detect_arch()
-    log(f"instalando Ixmati v{version} para linux/{arch}")
+    log(f"Ixmati installer — linux/{arch}")
+    log("")
 
-    with tempfile.TemporaryDirectory() as tmp:
-        tmp_path = Path(tmp)
+    base_dir = find_base_dir()
+    ok(f"directorio de instalación: {base_dir}")
 
-        if offline and tarball_arg:
-            tarball = Path(tarball_arg)
-            if not tarball.exists():
-                die(f"tarball no encontrado: {tarball}")
-            ok(f"modo offline: {tarball}")
-        elif offline:
-            candidates = list(Path(".").glob("ixmati-*.tar.gz"))
-            if not candidates:
-                die("modo offline sin --tarball y sin .tar.gz en directorio actual")
-            tarball = candidates[0]
-            ok(f"modo offline: {tarball}")
-        else:
-            tarball = download_tarball(version, arch, tmp_path)
-            verify_checksum(tarball, version)
-
-        extract_binaries(tarball, prefix)
-        create_user()
-        create_directories()
-
-        if not no_mosquitto:
-            install_mosquitto()
-
-        if not no_systemd:
-            install_quadlet_units()
-            enable_services()
-
-        show_next_steps(prefix)
+    install_mosquitto()
+    install_binaries(base_dir)
+    install_config(base_dir)
+    configure_mosquitto(base_dir)
+    install_systemd_units(base_dir)
+    create_user()
+    create_directories()
+    start_services()
+    show_final_message()
 
 
 if __name__ == "__main__":

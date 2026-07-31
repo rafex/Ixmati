@@ -3,11 +3,7 @@
 use ixmati_cache::CacheBackend;
 use ixmati_core::{EventEnvelope, ProjectionConfig};
 
-pub fn process_m<B: CacheBackend>(
-    cache: &B,
-    projection: &ProjectionConfig,
-    event: &EventEnvelope,
-) {
+pub fn process_m<B: CacheBackend>(cache: &B, projection: &ProjectionConfig, event: &EventEnvelope) {
     // Pattern M copies specified fields from the event payload into the projection.
     // The projection is stored in cache keyed by the target_key from the event.
     let copy = match &projection.copy_fields {
@@ -20,9 +16,7 @@ pub fn process_m<B: CacheBackend>(
 
     // Copy only the specified fields from each source store
     for field_def in copy {
-        if field_def.source_store == event.store
-            || field_def.source_entity == event.entity
-        {
+        if field_def.source_store == event.store || field_def.source_entity == event.entity {
             for field_name in &field_def.fields {
                 if let Some(value) = event.payload.get(field_name) {
                     projection_payload.insert(field_name.clone(), value.clone());

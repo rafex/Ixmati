@@ -24,10 +24,7 @@ impl MqttConsumer {
         let tx_clone = tx.clone();
 
         tokio::spawn(async move {
-            client
-                .subscribe(&topic_owned, QoS::AtLeastOnce)
-                .await
-                .ok();
+            client.subscribe(&topic_owned, QoS::AtLeastOnce).await.ok();
 
             loop {
                 match eventloop.poll().await {

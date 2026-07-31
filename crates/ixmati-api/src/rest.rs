@@ -7,7 +7,7 @@ use axum::{
     routing::{get, post},
 };
 use ixmati_core::{AckResponse, WriteEnvelope};
-use rumqttc::{AsyncClient, EventLoop, MqttOptions, QoS};
+use rumqttc::{AsyncClient, MqttOptions, QoS};
 use serde::Deserialize;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -24,7 +24,7 @@ impl AppState {
     pub fn new(broker: &str) -> Self {
         let (host, port) = ixmati_core::mqtt::parse_mqtt_broker(broker);
         let (client, mut eventloop) = AsyncClient::new(
-            MqttOptions::new(&format!("api-{}", Uuid::new_v4()), &host, port),
+            MqttOptions::new(format!("api-{}", Uuid::new_v4()), &host, port),
             100,
         );
 
@@ -46,7 +46,7 @@ impl AppState {
     pub fn with_db(broker: &str, db_path: &str) -> Self {
         let (host, port) = ixmati_core::mqtt::parse_mqtt_broker(broker);
         let (client, mut eventloop) = AsyncClient::new(
-            MqttOptions::new(&format!("api-{}", Uuid::new_v4()), &host, port),
+            MqttOptions::new(format!("api-{}", Uuid::new_v4()), &host, port),
             100,
         );
 
@@ -79,7 +79,10 @@ pub fn routes(state: AppState, auth_config: crate::auth::AuthConfig) -> Router {
         ));
 
     let public = Router::new()
-        .route("/writes/{store}/{idempotency_key}", get(write_status_handler))
+        .route(
+            "/writes/{store}/{idempotency_key}",
+            get(write_status_handler),
+        )
         .route("/read", get(read_handler))
         .route("/health", get(health_handler));
 
@@ -181,9 +184,7 @@ async fn read_handler(
     let store = params.store.ok_or_else(|| {
         (
             StatusCode::BAD_REQUEST,
-            Json(ixmati_core::Error::StoreNotFound {
-                store: "".into(),
-            }),
+            Json(ixmati_core::Error::StoreNotFound { store: "".into() }),
         )
     })?;
 
@@ -213,19 +214,16 @@ async fn write_status_handler(
         )
     })?;
 
-    match crate::status::StatusQuery::query(
-        db_path,
-        &params.store,
-        &params.idempotency_key,
-    ) {
+    match crate::status::StatusQuery::query(db_path, &params.store, &params.idempotency_key) {
         Ok(status) => match status {
-            crate::status::WriteStatus::Pending { store, idempotency_key } => {
-                Ok(Json(serde_json::json!({
-                    "status": "PENDING",
-                    "store": store,
-                    "idempotency_key": idempotency_key,
-                })))
-            }
+            crate::status::WriteStatus::Pending {
+                store,
+                idempotency_key,
+            } => Ok(Json(serde_json::json!({
+                "status": "PENDING",
+                "store": store,
+                "idempotency_key": idempotency_key,
+            }))),
             crate::status::WriteStatus::Applied {
                 idempotency_key,
                 store,

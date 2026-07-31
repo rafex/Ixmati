@@ -132,7 +132,11 @@ mod tests {
     #[test]
     fn multi_store_registry_activates_events() {
         let reg = StoreRegistry::new(
-            vec![make_config("pedidos"), make_config("usuarios"), make_config("catalogo")],
+            vec![
+                make_config("pedidos"),
+                make_config("usuarios"),
+                make_config("catalogo"),
+            ],
             Topology::PodPerStore,
         );
 
@@ -160,10 +164,7 @@ mod tests {
 
     #[test]
     fn topics_generation() {
-        let reg = StoreRegistry::new(
-            vec![make_config("pedidos")],
-            Topology::SingleProcess,
-        );
+        let reg = StoreRegistry::new(vec![make_config("pedidos")], Topology::SingleProcess);
 
         assert_eq!(reg.topics_cmd(), vec!["ixmati/cmd/pedidos"]);
         assert_eq!(reg.topics_evt(), vec!["ixmati/evt/pedidos"]);
@@ -184,14 +185,8 @@ mod tests {
 
     #[test]
     fn topology_is_stored() {
-        let reg_sp = StoreRegistry::new(
-            vec![make_config("pedidos")],
-            Topology::SingleProcess,
-        );
-        let reg_pp = StoreRegistry::new(
-            vec![make_config("pedidos")],
-            Topology::PodPerStore,
-        );
+        let reg_sp = StoreRegistry::new(vec![make_config("pedidos")], Topology::SingleProcess);
+        let reg_pp = StoreRegistry::new(vec![make_config("pedidos")], Topology::PodPerStore);
 
         assert_eq!(reg_sp.topology(), Topology::SingleProcess);
         assert_eq!(reg_pp.topology(), Topology::PodPerStore);

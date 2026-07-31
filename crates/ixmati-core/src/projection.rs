@@ -174,10 +174,7 @@ mod tests {
 
     #[test]
     fn registry_finds_by_name() {
-        let reg = ProjectionRegistry::new(vec![
-            make_r_projection(),
-            make_m_projection(),
-        ]);
+        let reg = ProjectionRegistry::new(vec![make_r_projection(), make_m_projection()]);
 
         assert_eq!(reg.len(), 2);
         assert!(reg.get("pedidos_con_usuario").is_some());
@@ -187,10 +184,7 @@ mod tests {
 
     #[test]
     fn for_store_filters_correctly() {
-        let reg = ProjectionRegistry::new(vec![
-            make_r_projection(),
-            make_m_projection(),
-        ]);
+        let reg = ProjectionRegistry::new(vec![make_r_projection(), make_m_projection()]);
 
         let pedidos_projs = reg.for_store("pedidos");
         assert_eq!(pedidos_projs.len(), 1);
@@ -202,10 +196,7 @@ mod tests {
 
     #[test]
     fn pattern_r_projections() {
-        let reg = ProjectionRegistry::new(vec![
-            make_r_projection(),
-            make_m_projection(),
-        ]);
+        let reg = ProjectionRegistry::new(vec![make_r_projection(), make_m_projection()]);
 
         let r_projs = reg.pattern_r_projections();
         assert_eq!(r_projs.len(), 1);
@@ -214,10 +205,7 @@ mod tests {
 
     #[test]
     fn pattern_m_projections() {
-        let reg = ProjectionRegistry::new(vec![
-            make_r_projection(),
-            make_m_projection(),
-        ]);
+        let reg = ProjectionRegistry::new(vec![make_r_projection(), make_m_projection()]);
 
         let m_projs = reg.pattern_m_projections();
         assert_eq!(m_projs.len(), 1);
@@ -256,10 +244,7 @@ mod tests {
 
     #[test]
     fn valid_registry_passes_validation() {
-        let reg = ProjectionRegistry::new(vec![
-            make_r_projection(),
-            make_m_projection(),
-        ]);
+        let reg = ProjectionRegistry::new(vec![make_r_projection(), make_m_projection()]);
         assert!(reg.validate().is_ok());
     }
 }

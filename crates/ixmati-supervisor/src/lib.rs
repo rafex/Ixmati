@@ -39,10 +39,7 @@ impl Supervisor {
             );
         }
 
-        Self {
-            registry,
-            writers,
-        }
+        Self { registry, writers }
     }
 
     pub fn store_count(&self) -> usize {
@@ -127,10 +124,7 @@ mod tests {
 
     #[test]
     fn single_store_no_events() {
-        let registry = StoreRegistry::new(
-            vec![make_store("pedidos")],
-            Topology::PodPerStore,
-        );
+        let registry = StoreRegistry::new(vec![make_store("pedidos")], Topology::PodPerStore);
 
         let supervisor = Supervisor::new(registry);
         assert_eq!(supervisor.store_count(), 1);
@@ -140,7 +134,11 @@ mod tests {
     #[test]
     fn multi_store_activates_events() {
         let registry = StoreRegistry::new(
-            vec![make_store("pedidos"), make_store("usuarios"), make_store("catalogo")],
+            vec![
+                make_store("pedidos"),
+                make_store("usuarios"),
+                make_store("catalogo"),
+            ],
             Topology::PodPerStore,
         );
 
@@ -150,10 +148,7 @@ mod tests {
 
     #[test]
     fn writer_status_transitions() {
-        let registry = StoreRegistry::new(
-            vec![make_store("pedidos")],
-            Topology::SingleProcess,
-        );
+        let registry = StoreRegistry::new(vec![make_store("pedidos")], Topology::SingleProcess);
 
         let mut supervisor = Supervisor::new(registry);
         assert_eq!(
@@ -188,7 +183,13 @@ mod tests {
         );
 
         let supervisor = Supervisor::new(registry);
-        assert_eq!(supervisor.topics_cmd(), vec!["ixmati/cmd/pedidos", "ixmati/cmd/usuarios"]);
-        assert_eq!(supervisor.topics_evt(), vec!["ixmati/evt/pedidos", "ixmati/evt/usuarios"]);
+        assert_eq!(
+            supervisor.topics_cmd(),
+            vec!["ixmati/cmd/pedidos", "ixmati/cmd/usuarios"]
+        );
+        assert_eq!(
+            supervisor.topics_evt(),
+            vec!["ixmati/evt/pedidos", "ixmati/evt/usuarios"]
+        );
     }
 }

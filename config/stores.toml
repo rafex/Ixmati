@@ -1,0 +1,12 @@
+# Ixmati — stores.toml
+# Configuración por defecto: 1 store llamado "default".
+# Agrega más bloques [[stores]] según necesites.
+
+[[stores]]
+name = "default"
+label = "Default"
+db_path = "/var/lib/ixmati/stores/default.db"
+mqtt_broker = "tcp://localhost:1883"
+mqtt_client_id = "writer-default"
+batch_size = 100
+batch_interval_ms = 50
