@@ -2,46 +2,93 @@
 
 Tablero de tareas activo. Persiste entre sesiones.
 
-## Active — Containers (SPEC-CONTAINERS-0001)
-
-- [ ] `TASK-CONT-0012` — Validación end-to-end contra 192.168.3.175
-
 ## Active — Write Engine (SPEC-WRITE-0001)
 
-- [ ] `TASK-WRITE-0001` — Spike: viabilidad de FlashDB vía FFI en Rust
-- [ ] `TASK-WRITE-0003` — Definir contrato de envelope, topics MQTT y .proto
-- [ ] `TASK-WRITE-0004` — Definir contrato de API REST (OpenAPI)
-- [ ] `TASK-WRITE-0005` — Implementar ixmati-core
-- [ ] `TASK-WRITE-0006` — Implementar ixmati-writer
-- [ ] `TASK-WRITE-0007` — Tests de crash del writer
-- [ ] `TASK-WRITE-0008` — Implementar ixmati-api
-- [ ] `TASK-WRITE-0009` — Implementar modo async y sync
-- [ ] `TASK-WRITE-0010` — Endpoint GET /writes/{store}/{idempotency_key}
-- [ ] `TASK-WRITE-0011` — Implementar ixmati-cache
-- [ ] `TASK-WRITE-0012` — Invalidación/repoblación de cache-aside
-- [ ] `TASK-WRITE-0014` — Configurar Litestream por store
-- [ ] `TASK-WRITE-0015` — Health checks integrados
-- [ ] `TASK-WRITE-0016` — Documentar runbook de producción
-- [ ] `TASK-WRITE-0017` — Store registry + config multi-store
-- [ ] `TASK-WRITE-0018` — Tabla _outbox + publicador transaccional
-- [ ] `TASK-WRITE-0019` — EventEnvelope + bus de eventos
-- [ ] `TASK-WRITE-0020` — ixmati-projector
-- [ ] `TASK-WRITE-0021` — Declaración de proyecciones en config
-- [ ] `TASK-WRITE-0022` — ixmati-reconciler
-- [ ] `TASK-WRITE-0023` — ATTACH read-only
-- [ ] `TASK-WRITE-0024` — ixmati-supervisor + K8s manifests
-- [ ] `TASK-WRITE-0025` — Tests de consistencia eventual
+- [x] `TASK-WRITE-0001` — Spike: viabilidad de FlashDB vía FFI en Rust
+- [x] `TASK-WRITE-0003` — Definir contrato de envelope, topics MQTT y .proto
+- [x] `TASK-WRITE-0004` — Definir contrato de API REST (OpenAPI)
+- [x] `TASK-WRITE-0005` — Implementar ixmati-core
+- [x] `TASK-WRITE-0006` — Implementar ixmati-writer
+- [x] `TASK-WRITE-0007` — Tests de crash del writer
+- [x] `TASK-WRITE-0008` — Implementar ixmati-api
+- [x] `TASK-WRITE-0009` — Implementar modo async y sync
+- [x] `TASK-WRITE-0010` — Endpoint GET /writes/{store}/{idempotency_key}
+- [x] `TASK-WRITE-0011` — Implementar ixmati-cache
+- [x] `TASK-WRITE-0012` — Invalidación/repoblación de cache-aside
+- [x] `TASK-WRITE-0014` — Configurar Litestream por store
+- [x] `TASK-WRITE-0015` — Health checks integrados
+- [x] `TASK-WRITE-0016` — Documentar runbook de producción
+- [x] `TASK-WRITE-0017` — Store registry + config multi-store
+- [x] `TASK-WRITE-0018` — Tabla _outbox + publicador transaccional
+- [x] `TASK-WRITE-0019` — EventEnvelope + bus de eventos
+- [x] `TASK-WRITE-0020` — ixmati-projector
+- [x] `TASK-WRITE-0021` — Declaración de proyecciones en config
+- [x] `TASK-WRITE-0022` — ixmati-reconciler
+- [x] `TASK-WRITE-0023` — ATTACH read-only
+- [x] `TASK-WRITE-0024` — ixmati-supervisor + K8s manifests
+- [x] `TASK-WRITE-0025` — Tests de consistencia eventual
+
+## Active — Containers (SPEC-CONTAINERS-0001)
+
+- [x] `TASK-CONT-0001` — .containerignore
+- [x] `TASK-CONT-0002` — Builder compartido cargo-chef
+- [x] `TASK-CONT-0003` — Containerfiles de servicios
+- [x] `TASK-CONT-0004` — Imagen Mosquitto
+- [x] `TASK-CONT-0005` — Imagen Litestream
+- [x] `TASK-CONT-0006` — Compose dev + test
+- [x] `TASK-CONT-0007` — Compose single-store + multi-store
+- [x] `TASK-CONT-0008` — Quadlet units
+- [x] `TASK-CONT-0009` — Helpers y make/just
+- [x] `TASK-CONT-0010` — Migrar referencias docker → podman
+- [x] `TASK-CONT-0011` — CI con podman
+- [x] `TASK-CONT-0012` — Validación end-to-end
 
 ## Active — Tooling (SPEC-TOOL-0001)
 
-- [ ] `TASK-TOOL-0013` — Rellenar spec-native/pipelines/CI.md y CD.md
+- [x] `TASK-TOOL-0001` — helpers/python con uv
+- [x] `TASK-TOOL-0002` — helpers/shell/lib.sh + preflight.sh
+- [x] `TASK-TOOL-0003` — lint_tool_boundary.py
+- [x] `TASK-TOOL-0004` — Makefile thin + helpers/make/*.mk
+- [x] `TASK-TOOL-0005` — Justfile thin + helpers/just/*.just
+- [x] `TASK-TOOL-0006` — .githooks/ + just hooks-install
+- [x] `TASK-TOOL-0007` — Workspace Cargo con 7 crates
+- [x] `TASK-TOOL-0008` — tests/integration como crate miembro
+- [x] `TASK-TOOL-0009` — tests/smoke pytest + fixtures
+- [x] `TASK-TOOL-0010` — Ratchet de cobertura
+- [x] `TASK-TOOL-0011` — Validadores
+- [x] `TASK-TOOL-0012` — docs/ con mdBook
+- [x] `TASK-TOOL-0013` — Pipelines CI.md + CD.md
+- [x] `TASK-TOOL-0014` — GitHub Actions CI
+
+## Active — Authentication (SPEC-AUTH-0001)
+
+- [x] `TASK-AUTH-0001` — Definir modelo de sesión
+- [x] `TASK-AUTH-0002` — Implementar middleware de autorización
+- [x] `TASK-AUTH-0003` — Documentar setup operativo
+
+## Pendiente (post-v0.1.0)
+
+- [x] Fijar versiones de dependencias wildcard
+- [x] Crear K8s manifests (Deployment, PVC, Litestream sidecar)
+- [x] Agregar métricas Prometheus (endpoint + counters/histograms/gauges)
+- [x] `cargo audit` en CI pipeline
+- [x] Implementar FlashDB backend en `ixmati-cache` (compila con --features flashdb)
+- [x] Backpressure (rechazar comandos con cola llena — sliding window)
+- [x] Alertas operativas (Prometheus AlertManager rules)
+- [x] Benchmarks de throughput multi-store
+- [x] Clippy warnings corregidos
+- [x] Writer standby con failover automático
+- [x] CDC para suscriptores externos vía MQTT
+- [x] Smoke tests implementados (5 tests reales contra podman compose)
+- [x] Compose smoke.yaml (stack completo para tests)
+- [x] Fix env vars en single-store.yaml (MQTT_BROKER)
+- [x] API lee SQLITE_PATH como env var fallback
+- [x] Receta `just smoke` (levantar + test + teardown)
+- [ ] Sharding interno de un store
+- [ ] Dashboard web de operación
+- [ ] Migración de stores (renombrar, merge, split)
 
 ## Cancelled / Replaced
 
 - [x] `TASK-WRITE-0002` — Spike comparativa Opción A vs B (cerrada por diseño)
 - [x] `TASK-WRITE-0013` — ixmati-resync (reemplazada por reconciler fan-in)
-
-## Done
-
-- [x] `TASK-TOOL-0001`..`TASK-TOOL-0012`, `TASK-TOOL-0014` — Scaffolding tooling
-- [x] `TASK-CONT-0001`..`TASK-CONT-0011` — Scaffolding containers

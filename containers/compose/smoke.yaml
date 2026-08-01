@@ -1,0 +1,87 @@
+# containers/compose/smoke.yaml — stack completo para smoke tests (rango Temp)
+name: ixmati-smoke
+
+services:
+  mosquitto:
+    image: localhost/ixmati-mosquitto:local
+    build:
+      context: ../..
+      dockerfile: containers/mosquitto/Containerfile
+    ports:
+      - "30310:30200"
+    volumes:
+      - mosquitto_data:/mosquitto/data:U
+    healthcheck:
+      test: ["CMD", "mosquitto_sub", "-t", "$$SYS/broker/version", "-C", "1", "-W", "2"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  api:
+    image: localhost/ixmati-api:local
+    build:
+      context: ../..
+      dockerfile: containers/api/Containerfile
+    ports:
+      - "30311:30000"
+    environment:
+      - MQTT_BROKER=tcp://mosquitto:30200
+      - API_HOST=0.0.0.0
+      - API_PORT=30000
+      - IXMATI_API_KEYS=smoke-test-key
+      - RUST_LOG=ixmati_api=debug
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:30000/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 3s
+
+  writer:
+    image: localhost/ixmati-writer:local
+    build:
+      context: ../..
+      dockerfile: containers/writer/Containerfile
+    environment:
+      - MQTT_BROKER=tcp://mosquitto:30200
+      - STORE_NAME=smoke
+      - SQLITE_PATH=/data/smoke.db
+      - RUST_LOG=ixmati_writer=debug
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+    volumes:
+      - store_data:/data:U
+
+  projector:
+    image: localhost/ixmati-projector:local
+    build:
+      context: ../..
+      dockerfile: containers/projector/Containerfile
+    environment:
+      - MQTT_BROKER=tcp://mosquitto:30200
+      - RUST_LOG=ixmati_projector=debug
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+
+  litestream:
+    image: localhost/ixmati-litestream:local
+    build:
+      context: ../..
+      dockerfile: containers/litestream/Containerfile
+    environment:
+      - LITESTREAM_DB_PATH=/data/smoke.db
+    depends_on:
+      writer:
+        condition: service_started
+    volumes:
+      - store_data:/data:U
+
+volumes:
+  mosquitto_data:
+  store_data:

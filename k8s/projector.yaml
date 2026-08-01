@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ixmati-projector
+  namespace: ixmati
+  labels:
+    app: ixmati-projector
+    app.kubernetes.io/part-of: ixmati
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ixmati-projector
+  template:
+    metadata:
+      labels:
+        app: ixmati-projector
+    spec:
+      containers:
+        - name: projector
+          image: ghcr.io/rafex/ixmati-projector:latest
+          env:
+            - name: MQTT_BROKER
+              value: "tcp://mosquitto:1883"
+            - name: PROJECTIONS_CONFIG
+              value: /etc/ixmati/projections.toml
+            - name: RUST_LOG
+              value: "ixmati_projector=info"
+          volumeMounts:
+            - name: projections-config
+              mountPath: /etc/ixmati/projections.toml
+              subPath: projections.toml
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"
+              cpu: "200m"
+      volumes:
+        - name: projections-config
+          configMap:
+            name: ixmati-config
+            items:
+              - key: projections.toml
+                path: projections.toml

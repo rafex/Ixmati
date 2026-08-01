@@ -18,6 +18,7 @@ pub struct AppState {
     mqtt_broker: String,
     db_path: Option<String>,
     mqtt_client: Arc<Mutex<Option<AsyncClient>>>,
+    throttle: Arc<Mutex<crate::throttle::Throttle>>,
 }
 
 impl AppState {
@@ -36,10 +37,23 @@ impl AppState {
             }
         });
 
+        let max_writes: usize = std::env::var("MAX_WRITES_PER_WINDOW")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(1000);
+        let window_secs: u64 = std::env::var("THROTTLE_WINDOW_SECS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(1);
+
         Self {
             mqtt_broker: broker.to_string(),
             db_path: None,
             mqtt_client: Arc::new(Mutex::new(Some(client))),
+            throttle: Arc::new(Mutex::new(crate::throttle::Throttle::new(
+                max_writes,
+                window_secs,
+            ))),
         }
     }
 
@@ -58,10 +72,23 @@ impl AppState {
             }
         });
 
+        let max_writes: usize = std::env::var("MAX_WRITES_PER_WINDOW")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(1000);
+        let window_secs: u64 = std::env::var("THROTTLE_WINDOW_SECS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(1);
+
         Self {
             mqtt_broker: broker.to_string(),
             db_path: Some(db_path.to_string()),
             mqtt_client: Arc::new(Mutex::new(Some(client))),
+            throttle: Arc::new(Mutex::new(crate::throttle::Throttle::new(
+                max_writes,
+                window_secs,
+            ))),
         }
     }
 
@@ -84,7 +111,8 @@ pub fn routes(state: AppState, auth_config: crate::auth::AuthConfig) -> Router {
             get(write_status_handler),
         )
         .route("/read", get(read_handler))
-        .route("/health", get(health_handler));
+        .route("/health", get(health_handler))
+        .route("/metrics", get(metrics_handler));
 
     Router::new()
         .merge(protected)
@@ -96,6 +124,26 @@ async fn write_handler(
     State(state): State<AppState>,
     Json(envelope): Json<WriteEnvelope>,
 ) -> Result<Json<AckResponse>, (StatusCode, Json<ixmati_core::Error>)> {
+    {
+        let mut throttle = state.throttle.lock().await;
+        if !throttle.allow(&envelope.store) {
+            let depth = throttle.depth(&envelope.store);
+            crate::metrics::QUEUE_DEPTH
+                .with_label_values(&[&envelope.store])
+                .set(depth as i64);
+            return Err((
+                StatusCode::TOO_MANY_REQUESTS,
+                Json(ixmati_core::Error::QueueFull {
+                    store: envelope.store.clone(),
+                }),
+            ));
+        }
+        let depth = throttle.depth(&envelope.store);
+        crate::metrics::QUEUE_DEPTH
+            .with_label_values(&[&envelope.store])
+            .set(depth as i64);
+    }
+
     let idempotency_key = if envelope.idempotency_key.is_empty() {
         Uuid::new_v4().to_string()
     } else {
@@ -261,4 +309,9 @@ async fn health_handler(State(state): State<AppState>) -> Json<serde_json::Value
 
     let status = checker.check();
     Json(serde_json::to_value(status).unwrap_or_default())
+}
+
+async fn metrics_handler() -> (StatusCode, String) {
+    let encoded = crate::metrics::encode_metrics();
+    (StatusCode::OK, encoded)
 }

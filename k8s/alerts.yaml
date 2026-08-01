@@ -1,0 +1,82 @@
+groups:
+  - name: ixmati
+    rules:
+      - alert: IxmatiWriterDown
+        expr: up{job="ixmati-writer"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: core
+        annotations:
+          summary: "Writer {{ $labels.store }} is down"
+          description: "Writer for store {{ $labels.store }} has been down for more than 1 minute."
+
+      - alert: IxmatiQueueGrowing
+        expr: rate(ixmati_queue_depth[5m]) > 100
+        for: 5m
+        labels:
+          severity: warning
+          team: core
+        annotations:
+          summary: "Queue for {{ $labels.store }} is growing"
+          description: "Queue depth for store {{ $labels.store }} is growing at {{ $value }}/s. Check writer throughput."
+
+      - alert: IxmatiOutboxStalled
+        expr: ixmati_outbox_size > 1000
+        for: 5m
+        labels:
+          severity: warning
+          team: core
+        annotations:
+          summary: "Outbox stalled for {{ $labels.store }}"
+          description: "Outbox for store {{ $labels.store }} has {{ $value }} unpublished events. Check event publisher."
+
+      - alert: IxmatiHighWriteLatency
+        expr: histogram_quantile(0.99, rate(ixmati_write_latency_seconds_bucket[5m])) > 1
+        for: 5m
+        labels:
+          severity: warning
+          team: core
+        annotations:
+          summary: "High write latency (p99 > 1s) for {{ $labels.store }}"
+          description: "p99 write latency for store {{ $labels.store }} is {{ $value }}s."
+
+      - alert: IxmatiWriteErrorRate
+        expr: rate(ixmati_write_errors_total[5m]) > 0.01
+        for: 5m
+        labels:
+          severity: critical
+          team: core
+        annotations:
+          summary: "Elevated write error rate for {{ $labels.store }}"
+          description: "Write error rate for store {{ $labels.store }} is {{ $value }}/s."
+
+      - alert: IxmatiProjectionLag
+        expr: ixmati_projection_lag_events > 500
+        for: 10m
+        labels:
+          severity: warning
+          team: core
+        annotations:
+          summary: "Projection {{ $labels.projection }} lagging behind"
+          description: "Projection {{ $labels.projection }} is {{ $value }} events behind for store {{ $labels.store }}."
+
+      - alert: IxmatiHighCacheMissRate
+        expr: rate(ixmati_cache_misses_total[5m]) / (rate(ixmati_cache_hits_total[5m]) + rate(ixmati_cache_misses_total[5m])) > 0.5
+        for: 10m
+        labels:
+          severity: info
+          team: core
+        annotations:
+          summary: "High cache miss rate for {{ $labels.store }}"
+          description: "Cache miss rate for {{ $labels.store }} (ns={{ $labels.namespace }}) is above 50%."
+
+      - alert: IxmatiApiThrottling
+        expr: rate(ixmati_write_requests_total{status="rejected"}[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+          team: core
+        annotations:
+          summary: "API is throttling writes for {{ $labels.store }}"
+          description: "API is rejecting writes for store {{ $labels.store }} due to backpressure."

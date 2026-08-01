@@ -1,0 +1,74 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: ixmati-api
+  namespace: ixmati
+  labels:
+    app: ixmati-api
+    app.kubernetes.io/part-of: ixmati
+spec:
+  selector:
+    app: ixmati-api
+  ports:
+    - name: http
+      port: 30000
+      targetPort: 30000
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ixmati-api
+  namespace: ixmati
+  labels:
+    app: ixmati-api
+    app.kubernetes.io/part-of: ixmati
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ixmati-api
+  template:
+    metadata:
+      labels:
+        app: ixmati-api
+    spec:
+      containers:
+        - name: api
+          image: ghcr.io/rafex/ixmati-api:latest
+          ports:
+            - containerPort: 30000
+              name: http
+              protocol: TCP
+          env:
+            - name: API_HOST
+              value: "0.0.0.0"
+            - name: API_PORT
+              value: "30000"
+            - name: MQTT_BROKER
+              value: "tcp://mosquitto:1883"
+            - name: MAX_WRITES_PER_WINDOW
+              value: "1000"
+            - name: THROTTLE_WINDOW_SECS
+              value: "1"
+            - name: RUST_LOG
+              value: "ixmati_api=info"
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"
+              cpu: "200m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 30000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 30000
+            initialDelaySeconds: 2
+            periodSeconds: 5

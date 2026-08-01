@@ -1,9 +1,11 @@
 pub mod batcher;
 pub mod cache_sync;
+pub mod cdc;
 pub mod consumer;
 pub mod dedup;
 pub mod event_publisher;
 pub mod outbox;
+pub mod standby;
 pub mod write_engine;
 
 use ixmati_core::{EventEnvelope, StoreConfig, WriteEnvelope};

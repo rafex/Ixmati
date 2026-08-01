@@ -27,6 +27,11 @@ jobs:
       - name: Integration tests
         run: cargo test -p ixmati-integration
 
+      - name: Security audit (dependencies)
+        run: |
+          cargo install cargo-audit --locked
+          cargo audit
+
       - name: Tool boundary check
         run: |
           pip install uv

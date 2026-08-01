@@ -18,6 +18,19 @@ test-smoke filter="":
     @echo "[test] smoke..."
     @cd {{repo_root}} && uv run pytest tests/smoke/ -v {{filter}}
 
+# levanta compose smoke + ejecuta pytest + teardown (requiere podman-tunnel-up)
+[group('test')]
+smoke filter="":
+    @echo "[smoke] levantando stack smoke.yaml..."
+    @just podman-tunnel-status
+    @COMPOSE_FILE=smoke.yaml make containers-up
+    @echo "[smoke] esperando servicios (15s)..."
+    @sleep 15
+    @echo "[smoke] ejecutando tests..."
+    -@cd {{repo_root}} && uv run pytest tests/smoke/ -v {{filter}} --tb=short
+    @echo "[smoke] derribando stack..."
+    @COMPOSE_FILE=smoke.yaml make containers-down
+
 # ejecuta todos los tests
 [group('test')]
 test filter="":

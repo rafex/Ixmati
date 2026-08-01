@@ -1,0 +1,53 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ixmati-config
+  namespace: ixmati
+  labels:
+    app.kubernetes.io/part-of: ixmati
+data:
+  stores.toml: |
+    [[stores]]
+    name = "default"
+    label = "Default"
+    db_path = "/data/default.db"
+    mqtt_broker = "tcp://mosquitto:1883"
+    mqtt_client_id = "writer-default"
+    batch_size = 100
+    batch_interval_ms = 50
+
+    [[stores]]
+    name = "pedidos"
+    label = "Pedidos"
+    db_path = "/data/pedidos.db"
+    mqtt_broker = "tcp://mosquitto:1883"
+    mqtt_client_id = "writer-pedidos"
+    batch_size = 100
+    batch_interval_ms = 50
+
+    [[stores]]
+    name = "usuarios"
+    label = "Usuarios"
+    db_path = "/data/usuarios.db"
+    mqtt_broker = "tcp://mosquitto:1883"
+    mqtt_client_id = "writer-usuarios"
+    batch_size = 100
+    batch_interval_ms = 50
+
+  projections.toml: |
+    # Ejemplo: proyecciones declaradas en config
+    # [[projections]]
+    # name = "pedidos_activos"
+    # stores = ["pedidos"]
+    # pattern = "m"
+    # fields = ["id", "estado", "total"]
+    # key_dest = "p:pedidos_activos:{id}"
+
+  mosquitto.conf: |
+    listener 1883 0.0.0.0
+    allow_anonymous true
+    persistence true
+    persistence_location /mosquitto/data
+    max_queued_messages 100000
+    max_inflight_messages 1000
+    message_size_limit 1048576

@@ -10,7 +10,9 @@ async fn main() -> std::io::Result<()> {
         .json()
         .init();
 
-    let db_path = std::env::args().nth(1);
+    let db_path = std::env::args()
+        .nth(1)
+        .or_else(|| std::env::var("SQLITE_PATH").ok());
 
     let config = ApiConfig {
         host: std::env::var("API_HOST").unwrap_or_else(|_| "127.0.0.1".into()),

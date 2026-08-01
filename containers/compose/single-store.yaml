@@ -27,9 +27,11 @@ services:
       - "30000:30000"
       - "30100:30100"
     environment:
-      - MQTT_HOST=mosquitto
-      - MQTT_PORT=30200
-      - STORES_CONFIG=/config/stores.toml
+      - MQTT_BROKER=tcp://mosquitto:30200
+      - API_HOST=0.0.0.0
+      - API_PORT=30000
+      - IXMATI_API_KEYS=ix-default-key
+      - RUST_LOG=ixmati_api=info
     depends_on:
       mosquitto:
         condition: service_healthy
@@ -44,16 +46,15 @@ services:
       context: ../..
       dockerfile: containers/writer/Containerfile
     environment:
-      - MQTT_HOST=mosquitto
-      - MQTT_PORT=30200
+      - MQTT_BROKER=tcp://mosquitto:30200
       - STORE_NAME=default
       - SQLITE_PATH=/data/default.db
+      - RUST_LOG=ixmati_writer=info
     depends_on:
       mosquitto:
         condition: service_healthy
     volumes:
       - store_data:/data:U
-      - cache_data:/cache:U
 
     deploy:
       replicas: 1
@@ -64,7 +65,7 @@ services:
       context: ../..
       dockerfile: containers/litestream/Containerfile
     environment:
-      - LITESTREAM_STORE_NAME=default
+      - LITESTREAM_DB_PATH=/data/default.db
     depends_on:
       - writer
     volumes:
@@ -76,8 +77,8 @@ services:
       context: ../..
       dockerfile: containers/projector/Containerfile
     environment:
-      - MQTT_HOST=mosquitto
-      - MQTT_PORT=30200
+      - MQTT_BROKER=tcp://mosquitto:30200
+      - RUST_LOG=ixmati_projector=info
     depends_on:
       mosquitto:
         condition: service_healthy

@@ -1,0 +1,76 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: ixmati-writer
+  namespace: ixmati
+  labels:
+    app: ixmati-writer
+    app.kubernetes.io/part-of: ixmati
+spec:
+  serviceName: ixmati-writer
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ixmati-writer
+  template:
+    metadata:
+      labels:
+        app: ixmati-writer
+    spec:
+      containers:
+        - name: writer
+          image: ghcr.io/rafex/ixmati-writer:latest
+          env:
+            - name: MQTT_BROKER
+              value: "tcp://mosquitto:1883"
+            - name: STORE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.labels['apps.kubernetes.io/store']
+            - name: SQLITE_PATH
+              value: /data/store.db
+            - name: BATCH_SIZE
+              value: "100"
+            - name: BATCH_INTERVAL_MS
+              value: "50"
+            - name: RUST_LOG
+              value: "ixmati_writer=info"
+          volumeMounts:
+            - name: store-data
+              mountPath: /data
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
+        - name: litestream
+          image: ghcr.io/rafex/ixmati-litestream:latest
+          env:
+            - name: LITESTREAM_DB_PATH
+              value: /data/store.db
+            - name: LITESTREAM_REPLICA_URL
+              valueFrom:
+                secretKeyRef:
+                  name: litestream-credentials
+                  key: replica-url
+            - name: LITESTREAM_REPLICA_URL_2
+              valueFrom:
+                secretKeyRef:
+                  name: litestream-credentials
+                  key: replica-url-2
+          volumeMounts:
+            - name: store-data
+              mountPath: /data
+  volumeClaimTemplates:
+    - metadata:
+        name: store-data
+        labels:
+          app.kubernetes.io/part-of: ixmati
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 10Gi

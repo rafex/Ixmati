@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ixmati-supervisor
+  namespace: ixmati
+  labels:
+    app: ixmati-supervisor
+    app.kubernetes.io/part-of: ixmati
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ixmati-supervisor
+  template:
+    metadata:
+      labels:
+        app: ixmati-supervisor
+    spec:
+      containers:
+        - name: supervisor
+          image: ghcr.io/rafex/ixmati-supervisor:latest
+          env:
+            - name: STORES_CONFIG
+              value: /etc/ixmati/stores.toml
+            - name: MQTT_BROKER
+              value: "tcp://mosquitto:1883"
+            - name: TOPOLOGY
+              value: "single-process"
+            - name: RUST_LOG
+              value: "ixmati_supervisor=info"
+          volumeMounts:
+            - name: stores-config
+              mountPath: /etc/ixmati/stores.toml
+              subPath: stores.toml
+          resources:
+            requests:
+              memory: "32Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"
+              cpu: "200m"
+      volumes:
+        - name: stores-config
+          configMap:
+            name: ixmati-config
+            items:
+              - key: stores.toml
+                path: stores.toml

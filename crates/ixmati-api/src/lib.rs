@@ -1,7 +1,9 @@
 pub mod auth;
 pub mod health;
+pub mod metrics;
 pub mod rest;
 pub mod status;
+pub mod throttle;
 
 use axum::Router;
 use std::net::SocketAddr;
