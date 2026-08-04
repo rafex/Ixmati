@@ -1,0 +1,122 @@
+{
+  "1. Health check": {
+    "status": "OK",
+    "elapsed_ms": 362.35,
+    "detail": "{'components': [{'detail': 'running', 'name': 'api', 'status': 'OK'}, {'detail': 'connected to /var/"
+  },
+  "2. Write ACCEPTED": {
+    "status": "OK",
+    "elapsed_ms": 38.06,
+    "detail": "{'status': 'ACCEPTED', 'store': 'default', 'idempotency_key': 'bb5f73f1-6b4f-4d58-b153-bae038272e2e'"
+  },
+  "3. Write COMMITTED": {
+    "status": "OK",
+    "elapsed_ms": 105.94,
+    "detail": "{'status': 'ACCEPTED', 'store': 'default', 'idempotency_key': '242f3cfe-8070-434b-9a3f-a9329a93de0e'"
+  },
+  "4. Status query": {
+    "status": "OK",
+    "elapsed_ms": 39.9,
+    "detail": "{'applied_at': '2026-08-04 20:30:59', 'entity': 'test', 'idempotency_key': 'bb5f73f1-6b4f-4d58-b153-"
+  },
+  "5. Read endpoint": {
+    "status": "OK",
+    "elapsed_ms": 199.95,
+    "detail": "{'found': False, 'message': 'cache-aside not yet implemented', 'store': 'default'}"
+  },
+  "6. Metrics Prometheus": {
+    "status": "OK",
+    "elapsed_ms": 16.69,
+    "detail": "1 metricas"
+  },
+  "7. SELECT all": {
+    "status": "OK",
+    "elapsed_ms": 974.48,
+    "detail": "20 rows"
+  },
+  "8. WHERE entity=pedido": {
+    "status": "OK",
+    "elapsed_ms": 600.91,
+    "detail": "8 rows"
+  },
+  "9. JOIN payload+idempotency": {
+    "status": "OK",
+    "elapsed_ms": 571.19,
+    "detail": "3 rows: pedido|ped_1|1|2026-08-04 20:30:11"
+  },
+  "10. JOIN payload+outbox": {
+    "status": "OK",
+    "elapsed_ms": 732.06,
+    "detail": "5 rows: pedido|ped_8|pedido.creado|2026-08-04T20:30:11.740Z|PUBLISHED"
+  },
+  "11. Aggregate GROUP BY": {
+    "status": "OK",
+    "elapsed_ms": 482.95,
+    "detail": "3 groups: pedido|8|1; producto|5|1; usuario|5|1"
+  },
+  "12. ORDER BY LIMIT 8": {
+    "status": "OK",
+    "elapsed_ms": 513.82,
+    "detail": "8 rows"
+  },
+  "13. JSON extract pedidos": {
+    "status": "OK",
+    "elapsed_ms": 463.75,
+    "detail": "8 rows. ped_1|1599.48|entregado"
+  },
+  "13b. JOIN usuarios+pedidos (fk)": {
+    "status": "OK",
+    "elapsed_ms": 464.9,
+    "detail": "8 rows"
+  },
+  "14. Delete via API": {
+    "status": "OK",
+    "elapsed_ms": 24.75,
+    "detail": "{'status': 'ACCEPTED', 'store': 'default', 'idempotency_key': '3bdb3244-9149-4c70-929b-ae36db16d35b'"
+  },
+  "15. Version bump v1->v2": {
+    "status": "OK",
+    "elapsed_ms": 17.97,
+    "detail": "{'status': 'ACCEPTED', 'store': 'default', 'idempotency_key': '53a67bee-92ca-4e9c-9169-7370706956da'"
+  },
+  "16. Delete SQL direct": {
+    "status": "OK",
+    "elapsed_ms": 568.11,
+    "detail": "changes: 1"
+  },
+  "17. Version conflict": {
+    "status": "OK",
+    "elapsed_ms": 19.71,
+    "detail": "version: 2|Laptop Pro 15 v2"
+  },
+  "18. Idempotency 3x same key": {
+    "status": "OK",
+    "elapsed_ms": 663.34,
+    "detail": "registros idempotency: 1"
+  },
+  "19. 50 writes sequential": {
+    "status": "OK",
+    "elapsed_ms": 1207.06,
+    "detail": "50/50 ok, p50=16ms p99=161ms"
+  },
+  "20. 50 writes concurrent": {
+    "status": "OK",
+    "elapsed_ms": 144.07,
+    "detail": "50/50 ok, p50=25ms"
+  },
+  "21. Large payload": {
+    "status": "OK",
+    "elapsed_ms": 14.71,
+    "detail": "4011 bytes, ACCEPTED"
+  },
+  "22. Empty payload": {
+    "status": "OK",
+    "elapsed_ms": 14.71,
+    "detail": "{'status': 'ACCEPTED', 'store': 'default', 'idempotency_key': '96c015e8-5069-4cda-addb-693ad00dd010'"
+  },
+  "23. Store nonexistent": {
+    "status": "OK",
+    "elapsed_ms": 17.53,
+    "detail": "{'status': 'ACCEPTED', 'store': 'nonexistent', 'idempotency_key': '9acc626e-fe37-4cab-852d-7403eb57d"
+  }
+}
