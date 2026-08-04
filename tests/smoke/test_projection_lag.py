@@ -14,7 +14,9 @@ from helpers.python.mqtt_harness import (
 
 @pytest.mark.smoke
 class TestProjectionLag:
-    def test_event_received_within_5s(self, compose_up, api_config, mqtt_config):
+    def test_event_received_within_5s(
+        self, compose_up, api_config, mqtt_config, smoke_store
+    ):
         """El evento se recibe en < 5 segundos tras el write."""
         api = ApiConfig(**api_config)
         mqtt_cfg = MqttConfig(**mqtt_config, client_id="smoke-lag")
@@ -22,12 +24,12 @@ class TestProjectionLag:
 
         t0 = time.monotonic()
         payload = make_write_payload(
-            store="smoke", entity="lag_test", key="l1", version=1
+            store=smoke_store, entity="lag_test", key="l1", version=1
         )
         http_write(api, payload)
 
         events = wait_for_messages(
-            client, "ixmati/evt/smoke/#", expected_count=1, timeout=10
+            client, f"ixmati/evt/{smoke_store}/#", expected_count=1, timeout=10
         )
         elapsed = time.monotonic() - t0
 
@@ -35,7 +37,9 @@ class TestProjectionLag:
         assert elapsed < 10, f"Event took {elapsed:.2f}s (>10s timeout)"
         client.disconnect()
 
-    def test_same_key_idempotent_delivery(self, compose_up, api_config, mqtt_config):
+    def test_same_key_idempotent_delivery(
+        self, compose_up, api_config, mqtt_config, smoke_store
+    ):
         """Misma idempotency_key reusada no duplica comandos."""
         api = ApiConfig(**api_config)
 
@@ -43,7 +47,7 @@ class TestProjectionLag:
         for version in [1, 1, 1]:
             payload = {
                 "op": "upsert",
-                "store": "smoke",
+                "store": smoke_store,
                 "entity": "idem_test",
                 "key": "idem_key",
                 "version": version,

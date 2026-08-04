@@ -16,3 +16,4 @@ target/
 
 # CI/CD — artefactos de build no versionados
 dist/
+__pycache__/

@@ -14,25 +14,29 @@ from helpers.python.mqtt_harness import (
 
 @pytest.mark.smoke
 class TestWriteRead:
-    def test_write_accepted(self, compose_up, api_config, mqtt_config):
+    def test_write_accepted(self, compose_up, api_config, mqtt_config, smoke_store):
         """POST /write devuelve ACCEPTED."""
         api = ApiConfig(**api_config)
-        payload = make_write_payload(store="smoke", entity="item")
+        payload = make_write_payload(store=smoke_store, entity="item")
         result = http_write(api, payload)
 
         assert result.status == "ACCEPTED", f"Expected ACCEPTED, got {result.status}"
-        assert result.store == "smoke"
+        assert result.store == smoke_store
 
-    def test_write_status_applied(self, compose_up, api_config, mqtt_config):
+    def test_write_status_applied(
+        self, compose_up, api_config, mqtt_config, smoke_store
+    ):
         """GET /writes/{store}/{idempotency_key} eventualmente devuelve APPLIED."""
         api = ApiConfig(**api_config)
-        payload = make_write_payload(store="smoke", entity="item", ack_mode="committed")
+        payload = make_write_payload(
+            store=smoke_store, entity="item", ack_mode="committed"
+        )
         result = http_write(api, payload)
 
         status = None
         deadline = time.monotonic() + 10
         while time.monotonic() < deadline:
-            status = http_write_status(api, "smoke", result.idempotency_key)
+            status = http_write_status(api, smoke_store, result.idempotency_key)
             if status and status.get("status") == "APPLIED":
                 break
             time.sleep(0.5)
@@ -40,12 +44,14 @@ class TestWriteRead:
             status = status or {}
             assert False, f"Write not applied after 10s: {status}"
 
-    def test_missing_entity_returns_error(self, compose_up, api_config, mqtt_config):
+    def test_missing_entity_returns_error(
+        self, compose_up, api_config, mqtt_config, smoke_store
+    ):
         """POST /write sin los campos obligatorios devuelve error."""
         api = ApiConfig(**api_config)
         payload = {
             "op": "upsert",
-            "store": "smoke",
+            "store": smoke_store,
             "version": 1,  # sin entity, sin key, sin idempotency_key
             "ack_mode": "accepted",
         }
@@ -55,7 +61,7 @@ class TestWriteRead:
         except RuntimeError as e:
             assert "HTTP" in str(e) or "error" in str(e).lower()
 
-    def test_health_endpoint_ok(self, compose_up, api_config, mqtt_config):
+    def test_health_endpoint_ok(self, compose_up, api_config, mqtt_config, smoke_store):
         """GET /health devuelve status ok."""
         api = ApiConfig(**api_config)
         health = http_health(api)

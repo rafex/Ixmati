@@ -67,8 +67,10 @@ def compose_up(repo_root: Path):
     Si no, intenta gestionar el compose via podman_tunnel.sh.
     """
     if os.environ.get("SMOKE_HOST"):
-        _wait_for_port(SMOKE_HOST, 30310, timeout=30)
-        _wait_for_port(SMOKE_HOST, 30311, timeout=30)
+        mqtt_port = int(os.environ.get("SMOKE_MQTT_PORT", "30310"))
+        api_port = int(os.environ.get("SMOKE_API_PORT", "30311"))
+        _wait_for_port(SMOKE_HOST, mqtt_port, timeout=30)
+        _wait_for_port(SMOKE_HOST, api_port, timeout=30)
         yield
         return
 
@@ -98,12 +100,25 @@ def compose_up(repo_root: Path):
 
 @pytest.fixture
 def mqtt_config():
-    return {"host": SMOKE_HOST, "port": 30310, "qos": 1}
+    return {
+        "host": SMOKE_HOST,
+        "port": int(os.environ.get("SMOKE_MQTT_PORT", "30310")),
+        "qos": 1,
+    }
 
 
 @pytest.fixture
 def api_config():
-    return {"host": SMOKE_HOST, "port": 30311, "key": "smoke-test-key"}
+    return {
+        "host": SMOKE_HOST,
+        "port": int(os.environ.get("SMOKE_API_PORT", "30311")),
+        "key": os.environ.get("SMOKE_API_KEY", "smoke-test-key"),
+    }
+
+
+@pytest.fixture
+def smoke_store():
+    return os.environ.get("SMOKE_STORE", "smoke")
 
 
 def _wait_for_port(host, port, timeout=30):
@@ -111,8 +126,9 @@ def _wait_for_port(host, port, timeout=30):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         try:
-            with socket.create_connection((host, port), timeout=1):
-                return
+            sock = socket.create_connection((host, port), timeout=1)
+            sock.close()
+            return
         except (ConnectionRefusedError, OSError):
             time.sleep(0.5)
     pytest.fail(f"Timeout esperando {host}:{port}")

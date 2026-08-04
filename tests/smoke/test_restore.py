@@ -26,22 +26,26 @@ def _run_sqlite(store: str, sql: str) -> str:
 
 @pytest.mark.smoke
 class TestRestore:
-    def test_sqlite_integrity_after_writes(self, compose_up, api_config, mqtt_config):
+    def test_sqlite_integrity_after_writes(
+        self, compose_up, api_config, mqtt_config, smoke_store
+    ):
         """PRAGMA integrity_check pasa tras writes."""
         api = ApiConfig(**api_config)
 
         for i in range(3):
             payload = make_write_payload(
-                store="smoke", entity="integrity", key=f"i_{i}", version=1
+                store=smoke_store, entity="integrity", key=f"i_{i}", version=1
             )
             http_write(api, payload)
 
         time.sleep(2)
 
-        output = _run_sqlite("smoke", "PRAGMA integrity_check;")
+        output = _run_sqlite(smoke_store, "PRAGMA integrity_check;")
         assert "ok" in output.lower(), f"Integrity check failed: {output}"
 
-    def test_journal_mode_is_wal(self, compose_up, api_config, mqtt_config):
+    def test_journal_mode_is_wal(
+        self, compose_up, api_config, mqtt_config, smoke_store
+    ):
         """El journal_mode de SQLite debe ser WAL."""
-        output = _run_sqlite("smoke", "PRAGMA journal_mode;")
+        output = _run_sqlite(smoke_store, "PRAGMA journal_mode;")
         assert output == "wal", f"Expected WAL, got: {output}"
