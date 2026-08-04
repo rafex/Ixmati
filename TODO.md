@@ -43,6 +43,14 @@ Tablero de tareas activo. Persiste entre sesiones.
 - [x] `TASK-CONT-0011` — CI con podman
 - [x] `TASK-CONT-0012` — Validación end-to-end
 
+## Active — Smoke Tests (SPEC-SMOKE-0001)
+
+- [x] `TASK-SMOKE-0001` — Corregir bugs de infraestructura (build, network, healthcheck)
+- [ ] `TASK-SMOKE-0002` — Ejecutar 12 tests E2E restantes y verificar resultados
+- [ ] `TASK-SMOKE-0003` — Extender podman_tunnel.sh con port forwards automáticos
+- [ ] `TASK-SMOKE-0004` — Registrar pytest.mark.smoke en pyproject.toml
+- [ ] `TASK-SMOKE-0005` — Registrar decisiones (DEC-0025, DEC-0026) en DECISIONS.md
+
 ## Active — Tooling (SPEC-TOOL-0001)
 
 - [x] `TASK-TOOL-0001` — helpers/python con uv

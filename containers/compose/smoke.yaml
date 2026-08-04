@@ -5,14 +5,14 @@ services:
   mosquitto:
     image: localhost/ixmati-mosquitto:local
     build:
-      context: ../..
-      dockerfile: containers/mosquitto/Containerfile
+      context: ../mosquitto
+      dockerfile: Containerfile
     ports:
       - "30310:30200"
     volumes:
       - mosquitto_data:/mosquitto/data:U
     healthcheck:
-      test: ["CMD", "mosquitto_sub", "-t", "$$SYS/broker/version", "-C", "1", "-W", "2"]
+      test: ["CMD", "mosquitto_pub", "-h", "127.0.0.1", "-p", "30200", "-t", "health", "-m", "1", "-q", "0"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -72,8 +72,8 @@ services:
   litestream:
     image: localhost/ixmati-litestream:local
     build:
-      context: ../..
-      dockerfile: containers/litestream/Containerfile
+      context: ../litestream
+      dockerfile: Containerfile
     environment:
       - LITESTREAM_DB_PATH=/data/smoke.db
     depends_on:

@@ -12,6 +12,8 @@ TEMP_DIR.mkdir(parents=True, exist_ok=True)
 
 def test_db_creation():
     db = TEMP_DIR / "smoke.db"
+    if db.exists():
+        db.unlink()
     conn = sqlite3.connect(str(db))
     conn.execute("PRAGMA journal_mode=WAL;")
     conn.execute("""

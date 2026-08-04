@@ -1,0 +1,14 @@
+target/
+.git/
+.venv/
+__pycache__/
+*.pyc
+node_modules/
+dist/
+*.db
+*.db-wal
+*.db-shm
+.idea/
+.vscode/
+.DS_Store
+*.log

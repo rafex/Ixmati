@@ -1,5 +1,7 @@
 """Fixtures compartidos para smoke tests contra podman compose."""
 
+import os
+import re
 import subprocess
 import time
 from pathlib import Path
@@ -7,6 +9,24 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 COMPOSE_FILE = REPO_ROOT / "containers" / "compose" / "smoke.yaml"
+TUNNEL_SCRIPT = REPO_ROOT / "helpers" / "shell" / "podman_tunnel.sh"
+
+
+def _resolve_smoke_host() -> str:
+    host = os.environ.get("SMOKE_HOST", "")
+    if host:
+        return host
+    try:
+        text = TUNNEL_SCRIPT.read_text()
+        m = re.search(r'SSH_HOST="([^"]*@)?([^"]+)"', text)
+        if m:
+            return m.group(2)
+    except Exception:
+        pass
+    return "localhost"
+
+
+SMOKE_HOST = _resolve_smoke_host()
 
 
 @pytest.fixture(scope="session")
@@ -26,12 +46,12 @@ def compose_up(repo_root: Path):
         pytest.skip(f"Podman tunnel inactivo: {result.stdout.strip()}. Ejecuta: just podman-tunnel-up")
 
     subprocess.run(
-        ["podman", "compose", "-f", str(COMPOSE_FILE), "up", "-d", "--build"],
+        ["podman", "compose", "-f", str(COMPOSE_FILE), "up", "-d"],
         check=True, cwd=repo_root,
     )
 
-    _wait_for_port("localhost", 30310, timeout=30)
-    _wait_for_port("localhost", 30311, timeout=30)
+    _wait_for_port(SMOKE_HOST, 30310, timeout=30)
+    _wait_for_port(SMOKE_HOST, 30311, timeout=30)
 
     yield
 
@@ -43,12 +63,12 @@ def compose_up(repo_root: Path):
 
 @pytest.fixture
 def mqtt_config():
-    return {"host": "localhost", "port": 30310, "qos": 1}
+    return {"host": SMOKE_HOST, "port": 30310, "qos": 1}
 
 
 @pytest.fixture
 def api_config():
-    return {"host": "localhost", "port": 30311, "key": "smoke-test-key"}
+    return {"host": SMOKE_HOST, "port": 30311, "key": "smoke-test-key"}
 
 
 def _wait_for_port(host, port, timeout=30):

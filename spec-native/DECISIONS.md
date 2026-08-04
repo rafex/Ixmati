@@ -507,3 +507,28 @@ Registro de decisiones persistentes del proyecto.
 - **Relacionado con specs**: `SPEC-CONTAINERS-0001`
 - **Decisión**: Builds siempre contra el remoto. Guard `podman_remote.sh` aborta si target ≠ amd64. `.containerignore` excluye `target/`, `.git/`, `docs/book/`.
 - **Reemplaza**: `none`
+
+### DEC-0034 — DEC-0025: Smoke tests requieren SSH port forwarding al podman remoto
+
+- Fecha: 2026-08-04
+- Estado: `accepted`
+- Relacionado con specs:
+- Contexto: El podman usado en desarrollo es remoto (192.168.3.175 vía túnel SSH en :18081). Los contenedores del stack smoke.yaml exponen puertos en la máquina remota, no en localhost. Sin port forwarding explícito, los tests Python no pueden alcanzar mosquitto (30310) ni la API (30311). El firewall del remoto bloquea acceso externo a esos puertos.
+- Decisión: Se usan SSH port forwards adicionales (-L 30310:localhost:30310 -L 30311:localhost:30311) para exponer los puertos del stack smoke en localhost. El conftest.py resuelve el host vía SMOKE_HOST env var (default: extraído de SSH_HOST en podman_tunnel.sh, fallback: localhost). El stack compose se ejecuta via podman socket (túnel :18081) pero las conexiones MQTT/HTTP van por los port forwards.
+- Consecuencias: - Los smoke tests E2E requieren dos túneles SSH activos: uno para podman socket (:18081) y otro para puertos de servicio (:30310, :30311)
+- El script podman_tunnel.sh debería extenderse para incluir estos port forwards automáticamente (tarea pendiente)
+- Si se migra a podman local (podman machine en macOS), SMOKE_HOST=localhost funcionaría sin port forwards adicionales
+- Los tests standalone (test_smoke.py) no requieren ningún túnel
+- Reemplaza: none
+
+### DEC-0035 — DEC-0026: .containerignore es obligatorio para builds remotos
+
+- Fecha: 2026-08-04
+- Estado: `accepted`
+- Relacionado con specs:
+- Contexto: El builder Containerfile usa COPY . . para transferir el contexto de build. Sin .containerignore, podman envía TODO el repositorio (incluyendo target/ con ~5GB de artefactos de compilación y .git/) a través del túnel SSH al podman remoto. Esto provocaba timeouts de >30min en el paso COPY del builder.
+- Decisión: Se creó .containerignore excluyendo: target/, .git/, .venv/, __pycache__/, node_modules/, dist/, *.db*, .idea/, .vscode/, .DS_Store, *.log. Con esto el COPY tarda segundos y el build completo (chef cook + cargo build) se completa en ~2min.
+- Consecuencias: - Todo Containerfile que use COPY . . desde el repo root requiere este .containerignore
+- Si se añaden nuevos directorios con artefactos grandes, deben agregarse al .containerignore
+- La tarea TASK-CONT-0001 (crear .containerignore) estaba marcada como [x] en TODO.md pero el archivo no existía — se creó ahora
+- Reemplaza: none
