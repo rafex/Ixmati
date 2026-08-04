@@ -2,7 +2,7 @@
 FROM localhost/ixmati-builder:local AS build
 FROM docker.io/library/debian:trixie-slim
 
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && \
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates sqlite3 && \
     rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /usr/local/bin/ixmati-writer /usr/local/bin/ixmati-writer

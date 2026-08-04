@@ -11,10 +11,26 @@ pub struct EventPublisher {
 impl EventPublisher {
     pub fn new(broker: &str, client_id: &str, db_path: &str) -> Self {
         let (host, port) = ixmati_core::mqtt::parse_mqtt_broker(broker);
-        let mut mqtt_options = MqttOptions::new(client_id, &host, port);
+        let mut mqtt_options = MqttOptions::new(
+            format!("{}-publisher", client_id),
+            &host,
+            port,
+        );
         mqtt_options.set_keep_alive(std::time::Duration::from_secs(5));
 
-        let (client, _eventloop) = AsyncClient::new(mqtt_options, 100);
+        let (client, mut eventloop) = AsyncClient::new(mqtt_options, 100);
+
+        tokio::spawn(async move {
+            loop {
+                match eventloop.poll().await {
+                    Ok(_) => continue,
+                    Err(e) => {
+                        tracing::error!(error = %e, "MQTT publisher eventloop error");
+                        tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+                    }
+                }
+            }
+        });
 
         Self {
             client,

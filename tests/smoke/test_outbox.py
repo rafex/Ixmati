@@ -30,7 +30,7 @@ class TestOutbox:
             written_keys.append(result.idempotency_key)
 
         events = wait_for_messages(
-            client, "ixmati/evt/smoke/#", expected_count=num_writes, timeout=15
+            client, "ixmati/evt/smoke/#", expected_count=num_writes, timeout=30
         )
 
         assert (

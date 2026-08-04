@@ -145,8 +145,12 @@ def http_write(api: ApiConfig, payload: dict) -> WriteResult:
                 message=body.get("message"),
             )
     except urllib.error.HTTPError as e:
-        body = json.loads(e.read())
-        raise RuntimeError(f"HTTP {e.code}: {body}")
+        error_body = e.read().decode("utf-8", errors="replace").strip()
+        try:
+            error_json = json.loads(error_body)
+        except (json.JSONDecodeError, ValueError):
+            error_json = {"detail": error_body}
+        raise RuntimeError(f"HTTP {e.code}: {error_json}")
 
 
 def http_write_status(api: ApiConfig, store: str, idempotency_key: str) -> dict | None:

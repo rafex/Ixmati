@@ -10,6 +10,7 @@ from helpers.python.mqtt_harness import (
     http_write,
     make_write_payload,
 )
+from conftest import run_podman, SSH_HOST
 
 
 COMPOSE_FILE = Path(__file__).resolve().parent.parent.parent / "containers" / "compose" / "smoke.yaml"
@@ -17,14 +18,9 @@ COMPOSE_FILE = Path(__file__).resolve().parent.parent.parent / "containers" / "c
 
 def _run_sqlite(store: str, sql: str) -> str:
     """Ejecuta una consulta SQL en el writer container."""
-    result = subprocess.run(
-        [
-            "podman", "compose", "-f", str(COMPOSE_FILE),
-            "exec", "-T", "writer",
-            "sqlite3", f"/data/{store}.db", sql,
-        ],
-        capture_output=True, text=True, timeout=10,
-    )
+    result = run_podman(["exec", "-T", "writer", "sqlite3", f"/data/{store}.db", sql])
+    if result.returncode != 0:
+        return ""
     return result.stdout.strip()
 
 

@@ -31,6 +31,7 @@ services:
       - API_PORT=30000
       - IXMATI_API_KEYS=smoke-test-key
       - RUST_LOG=ixmati_api=debug
+      - SQLITE_PATH=/data/smoke.db
     depends_on:
       mosquitto:
         condition: service_healthy
@@ -40,6 +41,8 @@ services:
       timeout: 3s
       retries: 10
       start_period: 3s
+    volumes:
+      - store_data:/data:U
 
   writer:
     image: localhost/ixmati-writer:local

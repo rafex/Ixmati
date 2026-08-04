@@ -26,7 +26,32 @@ def _resolve_smoke_host() -> str:
     return "localhost"
 
 
+def _resolve_ssh_host() -> str | None:
+    host = os.environ.get("SMOKE_SSH_HOST", "")
+    if host:
+        return host
+    return None
+
+
 SMOKE_HOST = _resolve_smoke_host()
+SSH_HOST = _resolve_ssh_host()
+
+
+def run_podman(args: list[str], timeout: int = 30) -> subprocess.CompletedProcess:
+    if SSH_HOST:
+        import shlex
+        remote_cmd = (
+            "cd ~/Ixmati && podman compose -f containers/compose/smoke.yaml "
+            + " ".join(shlex.quote(a) for a in args)
+        )
+        return subprocess.run(
+            ["ssh", "-o", "ConnectTimeout=10", SSH_HOST, remote_cmd],
+            capture_output=True, text=True, timeout=timeout,
+        )
+    return subprocess.run(
+        ["podman", "compose", "-f", str(COMPOSE_FILE)] + args,
+        capture_output=True, text=True, timeout=timeout,
+    )
 
 
 @pytest.fixture(scope="session")
@@ -36,7 +61,17 @@ def repo_root() -> Path:
 
 @pytest.fixture(scope="session")
 def compose_up(repo_root: Path):
-    """Levanta el stack smoke.yaml con podman compose y lo derriba al final."""
+    """Levanta el stack smoke.yaml con podman compose y lo derriba al final.
+
+    Si SMOKE_HOST esta definido, asume stack externo y solo verifica conectividad.
+    Si no, intenta gestionar el compose via podman_tunnel.sh.
+    """
+    if os.environ.get("SMOKE_HOST"):
+        _wait_for_port(SMOKE_HOST, 30310, timeout=30)
+        _wait_for_port(SMOKE_HOST, 30311, timeout=30)
+        yield
+        return
+
     tunnel = repo_root / "helpers" / "shell" / "podman_tunnel.sh"
     result = subprocess.run(
         [str(tunnel), "status"],

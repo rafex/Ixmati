@@ -12,24 +12,47 @@ test-integration filter="":
     @echo "[test] integracion..."
     cargo test {{filter}} -p ixmati-integration
 
-# ejecuta tests de smoke (pytest caja negra)
+# ejecuta tests de smoke (pytest caja negra, stack ya corriendo)
+# usa SMOKE_HOST y SMOKE_SSH_HOST del entorno si existen
 [group('test')]
 test-smoke filter="":
     @echo "[test] smoke..."
-    @cd {{repo_root}} && uv run pytest tests/smoke/ -v {{filter}}
+    @cd {{repo_root}}/helpers/python && \
+      SMOKE_HOST=${SMOKE_HOST:-localhost} SMOKE_SSH_HOST=${SMOKE_SSH_HOST:-} \
+      PYTHONPATH={{repo_root}} \
+      uv run pytest {{repo_root}}/tests/smoke/ -v {{filter}}
 
-# levanta compose smoke + ejecuta pytest + teardown (requiere podman-tunnel-up)
+# levanta compose smoke + ejecuta pytest + teardown
+# -- modo local:  requiere podman-tunnel-up
+# -- modo remoto: SMOKE_SSH_HOST=<host> just smoke
 [group('test')]
-smoke filter="":
+smoke filter="" ssh_host="${SMOKE_SSH_HOST:-}":
     @echo "[smoke] levantando stack smoke.yaml..."
-    @just podman-tunnel-status
-    @COMPOSE_FILE=smoke.yaml make containers-up
-    @echo "[smoke] esperando servicios (15s)..."
-    @sleep 15
+    @if [ -n "{{ssh_host}}" ]; then \
+      echo "[smoke] modo remoto → {{ssh_host}}"; \
+      ssh -o ConnectTimeout=10 {{ssh_host}} "cd ~/Ixmati && podman compose -f containers/compose/smoke.yaml up -d"; \
+      sleep 10; \
+      ssh -fN -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 \
+        -L 30310:localhost:30310 -L 30311:localhost:30311 {{ssh_host}} 2>/dev/null || true; \
+    else \
+      just podman-tunnel-status; \
+      COMPOSE_FILE=smoke.yaml make containers-up; \
+      sleep 15; \
+    fi
     @echo "[smoke] ejecutando tests..."
-    -@cd {{repo_root}} && uv run pytest tests/smoke/ -v {{filter}} --tb=short
+    -@cd {{repo_root}}/helpers/python && \
+      SMOKE_HOST=localhost \
+      SMOKE_SSH_HOST={{ssh_host}} \
+      PYTHONPATH={{repo_root}} \
+      uv run pytest {{repo_root}}/tests/smoke/ -v {{filter}} --tb=short
     @echo "[smoke] derribando stack..."
-    @COMPOSE_FILE=smoke.yaml make containers-down
+    @if [ -n "{{ssh_host}}" ]; then \
+      ssh -o ConnectTimeout=10 {{ssh_host}} "cd ~/Ixmati && podman compose -f containers/compose/smoke.yaml down -v"; \
+      kill $$(lsof -nP -iTCP:30310 -sTCP:LISTEN -t 2>/dev/null) \
+            $$(lsof -nP -iTCP:30311 -sTCP:LISTEN -t 2>/dev/null) 2>/dev/null || true; \
+    else \
+      COMPOSE_FILE=smoke.yaml make containers-down; \
+    fi
 
 # ejecuta todos los tests
 [group('test')]
