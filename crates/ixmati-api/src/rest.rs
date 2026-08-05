@@ -1,3 +1,5 @@
+use crate::cache_client::CacheClient;
+use crate::cache_proxy::CacheProxy;
 use axum::{
     Router,
     extract::{Path, Query, State},
@@ -14,6 +16,22 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
+pub enum CacheReadMode {
+    Direct,
+    Mqtt(CacheProxy),
+    Socket(Arc<CacheClient>),
+}
+
+impl Clone for CacheReadMode {
+    fn clone(&self) -> Self {
+        match self {
+            Self::Direct => Self::Direct,
+            Self::Mqtt(p) => Self::Mqtt(p.clone()),
+            Self::Socket(c) => Self::Socket(Arc::clone(c)),
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct AppState {
     mqtt_broker: String,
@@ -21,10 +39,18 @@ pub struct AppState {
     mqtt_client: Arc<Mutex<Option<AsyncClient>>>,
     throttle: Arc<Mutex<crate::throttle::Throttle>>,
     cache: Arc<dyn CacheBackend>,
+    cache_read_mode: CacheReadMode,
+    cache_proxy_client: Arc<Mutex<Option<AsyncClient>>>,
 }
 
 impl AppState {
-    pub fn new(broker: &str, cache: Arc<dyn CacheBackend>) -> Self {
+    pub fn new(
+        broker: &str,
+        cache: Arc<dyn CacheBackend>,
+        cache_proxy: Option<CacheProxy>,
+        proxy_client: Option<AsyncClient>,
+        cache_socket: Option<Arc<CacheClient>>,
+    ) -> Self {
         let (host, port) = ixmati_core::mqtt::parse_mqtt_broker(broker);
         let (client, mut eventloop) = AsyncClient::new(
             MqttOptions::new(format!("api-{}", Uuid::new_v4()), &host, port),
@@ -47,6 +73,14 @@ impl AppState {
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(1);
+
+        let cache_read_mode = if let Some(proxy) = cache_proxy {
+            CacheReadMode::Mqtt(proxy)
+        } else if let Some(socket) = cache_socket {
+            CacheReadMode::Socket(socket)
+        } else {
+            CacheReadMode::Direct
+        };
 
         Self {
             mqtt_broker: broker.to_string(),
@@ -57,10 +91,17 @@ impl AppState {
                 window_secs,
             ))),
             cache,
+            cache_read_mode,
+            cache_proxy_client: Arc::new(Mutex::new(proxy_client)),
         }
     }
 
-    pub fn with_db(broker: &str, db_path: &str, cache: Arc<dyn CacheBackend>) -> Self {
+    pub fn with_db(
+        broker: &str,
+        db_path: &str,
+        cache: Arc<dyn CacheBackend>,
+        cache_socket: Option<Arc<CacheClient>>,
+    ) -> Self {
         let (host, port) = ixmati_core::mqtt::parse_mqtt_broker(broker);
         let (client, mut eventloop) = AsyncClient::new(
             MqttOptions::new(format!("api-{}", Uuid::new_v4()), &host, port),
@@ -84,6 +125,12 @@ impl AppState {
             .and_then(|v| v.parse().ok())
             .unwrap_or(1);
 
+        let cache_read_mode = if let Some(socket) = cache_socket {
+            CacheReadMode::Socket(socket)
+        } else {
+            CacheReadMode::Direct
+        };
+
         Self {
             mqtt_broker: broker.to_string(),
             db_path: Some(db_path.to_string()),
@@ -93,6 +140,8 @@ impl AppState {
                 window_secs,
             ))),
             cache,
+            cache_read_mode,
+            cache_proxy_client: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -245,7 +294,20 @@ async fn read_handler(
 
     let cache_key = format!("c:{}:{}:{}", store, entity, key);
 
-    if let Some(cached) = state.cache.get("cache", &cache_key, "") {
+    let cached: Option<Vec<u8>> = match &state.cache_read_mode {
+        CacheReadMode::Direct => state.cache.get("cache", &cache_key, ""),
+        CacheReadMode::Mqtt(proxy) => {
+            let client_guard = state.cache_proxy_client.lock().await;
+            if let Some(client) = client_guard.as_ref() {
+                proxy.query(client, &store, &entity, &key).await
+            } else {
+                None
+            }
+        }
+        CacheReadMode::Socket(client) => client.get(&store, &entity, &key).await,
+    };
+
+    if let Some(cached) = cached {
         if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&cached) {
             crate::metrics::CACHE_HITS
                 .with_label_values(&[&store, "cache"])

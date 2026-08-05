@@ -1,4 +1,6 @@
 pub mod batcher;
+pub mod cache_responder;
+pub mod cache_server;
 pub mod cache_sync;
 pub mod cdc;
 pub mod consumer;

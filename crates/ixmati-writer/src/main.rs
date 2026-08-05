@@ -112,6 +112,32 @@ async fn main() -> std::io::Result<()> {
 
     let cache_sync = Arc::new(CacheSync::new(Arc::clone(&cache)));
 
+    let cache_read_mode = std::env::var("CACHE_READ_MODE").unwrap_or_default();
+    match cache_read_mode.as_str() {
+        "mqtt" => {
+            let _responder = ixmati_writer::cache_responder::CacheResponder::new(
+                Arc::clone(&cache),
+                &mqtt_broker,
+            );
+            tracing::info!("CacheResponder started (MQTT mode)");
+        }
+        "socket" => {
+            let socket_path = std::env::var("CACHE_SOCKET_PATH")
+                .unwrap_or_else(|_| "/var/run/ixmati/cache.sock".into());
+            let server = ixmati_writer::cache_server::CacheServer::new(
+                Arc::clone(&cache),
+                &socket_path,
+            );
+            tokio::spawn(async move {
+                if let Err(e) = server.run().await {
+                    tracing::error!(error = %e, "CacheServer failed");
+                }
+            });
+            tracing::info!(path = %socket_path, "CacheServer started (socket mode)");
+        }
+        _ => {}
+    }
+
     let conn = Arc::new(Mutex::new(
         Connection::open(&db_path).map_err(|e| std::io::Error::other(format!("SQLite: {}", e)))?,
     ));

@@ -12,7 +12,8 @@ export API_PORT="${API_PORT:-30000}"
 # Crear directorios de datos si no existen
 mkdir -p "$(dirname "$SQLITE_PATH")"
 mkdir -p /var/lib/ixmati/cache
-chown -R ixmati:ixmati /var/lib/ixmati /var/log/ixmati 2>/dev/null || true
+mkdir -p /var/run/ixmati
+chown -R ixmati:ixmati /var/lib/ixmati /var/log/ixmati /var/run/ixmati 2>/dev/null || true
 
 echo "[ixmati] all-in-one starting"
 echo "  store:     ${STORE_NAME}"
