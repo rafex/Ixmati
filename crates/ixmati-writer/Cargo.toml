@@ -5,6 +5,9 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+flashdb = ["ixmati-cache/flashdb"]
+
 [dependencies]
 ixmati-core = { path = "../ixmati-core" }
 ixmati-cache = { path = "../ixmati-cache" }

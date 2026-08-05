@@ -1,5 +1,5 @@
 use crate::CacheBackend;
-use redb::{Database, ReadableTable, TableDefinition};
+use redb::{Database, ReadableDatabase, ReadableTable, TableDefinition};
 use std::sync::Mutex;
 
 const CACHE_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("cache");
@@ -24,10 +24,10 @@ impl RedbCacheBackend {
     }
 
     pub fn new_readonly(path: &str) -> Result<Self, String> {
-        let db = (0..10)
+        let db = (0..15)
             .find_map(|attempt| {
                 if attempt > 0 {
-                    std::thread::sleep(std::time::Duration::from_millis(200));
+                    std::thread::sleep(std::time::Duration::from_millis(300));
                 }
                 Database::open(path).ok()
             })
@@ -114,37 +114,31 @@ impl CacheBackend for RedbCacheBackend {
             Ok(g) => g,
             Err(_) => return,
         };
+        let keys: Vec<String> = {
+            let read_txn = match guard.begin_read() {
+                Ok(t) => t,
+                Err(_) => return,
+            };
+            let table = match read_txn.open_table(CACHE_TABLE) {
+                Ok(t) => t,
+                Err(_) => return,
+            };
+            match table.iter() {
+                Ok(iter) => iter
+                    .flatten()
+                    .filter_map(|(k, _)| {
+                        let key_str = k.value();
+                        if key_str.starts_with(&prefix) {
+                            Some(key_str.to_string())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect(),
+                Err(_) => return,
+            }
+        };
 
-        let read_txn = match guard.begin_read() {
-            Ok(t) => t,
-            Err(_) => return,
-        };
-        let table = match read_txn.open_table(CACHE_TABLE) {
-            Ok(t) => t,
-            Err(_) => return,
-        };
-        let keys: Vec<String> = match table.iter() {
-            Ok(iter) => iter
-                .flatten()
-                .filter_map(|(k, _)| {
-                    let key_str = k.value();
-                    if key_str.starts_with(&prefix) {
-                        Some(key_str.to_string())
-                    } else {
-                        None
-                    }
-                })
-                .collect(),
-            Err(_) => return,
-        };
-        drop(table);
-        drop(read_txn);
-        drop(guard);
-
-        let guard = match self.db.lock() {
-            Ok(g) => g,
-            Err(_) => return,
-        };
         let txn = match guard.begin_write() {
             Ok(t) => t,
             Err(_) => return,
@@ -195,6 +189,7 @@ mod tests {
 
         let rw = RedbCacheBackend::new(&path).unwrap();
         rw.set("cache", "t:e:k", "", b"data");
+        drop(rw);
 
         let ro = RedbCacheBackend::new_readonly(&path).unwrap();
         assert_eq!(ro.get("cache", "t:e:k", ""), Some(b"data".to_vec()));

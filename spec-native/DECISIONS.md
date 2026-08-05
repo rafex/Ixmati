@@ -148,24 +148,55 @@ Registro de decisiones persistentes del proyecto.
   - (-) El backend debe coordinar operaciones multi-store por su cuenta.
 - **Reemplaza**: `none`
 
-### DEC-0009 — Riesgo abierto: FlashDB requiere FFI; criterio de salida a sled/redb/lmdb-rs
+### DEC-0009 — RESUELTO: FlashDB descartado. SQLite cache adoptado como default.
 
 - **Fecha**: 2026-07-29
-- **Estado**: `accepted`
-- **Enmienda**: 2026-07-29 — severidad sube: FlashDB pasará a alojar **read models proyectados**, no solo cache. Perderlo cuesta más.
-- **Relacionado con specs**: `SPEC-WRITE-0001`
-- **Relacionado con tareas**: `TASK-WRITE-0001`
-- **Contexto**: FlashDB es una librería C diseñada para microcontroladores. No tiene binding oficial en Rust. Con la introducción de read models proyectados, FlashDB deja de ser solo una cache volátil — contiene datos desnormalizados que tardan en reconstruirse. La fiabilidad del backend de storage sube de importancia.
-- **Decisión**: se intentará integrar FlashDB vía FFI en `TASK-WRITE-0001`. Si el spike revela alguno de estos bloqueos, se descarta FlashDB y se adopta una alternativa (sled, redb, o lmdb-rs):
-  1. El FFI no compila en Linux x86_64.
-  2. La API no soporta TTL o invalidación por prefijo.
-  3. El rendimiento es peor que sled/redb en benchmarks sintéticos.
-  4. La superficie de `unsafe` es inmanejable (> 100 líneas o requiere invariantes complejos).
-- **Consecuencias**:
-  - (+) El trait `CacheBackend` abstrae la implementación.
-  - (-) Tiempo invertido en el spike que podría ser tiempo perdido.
-  - (-) Si FlashDB falla, hay que migrar read models a otro backend; el costo de migración es mayor que con cache pura.
+- **Estado**: `replaced` por DEC-0012
+- **Fecha de resolucion**: 2026-08-05
+- **Resultado del spike**:
+
+| Criterio | Resultado | Veredicto |
+|---|---|---|
+| FFI compila en Linux x86_64 | ✅ Compila con libclang-dev + bindgen | OK |
+| API soporta TTL e invalidacion | ✅ delete_by_prefix funciona via iter FFI | OK |
+| Rendimiento vs alternativas | ❌ GET p50=1107µs (SQLite=14µs, Redb=26µs) | FAIL |
+| Superficie unsafe manejable | ⚠️ 228 lineas de unsafe FFI | RISK |
+| Persistencia en disco | ❌ No escribe archivos en file mode | FAIL |
+| Multi-proceso | ❌ Diseñado para microcontroladores | FAIL |
+
+- **Causa raiz del fallo**: FlashDB (`FDB_USING_FILE_LIBC_MODE`) no persiste datos en Linux. `fdb_kv_set_blob` reporta `FDB_NO_ERR` pero no crea archivos. Ademas, `fdb_kv_get_blob` nunca retorna datos. El rendimiento de lectura (1107µs p50) es 80x peor que SQLite (14µs p50).
+
+- **Decision**: Se descarta FlashDB. Se adopta **SQLite cache** (`SqliteCacheBackend`) como backend default para cache-aside. Redb queda como alternativa single-process cuando crates.io tenga >= 4.5 con `ReadOnlyDatabase`.
+
 - **Reemplaza**: `none`
+
+- **Reemplazado por**: DEC-0012 (SQLite cache como default)
+
+---
+
+### DEC-0012 — SQLite cache como backend default para cache-aside
+
+- **Fecha**: 2026-08-05
+- **Estado**: `accepted`
+- **Contexto**: DEC-0009 descarto FlashDB. Se necesita un backend de cache que funcione multi-proceso en el all-in-one (supervisord: API + writer como procesos separados).
+- **Decision**: Usar SQLite con tabla `_cache` como backend de cache. Archivo separado (`cache.db`) con WAL para acceso concurrente.
+- **Alternativas evaluadas**:
+
+| Backend | GET p50 | Multi-proceso | Persistencia | Veredicto |
+|---|---|---|---|---|
+| SQLite (WAL) | 14µs | ✅ | ✅ | **Elegido** |
+| Redb 4.1.0 | 26µs | ❌ (sin ReadOnlyDatabase) | ✅ | Esperar 4.5+ |
+| FlashDB 2.2.0 | 1107µs | ❌ | ❌ | Descartado |
+
+- **Consecuencias**:
+  - (+) Cero dependencias nuevas (rusqlite ya bundled)
+  - (+) Mismo ecosistema que la BD principal (backup con Litestream)
+  - (+) WAL permite lecturas concurrentes API + writer sin bloqueos
+  - (+) Cache hit verificado en E2E (`"source":"cache"`)
+  - (+) Metricas Prometheus (`CACHE_HITS`, `CACHE_MISSES`)
+  - (-) No es un cache "puro" (es otra tabla SQLite)
+  - (-) Podria crecer si no se limpia periodicamente
+- **Reemplaza**: DEC-0009
 
 ### DEC-0010 — Canal de ingesta de escrituras: Mosquitto (Opción A)
 
