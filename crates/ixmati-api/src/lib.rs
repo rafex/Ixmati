@@ -6,13 +6,16 @@ pub mod status;
 pub mod throttle;
 
 use axum::Router;
+use ixmati_cache::CacheBackend;
 use std::net::SocketAddr;
+use std::sync::Arc;
 
 pub struct ApiConfig {
     pub host: String,
     pub port: u16,
     pub mqtt_broker: String,
     pub db_path: Option<String>,
+    pub cache_dir: Option<String>,
 }
 
 impl Default for ApiConfig {
@@ -22,14 +25,65 @@ impl Default for ApiConfig {
             port: 8080,
             mqtt_broker: "tcp://localhost:1883".into(),
             db_path: None,
+            cache_dir: None,
         }
     }
 }
 
 pub async fn serve(config: ApiConfig) -> std::io::Result<()> {
-    let mut state = rest::AppState::new(&config.mqtt_broker);
+    let backend = std::env::var("CACHE_BACKEND").unwrap_or_default();
+    let cache: Arc<dyn CacheBackend> = if let Some(ref dir) = config.cache_dir {
+        match backend.as_str() {
+            #[cfg(feature = "flashdb")]
+            "flashdb" => match ixmati_cache::FlashDb::new(dir) {
+                Ok(fdb) => {
+                    tracing::info!(cache_dir = %dir, "FlashDB initialized for API (read-only)");
+                    Arc::new(ixmati_cache::ReadOnlyCache::new(fdb))
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "FlashDB init failed, falling back to NoOp");
+                    Arc::new(ixmati_cache::NoOpBackend::new())
+                }
+            },
+            "redb" => {
+                let path = format!("{}/cache.redb", dir);
+                match ixmati_cache::RedbCacheBackend::new_readonly(&path) {
+                    Ok(backend) => {
+                        tracing::info!(cache_path = %path, "RedbCacheBackend initialized for API (read-only)");
+                        Arc::new(ixmati_cache::ReadOnlyCache::new(backend))
+                    }
+                    Err(e) => {
+                        tracing::warn!(error = %e, "Redb init failed, falling back to NoOp");
+                        Arc::new(ixmati_cache::NoOpBackend::new())
+                    }
+                }
+            }
+            "sqlite" => {
+                let path = format!("{}/cache.db", dir);
+                match ixmati_cache::SqliteCacheBackend::new(&path) {
+                    Ok(backend) => {
+                        tracing::info!(cache_path = %path, "SqliteCacheBackend initialized for API");
+                        Arc::new(backend)
+                    }
+                    Err(e) => {
+                        tracing::warn!(error = %e, "SqliteCache init failed, falling back to NoOp");
+                        Arc::new(ixmati_cache::NoOpBackend::new())
+                    }
+                }
+            }
+            _ => {
+                tracing::info!(backend = %backend, "unknown CACHE_BACKEND, using NoOp");
+                Arc::new(ixmati_cache::NoOpBackend::new())
+            }
+        }
+    } else {
+        tracing::info!("no cache_dir configured, using NoOp backend");
+        Arc::new(ixmati_cache::NoOpBackend::new())
+    };
+
+    let mut state = rest::AppState::new(&config.mqtt_broker, Arc::clone(&cache));
     if let Some(ref db) = config.db_path {
-        state = rest::AppState::with_db(&config.mqtt_broker, db);
+        state = rest::AppState::with_db(&config.mqtt_broker, db, Arc::clone(&cache));
     }
 
     let auth_config = crate::auth::AuthConfig::new(

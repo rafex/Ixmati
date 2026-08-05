@@ -6,6 +6,7 @@ use axum::{
     response::Json,
     routing::{get, post},
 };
+use ixmati_cache::CacheBackend;
 use ixmati_core::{AckResponse, WriteEnvelope};
 use rumqttc::{AsyncClient, MqttOptions, QoS};
 use serde::Deserialize;
@@ -19,10 +20,11 @@ pub struct AppState {
     db_path: Option<String>,
     mqtt_client: Arc<Mutex<Option<AsyncClient>>>,
     throttle: Arc<Mutex<crate::throttle::Throttle>>,
+    cache: Arc<dyn CacheBackend>,
 }
 
 impl AppState {
-    pub fn new(broker: &str) -> Self {
+    pub fn new(broker: &str, cache: Arc<dyn CacheBackend>) -> Self {
         let (host, port) = ixmati_core::mqtt::parse_mqtt_broker(broker);
         let (client, mut eventloop) = AsyncClient::new(
             MqttOptions::new(format!("api-{}", Uuid::new_v4()), &host, port),
@@ -54,10 +56,11 @@ impl AppState {
                 max_writes,
                 window_secs,
             ))),
+            cache,
         }
     }
 
-    pub fn with_db(broker: &str, db_path: &str) -> Self {
+    pub fn with_db(broker: &str, db_path: &str, cache: Arc<dyn CacheBackend>) -> Self {
         let (host, port) = ixmati_core::mqtt::parse_mqtt_broker(broker);
         let (client, mut eventloop) = AsyncClient::new(
             MqttOptions::new(format!("api-{}", Uuid::new_v4()), &host, port),
@@ -89,6 +92,7 @@ impl AppState {
                 max_writes,
                 window_secs,
             ))),
+            cache,
         }
     }
 
@@ -220,6 +224,7 @@ struct ReadQuery {
 }
 
 async fn read_handler(
+    State(state): State<AppState>,
     Query(params): Query<ReadQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ixmati_core::Error>)> {
     if params.projection.is_some() {
@@ -235,12 +240,94 @@ async fn read_handler(
             Json(ixmati_core::Error::StoreNotFound { store: "".into() }),
         )
     })?;
+    let entity = params.entity.unwrap_or_default();
+    let key = params.key.unwrap_or_default();
 
-    Ok(Json(serde_json::json!({
-        "found": false,
-        "store": store,
-        "message": "cache-aside not yet implemented"
-    })))
+    let cache_key = format!("c:{}:{}:{}", store, entity, key);
+
+    if let Some(cached) = state.cache.get("cache", &cache_key, "") {
+        if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&cached) {
+            crate::metrics::CACHE_HITS
+                .with_label_values(&[&store, "cache"])
+                .inc();
+            return Ok(Json(serde_json::json!({
+                "found": true,
+                "store": store,
+                "entity": entity,
+                "key": key,
+                "source": "cache",
+                "payload": value,
+            })));
+        }
+    }
+
+    crate::metrics::CACHE_MISSES
+        .with_label_values(&[&store, "cache"])
+        .inc();
+
+    let db_path = state.db_path.as_ref().ok_or_else(|| {
+        (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ixmati_core::Error::Internal {
+                detail: "no database configured for reads".into(),
+            }),
+        )
+    })?;
+
+    let conn = rusqlite::Connection::open(db_path).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ixmati_core::Error::Internal {
+                detail: format!("SQLite open: {}", e),
+            }),
+        )
+    })?;
+
+    let sql = format!(
+        "SELECT payload FROM payload_{store} WHERE entity = ?1 AND key = ?2",
+        store = store
+    );
+    let mut stmt = conn.prepare(&sql).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ixmati_core::Error::Internal {
+                detail: format!("SQL prepare: {}", e),
+            }),
+        )
+    })?;
+
+    let result: rusqlite::Result<Vec<u8>> =
+        stmt.query_row((&entity, &key), |row| row.get(0));
+
+    match result {
+        Ok(payload_bytes) => {
+            state.cache.set("cache", &cache_key, "", &payload_bytes);
+
+            let value: serde_json::Value =
+                serde_json::from_slice(&payload_bytes).unwrap_or_default();
+            Ok(Json(serde_json::json!({
+                "found": true,
+                "store": store,
+                "entity": entity,
+                "key": key,
+                "source": "sqlite",
+                "payload": value,
+            })))
+        }
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(Json(serde_json::json!({
+            "found": false,
+            "store": store,
+            "entity": entity,
+            "key": key,
+            "message": "not found"
+        }))),
+        Err(e) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ixmati_core::Error::Internal {
+                detail: format!("SQL query: {}", e),
+            }),
+        )),
+    }
 }
 
 #[derive(Deserialize)]

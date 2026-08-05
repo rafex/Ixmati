@@ -2,12 +2,12 @@ use ixmati_cache::CacheBackend;
 use ixmati_core::WriteEnvelope;
 use std::sync::Arc;
 
-pub struct CacheSync<B: CacheBackend> {
-    cache: Arc<B>,
+pub struct CacheSync {
+    cache: Arc<dyn CacheBackend>,
 }
 
-impl<B: CacheBackend> CacheSync<B> {
-    pub fn new(cache: Arc<B>) -> Self {
+impl CacheSync {
+    pub fn new(cache: Arc<dyn CacheBackend>) -> Self {
         Self { cache }
     }
 
@@ -23,6 +23,7 @@ impl<B: CacheBackend> CacheSync<B> {
     }
 
     pub fn sync_batch(&self, commands: &[WriteEnvelope]) {
+        tracing::info!(count = commands.len(), "CacheSync::sync_batch");
         for cmd in commands {
             match cmd.op.as_str() {
                 "delete" => self.invalidate_after_write(cmd),

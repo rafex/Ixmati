@@ -7,6 +7,7 @@ repository.workspace = true
 
 [dependencies]
 ixmati-core = { path = "../ixmati-core" }
+ixmati-cache = { path = "../ixmati-cache" }
 tokio.workspace = true
 serde.workspace = true
 serde_json.workspace = true

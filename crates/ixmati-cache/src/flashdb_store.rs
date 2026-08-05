@@ -42,8 +42,13 @@ impl FlashDb {
 
         let kvdb = Box::into_raw(Box::new(unsafe { std::mem::zeroed::<ffi::fdb_kvdb>() }));
 
+        unsafe {
+            (*kvdb).parent.sec_size = 4096;
+            (*kvdb).parent.max_size = 128 * 1024 * 1024;
+        }
+
         let name = CString::new("kvdb").map_err(|e| format!("invalid name: {}", e))?;
-        let part = CString::new("fdb_kvdb1").map_err(|e| format!("invalid partition: {}", e))?;
+        let part = CString::new(data_dir).map_err(|e| format!("invalid partition: {}", e))?;
 
         let result = unsafe {
             ffi::fdb_kvdb_init(
@@ -125,8 +130,11 @@ impl CacheBackend for FlashDb {
             )
         };
 
-        unsafe {
-            ffi::fdb_kv_set_blob(self.kvdb, c_key.as_ptr(), blob_ptr);
+        let result = unsafe {
+            ffi::fdb_kv_set_blob(self.kvdb, c_key.as_ptr(), blob_ptr)
+        };
+        if result != ffi::fdb_err_t_FDB_NO_ERR {
+            tracing::error!(key = %std::str::from_utf8(unsafe { std::ffi::CStr::from_ptr(c_key.as_ptr()) }.to_bytes()).unwrap_or("?"), len = value.len(), err = result, "FlashDB set_blob failed");
         }
     }
 

@@ -1,4 +1,6 @@
+use ixmati_cache::CacheBackend;
 use ixmati_writer::batcher::Batcher;
+use ixmati_writer::cache_sync::CacheSync;
 use ixmati_writer::consumer::MqttConsumer;
 use ixmati_writer::event_publisher::EventPublisher;
 use ixmati_writer::write_engine::WriteEngine;
@@ -59,6 +61,57 @@ async fn main() -> std::io::Result<()> {
         EventPublisher::publish_loop(publisher_clone, store_clone, 1000).await;
     });
 
+    let backend = std::env::var("CACHE_BACKEND").unwrap_or_default();
+    let cache: Arc<dyn CacheBackend> = if let Ok(dir) = std::env::var("CACHE_DIR") {
+        match backend.as_str() {
+            #[cfg(feature = "flashdb")]
+            "flashdb" => match ixmati_cache::FlashDb::new(&dir) {
+                Ok(fdb) => {
+                    tracing::info!(cache_dir = %dir, "FlashDB initialized for writer");
+                    Arc::new(fdb)
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "FlashDB init failed, using NoOp");
+                    Arc::new(ixmati_cache::NoOpBackend::new())
+                }
+            },
+            "redb" => {
+                let path = format!("{}/cache.redb", dir);
+                match ixmati_cache::RedbCacheBackend::new(&path) {
+                    Ok(backend) => {
+                        tracing::info!(cache_path = %path, "RedbCacheBackend initialized for writer");
+                        Arc::new(backend)
+                    }
+                    Err(e) => {
+                        tracing::warn!(error = %e, "Redb init failed, using NoOp");
+                        Arc::new(ixmati_cache::NoOpBackend::new())
+                    }
+                }
+            }
+            "sqlite" => {
+                let path = format!("{}/cache.db", dir);
+                match ixmati_cache::SqliteCacheBackend::new(&path) {
+                    Ok(backend) => {
+                        tracing::info!(cache_path = %path, "SqliteCacheBackend initialized for writer");
+                        Arc::new(backend)
+                    }
+                    Err(e) => {
+                        tracing::warn!(error = %e, "SqliteCache init failed, using NoOp");
+                        Arc::new(ixmati_cache::NoOpBackend::new())
+                    }
+                }
+            }
+            _ => {
+                tracing::info!(backend = %backend, "unknown CACHE_BACKEND, using NoOp");
+                Arc::new(ixmati_cache::NoOpBackend::new())
+            }
+        }
+    } else {
+        Arc::new(ixmati_cache::NoOpBackend::new())
+    };
+
+    let cache_sync = Arc::new(CacheSync::new(Arc::clone(&cache)));
+
     let conn = Arc::new(Mutex::new(
         Connection::open(&db_path).map_err(|e| std::io::Error::other(format!("SQLite: {}", e)))?,
     ));
@@ -77,7 +130,7 @@ async fn main() -> std::io::Result<()> {
                         );
 
                         if let Some(batch) = batcher.push(cmd) {
-                            process_batch(&conn, &batch, &store_name, &db_path).await;
+                            process_batch(&conn, &batch, &store_name, &db_path, &cache_sync).await;
                         }
                     }
                     None => {
@@ -89,7 +142,7 @@ async fn main() -> std::io::Result<()> {
             _ = tokio::time::sleep(tokio::time::Duration::from_millis(50)) => {
                 if batcher.should_flush() && !batcher.is_empty() {
                     let batch = batcher.flush();
-                    process_batch(&conn, &batch, &store_name, &db_path).await;
+                    process_batch(&conn, &batch, &store_name, &db_path, &cache_sync).await;
                 }
             }
         }
@@ -103,12 +156,28 @@ async fn process_batch(
     batch: &ixmati_writer::Batch,
     store_name: &str,
     _db_path: &str,
+    cache_sync: &Arc<CacheSync>,
 ) {
     let cmds = &batch.commands;
     let mut guard = conn.lock().await;
 
     match WriteEngine::process_batch(&mut guard, cmds) {
         Ok(result) => {
+            cache_sync.sync_batch(&result.events
+                .iter()
+                .map(|e| ixmati_core::WriteEnvelope {
+                    op: "upsert".into(),
+                    store: e.store.clone(),
+                    entity: e.entity.clone(),
+                    key: e.key.clone(),
+                    version: e.version,
+                    ts: e.occurred_at.clone(),
+                    idempotency_key: String::new(),
+                    ack_mode: "accepted".into(),
+                    payload: e.payload.clone(),
+                })
+                .collect::<Vec<_>>());
+
             tracing::info!(
                 store = %store_name,
                 committed = result.committed,

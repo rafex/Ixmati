@@ -14,6 +14,8 @@ async fn main() -> std::io::Result<()> {
         .nth(1)
         .or_else(|| std::env::var("SQLITE_PATH").ok());
 
+    let cache_dir = std::env::var("CACHE_DIR").ok();
+
     let config = ApiConfig {
         host: std::env::var("API_HOST").unwrap_or_else(|_| "127.0.0.1".into()),
         port: std::env::var("API_PORT")
@@ -22,6 +24,7 @@ async fn main() -> std::io::Result<()> {
             .unwrap_or(30000),
         mqtt_broker: std::env::var("MQTT_BROKER").unwrap_or_else(|_| "tcp://localhost:1883".into()),
         db_path,
+        cache_dir,
     };
 
     ixmati_api::serve(config).await

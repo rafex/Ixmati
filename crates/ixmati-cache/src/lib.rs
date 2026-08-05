@@ -1,10 +1,20 @@
 pub mod backend;
-pub mod flashdb_store;
 pub mod noop;
+pub mod readonly;
+pub mod redb_backend;
+pub mod sqlite_backend;
+
+#[cfg(feature = "flashdb")]
+pub mod flashdb_store;
 
 pub use backend::CacheBackend;
-pub use flashdb_store::FlashDb;
 pub use noop::NoOpBackend;
+pub use readonly::ReadOnlyCache;
+pub use redb_backend::RedbCacheBackend;
+pub use sqlite_backend::SqliteCacheBackend;
+
+#[cfg(feature = "flashdb")]
+pub use flashdb_store::FlashDb;
 
 #[cfg(test)]
 mod tests {
@@ -35,17 +45,11 @@ mod tests {
     }
 
     #[test]
-    #[cfg(not(feature = "flashdb"))]
-    fn flashdb_stub_get_returns_none() {
-        let backend = FlashDb::new("/tmp/test-stub").unwrap();
-        assert!(backend.get("test", "entity", "key").is_none());
-    }
-
-    #[test]
-    #[cfg(not(feature = "flashdb"))]
-    fn flashdb_stub_set_del_does_not_crash() {
-        let backend = FlashDb::new("/tmp/test-stub").unwrap();
-        backend.set("test", "entity", "key", &[1, 2, 3]);
-        backend.del("test", "entity", "key");
+    fn sqlite_cache_basic_ops() {
+        let backend = SqliteCacheBackend::new(":memory:").unwrap();
+        backend.set("cache", "t:e:k", "", b"val");
+        assert_eq!(backend.get("cache", "t:e:k", ""), Some(b"val".to_vec()));
+        backend.del("cache", "t:e:k", "");
+        assert_eq!(backend.get("cache", "t:e:k", ""), None);
     }
 }
