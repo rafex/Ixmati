@@ -177,7 +177,8 @@ Registro de decisiones persistentes del proyecto.
 ### DEC-0012 — SQLite cache como backend default para cache-aside
 
 - **Fecha**: 2026-08-05
-- **Estado**: `accepted`
+- **Estado**: `superseded`
+- **Reemplazada por**: DEC-0036
 - **Contexto**: DEC-0009 descarto FlashDB. Se necesita un backend de cache que funcione multi-proceso en el all-in-one (supervisord: API + writer como procesos separados).
 - **Decision**: Usar SQLite con tabla `_cache` como backend de cache. Archivo separado (`cache.db`) con WAL para acceso concurrente.
 - **Alternativas evaluadas**:
@@ -197,6 +198,42 @@ Registro de decisiones persistentes del proyecto.
   - (-) No es un cache "puro" (es otra tabla SQLite)
   - (-) Podria crecer si no se limpia periodicamente
 - **Reemplaza**: DEC-0009
+- **Razon del reemplazo**: DEC-0036 demostro que Redb con transporte socket es superior en rendimiento multi-proceso, y el socket transport elimina la limitacion de ReadOnlyDatabase que bloqueaba a Redb en DEC-0012.
+
+---
+
+### DEC-0036 — Redb como backend de cache de produccion via socket transport
+
+- **Fecha**: 2026-08-05
+- **Estado**: `accepted`
+- **Contexto**: DEC-0012 eligio SQLite como default porque redb 4.1.0 no soportaba acceso multi-proceso sin `ReadOnlyDatabase`. Las pruebas de carga posteriores demostraron que el transporte socket (Unix domain socket IPC entre API y writer) resuelve esa limitacion: la API consulta al writer via socket, el writer opera Redb en modo read-write exclusivo, y la API nunca abre el archivo Redb directamente. Esto permite usar Redb en entornos multi-proceso sin esperar redb 4.5+.
+- **Decision**: Redb es el backend de cache de produccion por defecto (`CACHE_BACKEND=redb`). El modo de lectura por defecto es socket (`CACHE_READ_MODE=socket`) con Unix domain socket IPC. SQLite permanece como fallback (`CACHE_BACKEND=sqlite` con `CACHE_READ_MODE=direct`).
+- **Resultados de carga** (1000 lecturas concurrentes, Redb como backend):
+
+| Modo | p50 | Ratio vs socket |
+|---|---|---|
+| Redb + socket | 17.59ms | 1.00x (baseline) |
+| Redb + direct (ReadOnlyCache) | 39.00ms | 2.22x mas lento |
+| Redb + MQTT | ~68ms | ~3.9x mas lento |
+
+- **Alternativas evaluadas**:
+
+| Backend | GET p50 (directo) | Multi-proceso | Soporte socket | Veredicto |
+|---|---|---|---|---|
+| Redb 4.1.0 + socket | 26µs | ✅ (via writer) | ✅ | **Elegido** |
+| SQLite (WAL) | 14µs | ✅ | N/A (directo) | Fallback |
+| FlashDB 2.2.0 | 1107µs | ❌ | ❌ | Descartado |
+
+- **Consecuencias**:
+  - (+) Redb + socket es 2.2x mas rapido que acceso directo bajo carga concurrente
+  - (+) El transporte socket mantiene al writer como dueno unico del archivo Redb (no rompe DEC-0002)
+  - (+) Arquitectura preparada para migrar a redb 4.5+ con `ReadOnlyDatabase` (eliminaria el overhead del socket en modo directo)
+  - (+) SQLite cache se mantiene como fallback operativo con solo cambiar `CACHE_BACKEND=sqlite`
+  - (-) El socket añade ~17ms de overhead vs acceso single-process teorico (~26µs)
+  - (-) El writer debe estar vivo para servir lecturas de cache (mitigado: smoke tests verifican disponibilidad)
+- **Reemplaza**: DEC-0012
+
+---
 
 ### DEC-0010 — Canal de ingesta de escrituras: Mosquitto (Opción A)
 
