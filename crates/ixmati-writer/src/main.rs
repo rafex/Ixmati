@@ -1,4 +1,4 @@
-use ixmati_cache::CacheBackend;
+use ixmati_cache::CacheClient;
 use ixmati_writer::batcher::Batcher;
 use ixmati_writer::cache_sync::CacheSync;
 use ixmati_writer::consumer::MqttConsumer;
@@ -61,82 +61,19 @@ async fn main() -> std::io::Result<()> {
         EventPublisher::publish_loop(publisher_clone, store_clone, 1000).await;
     });
 
-    let backend = std::env::var("CACHE_BACKEND").unwrap_or_default();
-    let cache: Arc<dyn CacheBackend> = if let Ok(dir) = std::env::var("CACHE_DIR") {
-        match backend.as_str() {
-            #[cfg(feature = "flashdb")]
-            "flashdb" => match ixmati_cache::FlashDb::new(&dir) {
-                Ok(fdb) => {
-                    tracing::info!(cache_dir = %dir, "FlashDB initialized for writer");
-                    Arc::new(fdb)
-                }
-                Err(e) => {
-                    tracing::warn!(error = %e, "FlashDB init failed, using NoOp");
-                    Arc::new(ixmati_cache::NoOpBackend::new())
-                }
-            },
-            "redb" => {
-                let path = format!("{}/cache.redb", dir);
-                match ixmati_cache::RedbCacheBackend::new(&path) {
-                    Ok(backend) => {
-                        tracing::info!(cache_path = %path, "RedbCacheBackend initialized for writer");
-                        Arc::new(backend)
-                    }
-                    Err(e) => {
-                        tracing::warn!(error = %e, "Redb init failed, using NoOp");
-                        Arc::new(ixmati_cache::NoOpBackend::new())
-                    }
-                }
-            }
-            "sqlite" => {
-                let path = format!("{}/cache.db", dir);
-                match ixmati_cache::SqliteCacheBackend::new(&path) {
-                    Ok(backend) => {
-                        tracing::info!(cache_path = %path, "SqliteCacheBackend initialized for writer");
-                        Arc::new(backend)
-                    }
-                    Err(e) => {
-                        tracing::warn!(error = %e, "SqliteCache init failed, using NoOp");
-                        Arc::new(ixmati_cache::NoOpBackend::new())
-                    }
-                }
-            }
-            _ => {
-                tracing::info!(backend = %backend, "unknown CACHE_BACKEND, using NoOp");
-                Arc::new(ixmati_cache::NoOpBackend::new())
-            }
-        }
-    } else {
-        Arc::new(ixmati_cache::NoOpBackend::new())
-    };
+    let cache_socket_path = std::env::var("CACHE_SOCKET_PATH")
+        .unwrap_or_else(|_| "/var/run/ixmati/cache.sock".into());
 
-    let cache_sync = Arc::new(CacheSync::new(Arc::clone(&cache)));
+    let cache_client = Arc::new(
+        CacheClient::connect(&cache_socket_path)
+            .await
+            .map_err(|e| {
+                tracing::error!(error = %e, socket = %cache_socket_path, "failed to connect to cache-server");
+                std::io::Error::other(format!("CacheClient connect: {e}"))
+            })?,
+    );
 
-    let cache_read_mode = std::env::var("CACHE_READ_MODE").unwrap_or_default();
-    match cache_read_mode.as_str() {
-        "mqtt" => {
-            let _responder = ixmati_writer::cache_responder::CacheResponder::new(
-                Arc::clone(&cache),
-                &mqtt_broker,
-            );
-            tracing::info!("CacheResponder started (MQTT mode)");
-        }
-        "socket" => {
-            let socket_path = std::env::var("CACHE_SOCKET_PATH")
-                .unwrap_or_else(|_| "/var/run/ixmati/cache.sock".into());
-            let server = ixmati_writer::cache_server::CacheServer::new(
-                Arc::clone(&cache),
-                &socket_path,
-            );
-            tokio::spawn(async move {
-                if let Err(e) = server.run().await {
-                    tracing::error!(error = %e, "CacheServer failed");
-                }
-            });
-            tracing::info!(path = %socket_path, "CacheServer started (socket mode)");
-        }
-        _ => {}
-    }
+    let cache_sync = Arc::new(CacheSync::new(Arc::clone(&cache_client)));
 
     let conn = Arc::new(Mutex::new(
         Connection::open(&db_path).map_err(|e| std::io::Error::other(format!("SQLite: {}", e)))?,
@@ -156,7 +93,7 @@ async fn main() -> std::io::Result<()> {
                         );
 
                         if let Some(batch) = batcher.push(cmd) {
-                            process_batch(&conn, &batch, &store_name, &db_path, &cache_sync).await;
+                            process_batch(&conn, &batch, &store_name, &cache_sync).await;
                         }
                     }
                     None => {
@@ -168,7 +105,7 @@ async fn main() -> std::io::Result<()> {
             _ = tokio::time::sleep(tokio::time::Duration::from_millis(50)) => {
                 if batcher.should_flush() && !batcher.is_empty() {
                     let batch = batcher.flush();
-                    process_batch(&conn, &batch, &store_name, &db_path, &cache_sync).await;
+                    process_batch(&conn, &batch, &store_name, &cache_sync).await;
                 }
             }
         }
@@ -181,7 +118,6 @@ async fn process_batch(
     conn: &Arc<Mutex<Connection>>,
     batch: &ixmati_writer::Batch,
     store_name: &str,
-    _db_path: &str,
     cache_sync: &Arc<CacheSync>,
 ) {
     let cmds = &batch.commands;

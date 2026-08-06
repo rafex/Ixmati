@@ -37,12 +37,8 @@ pub fn process_m<B: CacheBackend>(cache: &B, projection: &ProjectionConfig, even
     let merged = serde_json::Value::Object(projection_payload);
     let merged_bytes = serde_json::to_vec(&merged).unwrap_or_default();
 
-    cache.set(
-        &format!("prj:{}", projection.name),
-        &event.entity,
-        &target_key,
-        &merged_bytes,
-    );
+    let pkey = format!("p:{}:{}", projection.name, target_key);
+    cache.set("projections", &pkey, "", &merged_bytes);
 }
 
 fn extract_target_key(event: &EventEnvelope, target_key: &str) -> String {

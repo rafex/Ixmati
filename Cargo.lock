@@ -645,6 +645,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ixmati-cache-server"
+version = "0.1.0"
+dependencies = [
+ "ixmati-cache",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "ixmati-core"
 version = "0.1.0"
 dependencies = [

@@ -68,7 +68,31 @@ Tablero de tareas activo. Persiste entre sesiones.
 - [x] `TASK-TOOL-0013` — Pipelines CI.md + CD.md
 - [x] `TASK-TOOL-0014` — GitHub Actions CI
 
-## Active — Authentication (SPEC-AUTH-0001)
+## Active — Cache Backend (SPEC-CACHE-0001)
+
+- [x] `TASK-CACHE-0001` — FlashDB backend
+- [x] `TASK-CACHE-0002` — SQLite backend (WAL multi-proceso)
+- [x] `TASK-CACHE-0003` — Redb backend
+- [x] `TASK-CACHE-0004` — ReadOnlyCache wrapper
+- [x] `TASK-CACHE-0005` — CacheProxy MQTT + CacheResponder
+- [x] `TASK-CACHE-0006` — CacheClient/Server socket IPC
+- [x] `TASK-CACHE-0007` — Benchmark comparativa (direct/socket/mqtt, 1-1000 conc)
+- [x] `TASK-CACHE-0008` — DEC-0036 Redb+Socket como default de producción
+
+## Active — Projector Validation (SPEC-PROJECTOR-0001)
+
+- [x] `TASK-PRJ-0001` — Fase 0: EventPublisher emite EventEnvelope completo
+- [x] `TASK-PRJ-0002` — Fase 1: Protocolo socket extendido (GET/SET/DEL/DEL_PREFIX/FLUSH) en ixmati-cache
+- [x] `TASK-PRJ-0003` — Fase 1: Binario ixmati-cache-server + Containerfile
+- [x] `TASK-PRJ-0004` — Fase 1: Keyspace unificado p: en pattern_r/pattern_m
+- [x] `TASK-PRJ-0005` — Fase 1: CacheSync vía socket client (writer ya no abre Redb directo)
+- [x] `TASK-PRJ-0006` — Fase 4: API ?projection=&key= implementado
+- [ ] `TASK-PRJ-0007` — Fase 2: Projector real (MQTT consumer + dedup event_id + socket SET)
+- [ ] `TASK-PRJ-0008` — Fase 3: Reconciler real (fan-in stores + socket SET)
+- [ ] `TASK-PRJ-0009` — Fase 5: Multi-store compose con cache-server
+- [ ] `TASK-PRJ-0010` — Fase 6: All-in-one supervisord.conf con cache-server
+- [ ] `TASK-PRJ-0011` — Fase 7: Validación e2e e-commerce (CA-11, CA-12, CA-13)
+- [ ] `TASK-PRJ-0012` — Fase 7: DEC de cierre + SESSION/TODO actualizado
 
 - [x] `TASK-AUTH-0001` — Definir modelo de sesión
 - [x] `TASK-AUTH-0002` — Implementar middleware de autorización

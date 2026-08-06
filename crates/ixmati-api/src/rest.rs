@@ -278,10 +278,45 @@ async fn read_handler(
     State(state): State<AppState>,
     Query(params): Query<ReadQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ixmati_core::Error>)> {
-    if params.projection.is_some() {
+    if let Some(ref proj) = params.projection {
+        let key = params.key.as_deref().unwrap_or("");
+        let pkey = format!("p:{proj}:{key}");
+
+        let cached: Option<Vec<u8>> = match &state.cache_read_mode {
+            CacheReadMode::Socket(client) => client.get_raw(&pkey).await,
+            CacheReadMode::Mqtt(proxy) => {
+                let client_guard = state.cache_proxy_client.lock().await;
+                if let Some(client) = client_guard.as_ref() {
+                    proxy.query(client, "projections", &pkey, "").await
+                } else {
+                    None
+                }
+            }
+            CacheReadMode::Direct => state.cache.get("projections", &pkey, ""),
+        };
+
+        if let Some(data) = cached {
+            if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&data) {
+                crate::metrics::CACHE_HITS
+                    .with_label_values(&[proj, "projection"])
+                    .inc();
+                return Ok(Json(serde_json::json!({
+                    "found": true,
+                    "projection": proj,
+                    "key": key,
+                    "payload": value,
+                })));
+            }
+        }
+
+        crate::metrics::CACHE_MISSES
+            .with_label_values(&[proj, "projection"])
+            .inc();
         return Ok(Json(serde_json::json!({
             "found": false,
-            "message": "projections not yet implemented"
+            "projection": proj,
+            "key": key,
+            "message": "projection not found"
         })));
     }
 
@@ -338,60 +373,76 @@ async fn read_handler(
         )
     })?;
 
-    let conn = rusqlite::Connection::open(db_path).map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ixmati_core::Error::Internal {
-                detail: format!("SQLite open: {}", e),
-            }),
-        )
-    })?;
+    let payload_bytes: Vec<u8> = {
+        let conn = rusqlite::Connection::open(db_path).map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ixmati_core::Error::Internal {
+                    detail: format!("SQLite open: {}", e),
+                }),
+            )
+        })?;
 
-    let sql = format!(
-        "SELECT payload FROM payload_{store} WHERE entity = ?1 AND key = ?2",
-        store = store
-    );
-    let mut stmt = conn.prepare(&sql).map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ixmati_core::Error::Internal {
-                detail: format!("SQL prepare: {}", e),
-            }),
-        )
-    })?;
+        let sql = format!(
+            "SELECT payload FROM payload_{store} WHERE entity = ?1 AND key = ?2",
+            store = store
+        );
+        let mut stmt = conn.prepare(&sql).map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ixmati_core::Error::Internal {
+                    detail: format!("SQL prepare: {}", e),
+                }),
+            )
+        })?;
 
-    let result: rusqlite::Result<Vec<u8>> =
-        stmt.query_row((&entity, &key), |row| row.get(0));
+        let result: rusqlite::Result<Vec<u8>> =
+            stmt.query_row((&entity, &key), |row| row.get(0));
 
-    match result {
-        Ok(payload_bytes) => {
-            state.cache.set("cache", &cache_key, "", &payload_bytes);
+        drop(stmt);
 
-            let value: serde_json::Value =
-                serde_json::from_slice(&payload_bytes).unwrap_or_default();
-            Ok(Json(serde_json::json!({
-                "found": true,
-                "store": store,
-                "entity": entity,
-                "key": key,
-                "source": "sqlite",
-                "payload": value,
-            })))
+        match result {
+            Ok(bytes) => bytes,
+            Err(rusqlite::Error::QueryReturnedNoRows) => {
+                return Ok(Json(serde_json::json!({
+                    "found": false,
+                    "store": store,
+                    "entity": entity,
+                    "key": key,
+                    "message": "not found"
+                })));
+            }
+            Err(e) => {
+                return Err((
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ixmati_core::Error::Internal {
+                        detail: format!("SQL query: {}", e),
+                    }),
+                ));
+            }
         }
-        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(Json(serde_json::json!({
-            "found": false,
-            "store": store,
-            "entity": entity,
-            "key": key,
-            "message": "not found"
-        }))),
-        Err(e) => Err((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ixmati_core::Error::Internal {
-                detail: format!("SQL query: {}", e),
-            }),
-        )),
+    };
+
+    match &state.cache_read_mode {
+        CacheReadMode::Socket(client) => {
+            client.set(&store, &entity, &key, &payload_bytes).await;
+        }
+        CacheReadMode::Direct => {
+            state.cache.set("cache", &cache_key, "", &payload_bytes);
+        }
+        CacheReadMode::Mqtt(_) => {}
     }
+
+    let value: serde_json::Value =
+        serde_json::from_slice(&payload_bytes).unwrap_or_default();
+    Ok(Json(serde_json::json!({
+        "found": true,
+        "store": store,
+        "entity": entity,
+        "key": key,
+        "source": "sqlite",
+        "payload": value,
+    })))
 }
 
 #[derive(Deserialize)]

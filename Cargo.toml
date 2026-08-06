@@ -7,6 +7,7 @@ members = [
     "crates/ixmati-projector",
     "crates/ixmati-reconciler",
     "crates/ixmati-supervisor",
+    "crates/ixmati-cache-server",
     "tests/integration",
 ]
 resolver = "2"

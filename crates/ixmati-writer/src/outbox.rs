@@ -28,7 +28,7 @@ impl Outbox {
     }
 
     pub fn insert(conn: &Connection, event: &EventEnvelope) -> rusqlite::Result<i64> {
-        let payload = serde_json::to_vec(&event.payload).unwrap_or_default();
+        let payload = serde_json::to_vec(event).unwrap_or_default();
 
         conn.execute(
             "INSERT INTO _outbox (event_id, event_type, store, entity, key, version, occurred_at, payload)

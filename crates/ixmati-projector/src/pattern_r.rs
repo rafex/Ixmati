@@ -25,12 +25,8 @@ pub fn process_r<B: CacheBackend>(cache: &B, projection: &ProjectionConfig, even
     let merged_bytes = serde_json::to_vec(&merged).unwrap_or_default();
 
     // Store in cache with projection namespace
-    cache.set(
-        &format!("prj:{}", projection.name),
-        &event.entity,
-        &projection_key,
-        &merged_bytes,
-    );
+    let pkey = format!("p:{}:{}", projection.name, projection_key);
+    cache.set("projections", &pkey, "", &merged_bytes);
 }
 
 fn event_key_from_payload(event: &EventEnvelope, target_key: &str) -> String {

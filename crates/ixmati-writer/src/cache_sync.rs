@@ -1,102 +1,72 @@
-use ixmati_cache::CacheBackend;
+use ixmati_cache::CacheClient;
 use ixmati_core::WriteEnvelope;
 use std::sync::Arc;
 
 pub struct CacheSync {
-    cache: Arc<dyn CacheBackend>,
+    client: Arc<CacheClient>,
 }
 
 impl CacheSync {
-    pub fn new(cache: Arc<dyn CacheBackend>) -> Self {
-        Self { cache }
+    pub fn new(client: Arc<CacheClient>) -> Self {
+        Self { client }
     }
 
-    pub fn invalidate_after_write(&self, cmd: &WriteEnvelope) {
-        let key = cache_key(&cmd.store, &cmd.entity, &cmd.key);
-        self.cache.del("cache", &key, "");
+    pub fn invalidate_after_write(&self, store: &str, entity: &str, key: &str) {
+        let cache_key = CacheClient::cache_key(store, entity, key);
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async {
+                self.client.del_raw(&cache_key).await;
+            });
+        });
     }
 
-    pub fn repopulate_after_write(&self, cmd: &WriteEnvelope) {
-        let key = cache_key(&cmd.store, &cmd.entity, &cmd.key);
-        let payload = serde_json::to_vec(&cmd.payload).unwrap_or_default();
-        self.cache.set("cache", &key, "", &payload);
+    pub fn repopulate_after_write(&self, store: &str, entity: &str, key: &str, payload: &serde_json::Value) {
+        let cache_key = CacheClient::cache_key(store, entity, key);
+        let value = serde_json::to_vec(payload).unwrap_or_default();
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async {
+                self.client.set_raw(&cache_key, &value).await;
+            });
+        });
     }
 
     pub fn sync_batch(&self, commands: &[WriteEnvelope]) {
         tracing::info!(count = commands.len(), "CacheSync::sync_batch");
         for cmd in commands {
             match cmd.op.as_str() {
-                "delete" => self.invalidate_after_write(cmd),
-                _ => self.repopulate_after_write(cmd),
+                "delete" => self.invalidate_after_write(&cmd.store, &cmd.entity, &cmd.key),
+                _ => self.repopulate_after_write(
+                    &cmd.store,
+                    &cmd.entity,
+                    &cmd.key,
+                    &cmd.payload,
+                ),
             }
         }
     }
 
     pub fn delete_by_store(&self, store: &str) {
-        let prefix = format!("c:{}", store);
-        self.cache.delete_by_prefix("cache", &prefix);
+        let prefix = format!("c:{store}");
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(async {
+                self.client.delete_by_prefix(&prefix).await;
+            });
+        });
     }
 }
 
 pub fn cache_key(store: &str, entity: &str, key: &str) -> String {
-    format!("c:{}:{}:{}", store, entity, key)
+    CacheClient::cache_key(store, entity, key)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ixmati_cache::NoOpBackend;
     use serde_json::json;
-
-    #[test]
-    fn cache_sync_does_not_crash_with_noop() {
-        let cache = Arc::new(NoOpBackend::new());
-        let sync = CacheSync::new(cache);
-
-        let cmd = WriteEnvelope {
-            op: "upsert".into(),
-            store: "pedidos".into(),
-            entity: "pedido".into(),
-            key: "ped_1".into(),
-            version: 1,
-            ts: "2026-07-30T00:00:00Z".into(),
-            idempotency_key: "ik-1".into(),
-            ack_mode: "committed".into(),
-            payload: json!({"total": 100}),
-        };
-
-        sync.sync_batch(&[cmd]);
-    }
-
-    #[test]
-    fn cache_sync_handles_delete() {
-        let cache = Arc::new(NoOpBackend::new());
-        let sync = CacheSync::new(cache);
-
-        let cmd = WriteEnvelope {
-            op: "delete".into(),
-            store: "pedidos".into(),
-            entity: "pedido".into(),
-            key: "ped_1".into(),
-            version: 2,
-            ts: "2026-07-30T00:00:00Z".into(),
-            idempotency_key: "ik-2".into(),
-            ack_mode: "committed".into(),
-            payload: json!({}),
-        };
-
-        sync.invalidate_after_write(&cmd);
-    }
 
     #[test]
     fn cache_key_generation() {
         let key = cache_key("pedidos", "pedido", "ped_abc");
         assert_eq!(key, "c:pedidos:pedido:ped_abc");
-    }
-
-    #[test]
-    fn store_prefix_generation() {
-        let sync = CacheSync::new(Arc::new(NoOpBackend::new()));
-        sync.delete_by_store("pedidos");
     }
 }

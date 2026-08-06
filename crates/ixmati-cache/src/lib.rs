@@ -1,4 +1,6 @@
 pub mod backend;
+pub mod cache_client;
+pub mod cache_server;
 pub mod noop;
 pub mod readonly;
 pub mod redb_backend;
@@ -8,6 +10,8 @@ pub mod sqlite_backend;
 pub mod flashdb_store;
 
 pub use backend::CacheBackend;
+pub use cache_client::CacheClient;
+pub use cache_server::CacheServer;
 pub use noop::NoOpBackend;
 pub use readonly::ReadOnlyCache;
 pub use redb_backend::RedbCacheBackend;
