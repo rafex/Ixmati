@@ -47,8 +47,8 @@ Tablero de tareas activo. Persiste entre sesiones.
 
 - [x] `TASK-SMOKE-0001` — Corregir bugs de infraestructura (build, network, healthcheck)
 - [x] `TASK-SMOKE-0002` — Ejecutar 12 tests E2E restantes y verificar resultados
-- [ ] `TASK-SMOKE-0003` — Extender podman_tunnel.sh con port forwards automáticos
-- [ ] `TASK-SMOKE-0004` — Registrar pytest.mark.smoke en pyproject.toml
+- [x] `TASK-SMOKE-0003` — Extender podman_tunnel.sh con port forwards automáticos
+- [x] `TASK-SMOKE-0004` — Registrar pytest.mark.smoke en pyproject.toml
 - [x] `TASK-SMOKE-0005` — Registrar decisiones (DEC-0025, DEC-0026) en DECISIONS.md
 
 ## Active — Tooling (SPEC-TOOL-0001)
@@ -87,12 +87,12 @@ Tablero de tareas activo. Persiste entre sesiones.
 - [x] `TASK-PRJ-0004` — Fase 1: Keyspace unificado p: en pattern_r/pattern_m
 - [x] `TASK-PRJ-0005` — Fase 1: CacheSync vía socket client (writer ya no abre Redb directo)
 - [x] `TASK-PRJ-0006` — Fase 4: API ?projection=&key= implementado
-- [ ] `TASK-PRJ-0007` — Fase 2: Projector real (MQTT consumer + dedup event_id + socket SET)
-- [ ] `TASK-PRJ-0008` — Fase 3: Reconciler real (fan-in stores + socket SET)
-- [ ] `TASK-PRJ-0009` — Fase 5: Multi-store compose con cache-server
-- [ ] `TASK-PRJ-0010` — Fase 6: All-in-one supervisord.conf con cache-server
-- [ ] `TASK-PRJ-0011` — Fase 7: Validación e2e e-commerce (CA-11, CA-12, CA-13)
-- [ ] `TASK-PRJ-0012` — Fase 7: DEC de cierre + SESSION/TODO actualizado
+- [x] `TASK-PRJ-0007` — Fase 2: Projector real (MQTT consumer + dedup event_id + socket SET)
+- [x] `TASK-PRJ-0008` — Fase 3: Reconciler real (fan-in stores + socket SET)
+- [x] `TASK-PRJ-0009` — Fase 5: Multi-store compose con cache-server
+- [x] `TASK-PRJ-0010` — Fase 6: All-in-one supervisord.conf con cache-server
+- [x] `TASK-PRJ-0011` — Fase 7: Validación e2e e-commerce (CA-11, CA-12, CA-13)
+- [x] `TASK-PRJ-0012` — Fase 7: DEC de cierre + SESSION/TODO actualizado
 
 - [x] `TASK-AUTH-0001` — Definir modelo de sesión
 - [x] `TASK-AUTH-0002` — Implementar middleware de autorización

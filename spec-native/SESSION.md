@@ -1,58 +1,66 @@
 +++
 [session]
-state = "in_progress"
+state = "idle"
 agent = "opencode"
 initiative = "projector-validation"
-task = "Fase-1-cache-refactor"
-intent = "Activar proyecciones reales, reconciler y multi-store con Redb funcional via cache-server dedicado"
-last_updated = "2026-08-05T23:00:00Z"
+task = "done"
+intent = "Cerrar iniciativa: todas las fases completadas, bugs resueltos, 117 unit + 4 e2e tests pasan"
+last_updated = "2026-08-06T17:57:37Z"
 +++
 
 # Active Session
 
 ## Current state
 
-Iniciativa `projector-validation` en progreso. Fases 0, 1 y 4 completadas (compilando). Fases 2, 3, 5, 6, 7 pendientes.
+Cerrar iniciativa: todas las fases completadas, bugs resueltos, 117 unit + 4 e2e tests pasan
 
-### Completado
-- **Fase 0**: EventPublisher emite `EventEnvelope` completo en `ix/evt/...`
-- **Fase 1**: Protocolo socket extendido (GET/SET/DEL/DEL_PREFIX/FLUSH) movido a `ixmati-cache`
-  - `CacheServer` + `CacheClient` en crate compartido
-  - Binario `ixmati-cache-server` (dueño único Redb) + Containerfile
-  - Keyspace unificado `p:` en pattern_r/pattern_m
-  - Writer usa `CacheClient` (socket) para cache_sync, ya no abre Redb directo
-  - API simplificada: modo socket como default
-- **Fase 4**: API `?projection=&key=` implementada (lectura de `p:` via socket)
+## Next steps
 
-### Pendiente (por fases)
-- **Fase 2** — Projector real: suscribirse a `ix/evt/#`, dedup `event_id`, escribir `p:*` vía socket client
-- **Fase 3** — Reconciler real: fan-in con `ReadOnlyConnection` + ATTACH, escribir `p:*` vía socket
-- **Fase 5** — Multi-store compose con `cache-server` (pedidos/usuarios/inventario)
-- **Fase 6** — All-in-one actualizado con `ixmati-cache-server` en supervisord.conf
-- **Fase 7** — Validación e2e (e-commerce) + DEC
+Iniciativa cerrada. El próximo agente puede:
+1. Tomar TASK-SMOKE-0003/0004 del TODO.md
+2. Iniciar nueva iniciativa según ROADMAP.md
+3. Ejecutar tests e2e con: E2E_EXTERNAL=1 pytest tests/smoke/test_ecommerce.py -m e2e -v
 
-## Archivos modificados
-- `crates/ixmati-writer/src/outbox.rs` — payload = EventEnvelope completo
-- `crates/ixmati-writer/src/cache_server.rs` — re-export desde ixmati-cache
-- `crates/ixmati-writer/src/cache_sync.rs` — usa CacheClient (socket)
-- `crates/ixmati-writer/src/main.rs` — conecta a cache-server por socket
-- `crates/ixmati-api/src/cache_client.rs` — re-export desde ixmati-cache
-- `crates/ixmati-api/src/rest.rs` — proyecciones + writeback socket
-- `crates/ixmati-api/src/lib.rs` — modo socket default
-- `crates/ixmati-cache/src/cache_server.rs` — NUEVO: protocolo extendido
-- `crates/ixmati-cache/src/cache_client.rs` — NUEVO: API completa
-- `crates/ixmati-cache/src/lib.rs` — exports CacheServer, CacheClient
-- `crates/ixmati-cache-server/src/main.rs` — NUEVO: binario
-- `crates/ixmati-cache-server/Cargo.toml` — NUEVO
-- `crates/ixmati-projector/src/pattern_r.rs` — keyspace `p:`
-- `crates/ixmati-projector/src/pattern_m.rs` — keyspace `p:`
-- `containers/cache-server/Containerfile` — NUEVO
-- `Cargo.toml` — workspace member cache-server
+## Context for next agent
 
-## Next steps (mañana)
-1. `cargo check` para verificar compilación limpia
-2. Fase 2: `crates/ixmati-projector/src/main.rs` — MQTT consumer + process_event + socket SET
-3. Fase 3: `crates/ixmati-reconciler/src/main.rs` — fan-in stores + socket SET
-4. Fase 5: actualizar `containers/compose/multi-store.yaml` con cache-server
-5. Fase 6: actualizar `containers/allinone/supervisord.conf` con cache-server
-6. Fase 7: validación e2e con caso e-commerce
+Iniciativa projector-validation COMPLETADA.
+
+Bugs encontrados y resueltos:
+1. cache-server idle timeout 30s → eliminado (cerraba conexión antes del primer evento)
+2. process_r_async cross-store lookup usaba event.entity/key → fix con resolve_lookup_key + infer_entity_from_store
+3. CacheClient::read_simple_response timeout 20ms → 5s + logging
+4. Cache-server EXPOSE 0 inválido → eliminado
+5. Cache-server USER ixmati → 1000:1000 + chmod 777
+6. MQTT_BROKER unificado en compose
+7. CACHE_READ_MODE=socket + IXMATI_API_KEYS agregados
+8. Paths relativos en compose corregidos (../../config/...)
+9. Mosquitto healthcheck arreglado (mosquitto_pub en vez de mosquitto_sub con $$)
+10. Projector Containerfile copia projections.toml embebido (podman macOS no soporta bind mounts)
+
+Tests: 117 unitarios + 4 e2e (Pattern M, Pattern R, idempotencia, concurrencia) = todos pasan.
+
+Archivos clave modificados:
+- crates/ixmati-cache/src/cache_server.rs (timeout)
+- crates/ixmati-cache/src/cache_client.rs (timeout + logging)
+- crates/ixmati-cache/src/redb_backend.rs (tests key composition)
+- crates/ixmati-projector/src/main.rs (MQTT consumer + debug logging)
+- crates/ixmati-projector/src/pattern_r.rs (resolve_lookup_key + infer_entity_from_store + tests)
+- crates/ixmati-projector/src/pattern_m.rs (debug logging + tests)
+- crates/ixmati-projector/src/lib.rs (process_event_async)
+- crates/ixmati-core/src/projection.rs (TOML deserialization test)
+- crates/ixmati-reconciler/src/lib.rs + main.rs (fan-in + CacheClient)
+- containers/base/Containerfile (ixmati-cache-server binary)
+- containers/cache-server/Containerfile (USER 1000:1000, chmod 777)
+- containers/projector/Containerfile (COPY projections.toml)
+- containers/compose/multi-store.yaml (cache-server service + fixes)
+- containers/compose/single-store.yaml (cache-server + fixes)
+- containers/compose/smoke.yaml (cache-server + fixes)
+- containers/allinone/supervisord.conf (cache-server program)
+- containers/allinone/Containerfile (cache-server binary)
+- config/projections.toml (proyecciones activadas)
+- helpers/make/containers.mk (cache-server en SERVICES)
+- helpers/python/mqtt_harness.py (http_read_projection, Python 3.9 compat)
+- tests/smoke/conftest.py (compose_up_multi fixtures, Python 3.9 compat)
+- tests/smoke/test_ecommerce.py (4 tests e2e)
+
+DEC-0037, DEC-0038, DEC-0039 registradas.

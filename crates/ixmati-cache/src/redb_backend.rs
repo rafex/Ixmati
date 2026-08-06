@@ -195,4 +195,56 @@ mod tests {
         assert_eq!(ro.get("cache", "t:e:k", ""), Some(b"data".to_vec()));
         assert_eq!(ro.get("cache", "t:e:zzz", ""), None);
     }
+
+    #[test]
+    fn internal_key_with_empty_value_field_produces_ns_colon_entity() {
+        assert_eq!(
+            RedbCacheBackend::internal_key("cache", "p:usuarios_materializados:usr_1", ""),
+            "cache:p:usuarios_materializados:usr_1"
+        );
+    }
+
+    #[test]
+    fn internal_key_with_value_field_produces_ns_colon_entity_colon_key() {
+        assert_eq!(
+            RedbCacheBackend::internal_key("cache", "usuarios", "usr_1"),
+            "cache:usuarios:usr_1"
+        );
+    }
+
+    #[test]
+    fn cache_server_set_get_roundtrip_matches_key_composition() {
+        let path = tmp_path("roundtrip.redb");
+        let backend = RedbCacheBackend::new(&path).unwrap();
+
+        // Simula lo que hace el CacheServer: set("cache", raw_key, "", value)
+        let raw_key = "p:usuarios_materializados:usr_1";
+        backend.set("cache", raw_key, "", b"{\"nombre\":\"Ana\"}");
+
+        // Simula lo que hace el CacheServer: get("cache", raw_key, "")
+        let val = backend.get("cache", raw_key, "");
+        assert_eq!(val, Some(b"{\"nombre\":\"Ana\"}".to_vec()));
+    }
+
+    #[test]
+    fn projection_and_entity_keys_dont_collide() {
+        let path = tmp_path("nocol.redb");
+        let backend = RedbCacheBackend::new(&path).unwrap();
+
+        // Proyección: clave compuesta por el server
+        backend.set("cache", "p:usuarios_materializados:usr_1", "", b"proj_data");
+
+        // Entidad cacheada por el writer: cache_key("usuarios", "usuario", "usr_1") = "c:usuarios:usuario:usr_1"
+        backend.set("cache", "c:usuarios:usuario:usr_1", "", b"entity_data");
+
+        // Deben ser claves independientes
+        assert_eq!(
+            backend.get("cache", "p:usuarios_materializados:usr_1", ""),
+            Some(b"proj_data".to_vec())
+        );
+        assert_eq!(
+            backend.get("cache", "c:usuarios:usuario:usr_1", ""),
+            Some(b"entity_data".to_vec())
+        );
+    }
 }

@@ -19,7 +19,8 @@ RUN cargo build --release --bin ixmati-api \
                      --bin ixmati-writer \
                      --bin ixmati-projector \
                      --bin ixmati-supervisor \
-                     --bin ixmati-reconciler
+                     --bin ixmati-reconciler \
+                     --bin ixmati-cache-server
 
 FROM debian:trixie-slim AS export
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && \
@@ -29,3 +30,4 @@ COPY --from=builder /app/target/release/ixmati-writer /usr/local/bin/ixmati-writ
 COPY --from=builder /app/target/release/ixmati-projector /usr/local/bin/ixmati-projector
 COPY --from=builder /app/target/release/ixmati-supervisor /usr/local/bin/ixmati-supervisor
 COPY --from=builder /app/target/release/ixmati-reconciler /usr/local/bin/ixmati-reconciler
+COPY --from=builder /app/target/release/ixmati-cache-server /usr/local/bin/ixmati-cache-server

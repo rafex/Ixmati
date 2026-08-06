@@ -1,6 +1,5 @@
 use std::path::Path;
 use std::sync::Arc;
-use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{UnixListener, UnixStream};
 
@@ -53,10 +52,16 @@ async fn handle_client(stream: UnixStream, cache: Arc<dyn CacheBackend>) {
 
     loop {
         header.clear();
-        match tokio::time::timeout(Duration::from_secs(30), reader.read_line(&mut header)).await {
-            Ok(Ok(0)) | Err(_) => break,
-            Ok(Ok(_)) => {}
-            Ok(Err(_)) => break,
+        match reader.read_line(&mut header).await {
+            Ok(0) => {
+                tracing::debug!("handle_client: EOF, connection closed");
+                break;
+            }
+            Ok(_) => {}
+            Err(e) => {
+                tracing::debug!(error = %e, "handle_client read error, closing connection");
+                break;
+            }
         }
 
         let trimmed = header.trim();

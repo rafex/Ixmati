@@ -5,10 +5,13 @@ import re
 import subprocess
 import time
 from pathlib import Path
+from typing import Optional
+
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 COMPOSE_FILE = REPO_ROOT / "containers" / "compose" / "smoke.yaml"
+COMPOSE_MULTI = REPO_ROOT / "containers" / "compose" / "multi-store.yaml"
 TUNNEL_SCRIPT = REPO_ROOT / "helpers" / "shell" / "podman_tunnel.sh"
 
 
@@ -26,7 +29,7 @@ def _resolve_smoke_host() -> str:
     return "localhost"
 
 
-def _resolve_ssh_host() -> str | None:
+def _resolve_ssh_host() -> Optional[str]:
     host = os.environ.get("SMOKE_SSH_HOST", "")
     if host:
         return host
@@ -96,6 +99,61 @@ def compose_up(repo_root: Path):
         ["podman", "compose", "-f", str(COMPOSE_FILE), "down", "-v"],
         check=True, cwd=repo_root,
     )
+
+
+@pytest.fixture(scope="session")
+def compose_up_multi(repo_root: Path):
+    """Levanta el stack multi-store.yaml con podman compose y lo derriba al final.
+
+    Requiere podman compose disponible. Usa puertos directos: MQTT 30200, API 30000.
+    """
+    mqtt_port = int(os.environ.get("E2E_MQTT_PORT", "30200"))
+    api_port = int(os.environ.get("E2E_API_PORT", "30000"))
+    host = os.environ.get("E2E_HOST", "localhost")
+
+    if os.environ.get("E2E_EXTERNAL"):
+        _wait_for_port(host, mqtt_port, timeout=30)
+        _wait_for_port(host, api_port, timeout=30)
+        yield
+        return
+
+    subprocess.run(
+        ["podman", "compose", "-f", str(COMPOSE_MULTI), "down", "-v"],
+        capture_output=True, cwd=repo_root,
+    )
+
+    subprocess.run(
+        ["podman", "compose", "-f", str(COMPOSE_MULTI), "up", "-d"],
+        check=True, cwd=repo_root,
+    )
+
+    _wait_for_port(host, mqtt_port, timeout=60)
+    _wait_for_port(host, api_port, timeout=60)
+
+    yield
+
+    subprocess.run(
+        ["podman", "compose", "-f", str(COMPOSE_MULTI), "down", "-v"],
+        check=False, cwd=repo_root,
+    )
+
+
+@pytest.fixture
+def mqtt_config_multi():
+    return {
+        "host": os.environ.get("E2E_HOST", "localhost"),
+        "port": int(os.environ.get("E2E_MQTT_PORT", "30200")),
+        "qos": 1,
+    }
+
+
+@pytest.fixture
+def api_config_multi():
+    return {
+        "host": os.environ.get("E2E_HOST", "localhost"),
+        "port": int(os.environ.get("E2E_API_PORT", "30000")),
+        "key": os.environ.get("SMOKE_API_KEY", "ix-default-key"),
+    }
 
 
 @pytest.fixture

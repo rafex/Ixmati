@@ -22,6 +22,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=build /usr/local/bin/ixmati-api /usr/local/bin/
 COPY --from=build /usr/local/bin/ixmati-writer /usr/local/bin/
 COPY --from=build /usr/local/bin/ixmati-projector /usr/local/bin/
+COPY --from=build /usr/local/bin/ixmati-cache-server /usr/local/bin/
 COPY --from=build /usr/local/bin/ixmati-supervisor /usr/local/bin/
 COPY --from=build /usr/local/bin/ixmati-reconciler /usr/local/bin/
 

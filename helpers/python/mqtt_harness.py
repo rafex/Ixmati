@@ -10,6 +10,8 @@ import urllib.request
 import urllib.error
 from dataclasses import dataclass, field
 
+from typing import Optional
+
 try:
     import paho.mqtt.client as mqtt
 except ImportError:
@@ -36,10 +38,10 @@ class WriteResult:
     status: str
     store: str
     idempotency_key: str
-    message: str | None = None
+    message: Optional[str] = None
 
 
-def create_client(config: MqttConfig | None = None) -> "mqtt.Client":
+def create_client(config: Optional[MqttConfig] = None) -> "mqtt.Client":
     if mqtt is None:
         raise RuntimeError("paho-mqtt no instalado. Ejecuta: uv sync")
     cfg = config or MqttConfig()
@@ -62,7 +64,7 @@ def wait_for_message(
     client: "mqtt.Client",
     topic: str,
     timeout: float = 5.0,
-) -> dict | None:
+) -> Optional[dict]:
     received = []
 
     def on_message(_client, _userdata, msg):
@@ -109,7 +111,7 @@ def wait_for_messages(
 def make_write_payload(
     store: str = "test",
     entity: str = "test",
-    key: str | None = None,
+    key: Optional[str] = None,
     version: int = 1,
     ack_mode: str = "accepted",
 ) -> dict:
@@ -153,7 +155,7 @@ def http_write(api: ApiConfig, payload: dict) -> WriteResult:
         raise RuntimeError(f"HTTP {e.code}: {error_json}")
 
 
-def http_write_status(api: ApiConfig, store: str, idempotency_key: str) -> dict | None:
+def http_write_status(api: ApiConfig, store: str, idempotency_key: str) -> Optional[dict]:
     """GET /writes/{store}/{idempotency_key}"""
     url = f"http://{api.host}:{api.port}/writes/{store}/{idempotency_key}"
     headers = {"Authorization": f"Bearer {api.key}"}
@@ -165,7 +167,7 @@ def http_write_status(api: ApiConfig, store: str, idempotency_key: str) -> dict 
         return None
 
 
-def http_read(api: ApiConfig, store: str, entity: str | None = None, key: str | None = None) -> dict | None:
+def http_read(api: ApiConfig, store: str, entity: Optional[str] = None, key: Optional[str] = None) -> Optional[dict]:
     """GET /read"""
     params = [("store", store)]
     if entity:
@@ -183,7 +185,7 @@ def http_read(api: ApiConfig, store: str, entity: str | None = None, key: str | 
         return None
 
 
-def http_health(api: ApiConfig) -> dict | None:
+def http_health(api: ApiConfig) -> Optional[dict]:
     """GET /health"""
     url = f"http://{api.host}:{api.port}/health"
     try:
@@ -191,3 +193,19 @@ def http_health(api: ApiConfig) -> dict | None:
             return json.loads(resp.read())
     except urllib.error.HTTPError:
         return None
+
+
+def http_read_projection(api: ApiConfig, projection: str, key: str) -> Optional[dict]:
+    """GET /read?projection={projection}&key={key}"""
+    url = f"http://{api.host}:{api.port}/read?projection={projection}&key={key}"
+    headers = {"Authorization": f"Bearer {api.key}"}
+    req = urllib.request.Request(url, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            return json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        error_body = e.read().decode("utf-8", errors="replace").strip()
+        try:
+            return json.loads(error_body)
+        except (json.JSONDecodeError, ValueError):
+            return {"found": False, "message": error_body}

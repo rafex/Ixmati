@@ -2,6 +2,7 @@ pub mod pattern_m;
 pub mod pattern_r;
 
 use ixmati_cache::CacheBackend;
+use ixmati_cache::CacheClient;
 use ixmati_core::{EventEnvelope, ProjectionRegistry};
 use std::sync::Arc;
 
@@ -33,6 +34,21 @@ impl<B: CacheBackend> ProjectorEngine<B> {
     pub fn process_events(&self, events: &[EventEnvelope]) {
         for event in events {
             self.process_event(event);
+        }
+    }
+
+    pub async fn process_event_async(&self, event: &EventEnvelope, cache: &CacheClient) {
+        let projections = self.registry.for_store(&event.store);
+
+        for proj in projections {
+            match proj.pattern {
+                ixmati_core::ProjectionPattern::R => {
+                    pattern_r::process_r_async(cache, proj, event).await;
+                }
+                ixmati_core::ProjectionPattern::M => {
+                    pattern_m::process_m_async(cache, proj, event).await;
+                }
+            }
         }
     }
 

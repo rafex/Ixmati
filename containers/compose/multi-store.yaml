@@ -1,16 +1,16 @@
-# containers/compose/multi-store.yaml — stack, 3 stores + projector (ejemplo: pedidos, usuarios, inventario)
+# containers/compose/multi-store.yaml — stack, 3 stores + projector + reconciler (ejemplo: pedidos, usuarios, inventario)
 
 name: ixmati-multi
 
 x-store: &store-template
   environment:
-    - MQTT_HOST=mosquitto
-    - MQTT_PORT=30200
+    - MQTT_BROKER=tcp://mosquitto:30200
+    - CACHE_SOCKET_PATH=/var/run/ixmati/cache.sock
   depends_on:
     mosquitto:
       condition: service_healthy
   volumes:
-    - cache_data:/cache:U
+    - cache_socket:/var/run/ixmati:U
 
 services:
   mosquitto:
@@ -23,10 +23,30 @@ services:
     volumes:
       - mosquitto_data:/mosquitto/data:U
     healthcheck:
-      test: ["CMD", "mosquitto_sub", "-t", "$$SYS/broker/version", "-C", "1", "-W", "2"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
+      test: ["CMD", "mosquitto_pub", "-h", "127.0.0.1", "-p", "30200", "-t", "health", "-m", "1", "-q", "0"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  cache-server:
+    image: localhost/ixmati-cache-server:local
+    build:
+      context: ../..
+      dockerfile: containers/cache-server/Containerfile
+    environment:
+      - CACHE_BACKEND=redb
+      - CACHE_DIR=/var/lib/ixmati/cache
+      - CACHE_SOCKET_PATH=/var/run/ixmati/cache.sock
+      - RUST_LOG=ixmati_cache_server=info
+    volumes:
+      - cache_data:/var/lib/ixmati/cache:U
+      - cache_socket:/var/run/ixmati:U
+    healthcheck:
+      test: ["CMD", "test", "-S", "/var/run/ixmati/cache.sock"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   api:
     image: localhost/ixmati-api:local
@@ -37,13 +57,19 @@ services:
       - "30000:30000"
       - "30100:30100"
     environment:
-      - MQTT_HOST=mosquitto
-      - MQTT_PORT=30200
+      - MQTT_BROKER=tcp://mosquitto:30200
+      - API_HOST=0.0.0.0
+      - CACHE_SOCKET_PATH=/var/run/ixmati/cache.sock
+      - CACHE_READ_MODE=socket
+      - IXMATI_API_KEYS=ix-default-key
+      - RUST_LOG=ixmati_api=info
     depends_on:
       mosquitto:
         condition: service_healthy
+      cache-server:
+        condition: service_healthy
     volumes:
-      - cache_data:/cache:U
+      - cache_socket:/var/run/ixmati:U
 
   writer-pedidos:
     image: localhost/ixmati-writer:local
@@ -52,13 +78,18 @@ services:
       dockerfile: containers/writer/Containerfile
     <<: *store-template
     environment:
-      - MQTT_HOST=mosquitto
-      - MQTT_PORT=30200
+      - MQTT_BROKER=tcp://mosquitto:30200
       - STORE_NAME=pedidos
       - SQLITE_PATH=/data/pedidos.db
+      - CACHE_SOCKET_PATH=/var/run/ixmati/cache.sock
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+      cache-server:
+        condition: service_healthy
     volumes:
       - store_pedidos:/data:U
-      - cache_data:/cache:U
+      - cache_socket:/var/run/ixmati:U
     deploy:
       replicas: 1
 
@@ -66,13 +97,18 @@ services:
     image: localhost/ixmati-writer:local
     <<: *store-template
     environment:
-      - MQTT_HOST=mosquitto
-      - MQTT_PORT=30200
+      - MQTT_BROKER=tcp://mosquitto:30200
       - STORE_NAME=usuarios
       - SQLITE_PATH=/data/usuarios.db
+      - CACHE_SOCKET_PATH=/var/run/ixmati/cache.sock
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+      cache-server:
+        condition: service_healthy
     volumes:
       - store_usuarios:/data:U
-      - cache_data:/cache:U
+      - cache_socket:/var/run/ixmati:U
     deploy:
       replicas: 1
 
@@ -80,21 +116,59 @@ services:
     image: localhost/ixmati-writer:local
     <<: *store-template
     environment:
-      - MQTT_HOST=mosquitto
-      - MQTT_PORT=30200
+      - MQTT_BROKER=tcp://mosquitto:30200
       - STORE_NAME=inventario
       - SQLITE_PATH=/data/inventario.db
+      - CACHE_SOCKET_PATH=/var/run/ixmati/cache.sock
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+      cache-server:
+        condition: service_healthy
     volumes:
       - store_inventario:/data:U
-      - cache_data:/cache:U
+      - cache_socket:/var/run/ixmati:U
     deploy:
       replicas: 1
 
   projector:
     image: localhost/ixmati-projector:local
-    <<: *store-template
+    build:
+      context: ../..
+      dockerfile: containers/projector/Containerfile
+    environment:
+      - IXMATI_MQTT_BROKER=tcp://mosquitto:30200
+      - IXMATI_CACHE_SOCKET=/var/run/ixmati/cache.sock
+      - RUST_LOG=ixmati_projector=debug,ixmati_cache=debug
+    depends_on:
+      mosquitto:
+        condition: service_healthy
+      cache-server:
+        condition: service_healthy
     volumes:
-      - cache_data:/cache:U
+      - cache_socket:/var/run/ixmati:U
+
+  reconciler:
+    image: localhost/ixmati-reconciler:local
+    build:
+      context: ../..
+      dockerfile: containers/reconciler/Containerfile
+    environment:
+      - CACHE_SOCKET_PATH=/var/run/ixmati/cache.sock
+      - IXMATI_PROJECTIONS_PATH=/etc/ixmati/projections.toml
+      - IXMATI_STORE_PATHS=pedidos=/data/pedidos.db,usuarios=/data/usuarios.db,inventario=/data/inventario.db
+      - RUST_LOG=ixmati_reconciler=info
+    depends_on:
+      cache-server:
+        condition: service_healthy
+    volumes:
+      - cache_socket:/var/run/ixmati:U
+      - ../../config/projections.toml:/etc/ixmati/projections.toml:ro
+      - store_pedidos:/data/pedidos.db:ro
+      - store_usuarios:/data/usuarios.db:ro
+      - store_inventario:/data/inventario.db:ro
+    profiles:
+      - reconciler
 
 volumes:
   mosquitto_data:
@@ -102,3 +176,4 @@ volumes:
   store_usuarios:
   store_inventario:
   cache_data:
+  cache_socket:

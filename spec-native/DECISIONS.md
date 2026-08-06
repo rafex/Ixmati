@@ -600,3 +600,33 @@ Registro de decisiones persistentes del proyecto.
 - Si se añaden nuevos directorios con artefactos grandes, deben agregarse al .containerignore
 - La tarea TASK-CONT-0001 (crear .containerignore) estaba marcada como [x] en TODO.md pero el archivo no existía — se creó ahora
 - Reemplaza: none
+
+### DEC-0037 — Cache-server dedicado como dueño único de Redb (socket-based)
+
+- Fecha: 2026-08-06
+- Estado: `accepted`
+- Relacionado con specs:
+- Contexto: La Fase 1 movió el acceso a Redb a un proceso cache-server dedicado, expuesto vía Unix socket. Writer, API, Projector y Reconciler se comunican con el cache-server vía CacheClient (socket), eliminando la necesidad de abrir Redb directamente desde múltiples procesos. Esto resuelve problemas de contención de escritura en Redb (single-writer) y unifica el keyspace de proyecciones bajo el prefijo `p:`.
+- Decisión: 1. El cache-server es el único dueño de la base de datos Redb/SQLite de cache. 2. Toda lectura/escritura de proyecciones (`p:*`) y cache (`c:*`) pasa por el socket Unix. 3. El protocolo socket soporta GET, SET, DEL, DEL_PREFIX, FLUSH con framing HIT/MISS. 4. Los clientes (Writer, API, Projector, Reconciler) usan CacheClient para todas las operaciones de cache.
+- Consecuencias: Beneficios: eliminación de contención Redb multi-proceso, keyspace unificado, API de proyecciones (`?projection=&key=`) funciona vía socket. Costos: latencia extra por salto de socket (~0.2ms en loopback), el cache-server es punto único de fallo para operaciones de cache, requiere healthcheck de socket en compose/supervisord.
+- Reemplaza: none
+
+### DEC-0038 — Validación e2e multi-store con compose + pytest smoke tests
+
+- Fecha: 2026-08-06
+- Estado: `accepted`
+- Relacionado con specs:
+- Contexto: La iniciativa projector-validation requería validar el flujo completo e-commerce: múltiples stores (pedidos, usuarios, inventario), proyecciones Pattern R y M, cache-server único vía socket, y concurrencia multi-proceso. Se implementaron tests e2e automatizados con pytest + podman compose.
+- Decisión: 1. Tests e2e usan `multi-store.yaml` con podman compose (8 servicios: mosquitto, cache-server, api, 3 writers, projector, reconciler opcional). 2. Fixture `compose_up_multi` (session-scoped) gestiona el ciclo de vida del stack. 3. Puertos directos (MQTT 30200, API 30000) sin remapeo para simplificar. 4. Se agregó `http_read_projection(api, projection, key)` al harness de smoke tests. 5. Tests validan: materialized view (Pattern M), reference+lookup (Pattern R), idempotencia, y concurrencia con ThreadPoolExecutor.
+- Consecuencias: Los tests e2e requieren `make containers-build` previo y `pytest -m e2e`. No se ejecutan en CI actual (requieren podman con capacidades de red). El fixture `compose_up_multi` soporta `E2E_EXTERNAL=1` para conectar a un stack ya levantado.
+- Reemplaza: none
+
+### DEC-0039 — Bugs detectados y resueltos en projector e2e: timeout + cross-store lookup + socket permissions
+
+- Fecha: 2026-08-06
+- Estado: `accepted`
+- Relacionado con specs:
+- Contexto: Durante la validación e2e del projector se encontraron 5 bugs que impedían el funcionamiento del pipeline completo: escritura → MQTT → projector → socket SET → cache-server → Redb → socket GET → API.
+- Decisión: 1. Cache-server tenía `handle_client` con timeout de 30s en `read_line`, lo que cerraba la conexión del projector antes de que llegara el primer evento MQTT → se eliminó el timeout (las conexiones Unix socket no necesitan keepalive). 2. `process_r_async` usaba `event.entity`/`event.key` para cross-store lookups en vez de inferir la entidad desde el campo `{store}_id` del payload → se agregaron `resolve_lookup_key()` e `infer_entity_from_store()`. 3. `CacheClient::read_simple_response` tenía timeout de 20ms y descartaba respuestas silenciosamente → timeout aumentado a 5s, logging agregado. 4. Cache-server Containerfile usaba `EXPOSE 0` (inválido en podman) → eliminado. 5. `USER ixmati` en cache-server causaba `Permission denied` en el socket → cambiado a `USER 1000:1000` con `chmod 777`. 6. `MQTT_BROKER` vs `MQTT_HOST`/`MQTT_PORT` inconsistente entre servicios → unificado a `MQTT_BROKER=tcp://mosquitto:30200`. 7. `CACHE_READ_MODE=socket` y `IXMATI_API_KEYS` faltaban en compose → agregados.
+- Consecuencias: Se agregaron 12 tests unitarios que cubren: composición de claves Redb (4 tests), cross-store lookup en pattern_r (4 tests), extracción de campos en pattern_m (3 tests), deserialización de ProjectionConfig con copy_fields (1 test). Tests existentes: 117 pasan. Tests e2e: 4/4 pasan (Pattern M, Pattern R, idempotencia, concurrencia). El stack multi-store con 7 servicios funciona correctamente con docker/podman compose. La API expone proyecciones vía `?projection=&key=`.
+- Reemplaza: none

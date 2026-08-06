@@ -6,6 +6,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
     rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /usr/local/bin/ixmati-projector /usr/local/bin/ixmati-projector
+COPY config/projections.toml /etc/ixmati/projections.toml
+
+ENV IXMATI_PROJECTIONS_PATH=/etc/ixmati/projections.toml
+
+RUN mkdir -p /var/run/ixmati
 
 USER 1000:1000
 ENTRYPOINT ["ixmati-projector"]

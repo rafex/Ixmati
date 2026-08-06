@@ -46,9 +46,11 @@ impl CacheClient {
         let req = format!("SET {key} {}\n", value.len());
         let mut guard = self.stream.lock().await;
         if guard.write_all(req.as_bytes()).await.is_err() {
+            tracing::warn!("CacheClient: SET write header failed");
             return;
         }
         if guard.write_all(value).await.is_err() {
+            tracing::warn!("CacheClient: SET write value failed");
             return;
         }
         let _ = guard.write_all(b"\n").await;
@@ -99,7 +101,7 @@ impl CacheClient {
         let mut reader = reader;
 
         let mut header = String::new();
-        let read_result = tokio::time::timeout(Duration::from_millis(20), async {
+        let read_result = tokio::time::timeout(Duration::from_secs(5), async {
             loop {
                 header.clear();
                 let n = reader.read_line(&mut header).await?;
@@ -140,6 +142,19 @@ impl CacheClient {
         let reader = BufReader::new(stream);
         let mut reader = reader;
         let mut line = String::new();
-        let _ = tokio::time::timeout(Duration::from_millis(20), reader.read_line(&mut line)).await;
+        match tokio::time::timeout(Duration::from_secs(5), reader.read_line(&mut line)).await {
+            Ok(Ok(_)) => {
+                let resp = line.trim();
+                if resp != "OK" {
+                    tracing::warn!(response = %resp, "CacheClient: unexpected response");
+                }
+            }
+            Ok(Err(e)) => {
+                tracing::warn!(error = %e, "CacheClient: read response failed");
+            }
+            Err(_) => {
+                tracing::warn!("CacheClient: read response timed out");
+            }
+        }
     }
 }

@@ -247,4 +247,48 @@ mod tests {
         let reg = ProjectionRegistry::new(vec![make_r_projection(), make_m_projection()]);
         assert!(reg.validate().is_ok());
     }
+
+    #[test]
+    fn deserialize_projections_from_json_with_copy_fields() {
+        // Equivalente al TOML: valida que copy_fields se deserializa correctamente
+        let json_str = r#"[
+{
+  "name": "pedidos_con_usuario",
+  "pattern": "R",
+  "source_stores": ["pedidos", "usuarios"],
+  "target_key": "pedido_id",
+  "ttl_seconds": 300
+},
+{
+  "name": "usuarios_materializados",
+  "pattern": "M",
+  "source_stores": ["usuarios"],
+  "target_key": "usuario_id",
+  "ttl_seconds": 600,
+  "copy_fields": [{
+    "source_store": "usuarios",
+    "source_entity": "usuario",
+    "fields": ["nombre", "email"]
+  }]
+}
+]"#;
+
+        let projections: Vec<ProjectionConfig> = serde_json::from_str(json_str).unwrap();
+        assert_eq!(projections.len(), 2);
+
+        let r_proj = &projections[0];
+        assert_eq!(r_proj.name, "pedidos_con_usuario");
+        assert_eq!(r_proj.pattern, ProjectionPattern::R);
+        assert!(r_proj.copy_fields.is_none());
+
+        let m_proj = &projections[1];
+        assert_eq!(m_proj.name, "usuarios_materializados");
+        assert_eq!(m_proj.pattern, ProjectionPattern::M);
+        assert_eq!(m_proj.source_stores, vec!["usuarios"]);
+        let fields = m_proj.copy_fields.as_ref().unwrap();
+        assert_eq!(fields.len(), 1);
+        assert_eq!(fields[0].source_store, "usuarios");
+        assert_eq!(fields[0].source_entity, "usuario");
+        assert_eq!(fields[0].fields, vec!["nombre", "email"]);
+    }
 }

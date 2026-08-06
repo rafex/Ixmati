@@ -18,6 +18,26 @@ services:
       retries: 5
       start_period: 5s
 
+  cache-server:
+    image: localhost/ixmati-cache-server:local
+    build:
+      context: ../..
+      dockerfile: containers/cache-server/Containerfile
+    environment:
+      - CACHE_BACKEND=redb
+      - CACHE_DIR=/var/lib/ixmati/cache
+      - CACHE_SOCKET_PATH=/var/run/ixmati/cache.sock
+      - RUST_LOG=ixmati_cache_server=debug
+    volumes:
+      - cache_data:/var/lib/ixmati/cache:U
+      - cache_socket:/var/run/ixmati:U
+    healthcheck:
+      test: ["CMD", "test", "-S", "/var/run/ixmati/cache.sock"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 2s
+
   api:
     image: localhost/ixmati-api:local
     build:
@@ -32,8 +52,11 @@ services:
       - IXMATI_API_KEYS=smoke-test-key
       - RUST_LOG=ixmati_api=debug
       - SQLITE_PATH=/data/smoke.db
+      - CACHE_SOCKET_PATH=/var/run/ixmati/cache.sock
     depends_on:
       mosquitto:
+        condition: service_healthy
+      cache-server:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:30000/health"]
@@ -43,6 +66,7 @@ services:
       start_period: 3s
     volumes:
       - store_data:/data:U
+      - cache_socket:/var/run/ixmati:U
 
   writer:
     image: localhost/ixmati-writer:local
@@ -54,11 +78,15 @@ services:
       - STORE_NAME=smoke
       - SQLITE_PATH=/data/smoke.db
       - RUST_LOG=ixmati_writer=debug
+      - CACHE_SOCKET_PATH=/var/run/ixmati/cache.sock
     depends_on:
       mosquitto:
         condition: service_healthy
+      cache-server:
+        condition: service_healthy
     volumes:
       - store_data:/data:U
+      - cache_socket:/var/run/ixmati:U
 
   projector:
     image: localhost/ixmati-projector:local
@@ -67,10 +95,17 @@ services:
       dockerfile: containers/projector/Containerfile
     environment:
       - MQTT_BROKER=tcp://mosquitto:30200
+      - CACHE_SOCKET_PATH=/var/run/ixmati/cache.sock
+      - IXMATI_PROJECTIONS_PATH=/etc/ixmati/projections.toml
       - RUST_LOG=ixmati_projector=debug
     depends_on:
       mosquitto:
         condition: service_healthy
+      cache-server:
+        condition: service_healthy
+    volumes:
+      - cache_socket:/var/run/ixmati:U
+      - ../../config/projections.toml:/etc/ixmati/projections.toml:ro
 
   litestream:
     image: localhost/ixmati-litestream:local
@@ -88,3 +123,5 @@ services:
 volumes:
   mosquitto_data:
   store_data:
+  cache_data:
+  cache_socket:

@@ -8,7 +8,7 @@ IMAGE_PREFIX    ?= localhost/ixmati
 IMAGE_TAG       ?= local
 
 CONTAINER_DIR   := $(REPO_ROOT)/containers
-SERVICES        := api writer projector supervisor reconciler
+SERVICES        := api writer projector supervisor reconciler cache-server
 INFRA_IMAGES    := mosquitto litestream
 
 # ── builder compartido (debe construirse primero) ──
@@ -52,7 +52,7 @@ containers-compile:
 	@mkdir -p $(TARGET_DIR)/release
 	@CONTAINER_ID=$$($(PODMAN) create $(IMAGE_PREFIX)-builder:$(IMAGE_TAG)); \
 	echo "  container=$$CONTAINER_ID"; \
-	for binary in ixmati-api ixmati-writer ixmati-projector ixmati-supervisor ixmati-reconciler; do \
+	for binary in ixmati-api ixmati-writer ixmati-projector ixmati-supervisor ixmati-reconciler ixmati-cache-server; do \
 		$(PODMAN) cp "$$CONTAINER_ID:/usr/local/bin/$$binary" "$(TARGET_DIR)/release/$$binary" 2>/dev/null && \
 			ls -lh "$(TARGET_DIR)/release/$$binary" || \
 			echo "  $(COLOR_YELLOW)$$binary fallo$(COLOR_RESET)"; \
