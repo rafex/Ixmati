@@ -105,6 +105,7 @@ impl CacheProxy {
         key: &str,
     ) -> Option<Vec<u8>> {
         let correlation_id = Uuid::new_v4().to_string();
+        tracing::info!(correlation_id=%correlation_id, store=%store, entity=%entity, key=%key, "CacheProxy: query");
         let (tx, rx) = oneshot::channel();
 
         self.pending

@@ -101,6 +101,8 @@ impl AppState {
         db_path: &str,
         cache: Arc<dyn CacheBackend>,
         cache_socket: Option<Arc<CacheClient>>,
+        cache_read_mode: CacheReadMode,
+        cache_proxy_client: Arc<Mutex<Option<AsyncClient>>>,
     ) -> Self {
         let (host, port) = ixmati_core::mqtt::parse_mqtt_broker(broker);
         let (client, mut eventloop) = AsyncClient::new(
@@ -128,7 +130,7 @@ impl AppState {
         let cache_read_mode = if let Some(socket) = cache_socket {
             CacheReadMode::Socket(socket)
         } else {
-            CacheReadMode::Direct
+            cache_read_mode
         };
 
         Self {
@@ -141,7 +143,7 @@ impl AppState {
             ))),
             cache,
             cache_read_mode,
-            cache_proxy_client: Arc::new(Mutex::new(None)),
+            cache_proxy_client,
         }
     }
 

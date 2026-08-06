@@ -122,6 +122,9 @@ pub async fn serve(config: ApiConfig) -> std::io::Result<()> {
         None
     };
 
+    let cache_mode_for_with_db = cache_proxy.clone();
+    let proxy_client_for_with_db = proxy_client.clone();
+
     let mut state = rest::AppState::new(
         &config.mqtt_broker,
         Arc::clone(&cache),
@@ -130,11 +133,20 @@ pub async fn serve(config: ApiConfig) -> std::io::Result<()> {
         cache_socket.clone(),
     );
     if let Some(ref db) = config.db_path {
+        let cm = if let Some(p) = cache_mode_for_with_db {
+            rest::CacheReadMode::Mqtt(p)
+        } else if let Some(ref s) = cache_socket {
+            rest::CacheReadMode::Socket(Arc::clone(s))
+        } else {
+            rest::CacheReadMode::Direct
+        };
         state = rest::AppState::with_db(
             &config.mqtt_broker,
             db,
             Arc::clone(&cache),
             cache_socket,
+            cm,
+            Arc::new(tokio::sync::Mutex::new(proxy_client_for_with_db)),
         );
     }
 

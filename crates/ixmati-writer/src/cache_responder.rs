@@ -8,11 +8,8 @@ use uuid::Uuid;
 #[derive(Debug, Deserialize)]
 struct CacheQuery {
     correlation_id: String,
-    #[allow(dead_code)]
     store: String,
-    #[allow(dead_code)]
     entity: String,
-    #[allow(dead_code)]
     key: String,
 }
 
@@ -25,7 +22,9 @@ struct CacheResponse {
 }
 
 pub struct CacheResponder {
+    #[allow(dead_code)]
     cache: Arc<dyn CacheBackend>,
+    #[allow(dead_code)]
     client: AsyncClient,
 }
 
@@ -53,14 +52,22 @@ impl CacheResponder {
                         let query: CacheQuery =
                             match serde_json::from_slice(&publish.payload) {
                                 Ok(q) => q,
-                                Err(_) => continue,
+                                Err(e) => {
+                                    tracing::warn!(error=%e, "CacheResponder: bad payload");
+                                    continue;
+                                }
                             };
+
+                        tracing::info!(
+                            correlation_id=%query.correlation_id,
+                            store=%query.store,
+                            "CacheResponder: received query"
+                        );
 
                         let cache_key = format!(
                             "c:{}:{}:{}",
                             query.store, query.entity, query.key
                         );
-
                         let found = cache_clone.get("cache", &cache_key, "");
 
                         let resp = CacheResponse {
@@ -68,28 +75,26 @@ impl CacheResponder {
                             found: found.is_some(),
                             payload: found,
                         };
+                        let resp_topic = format!("ixmati/qry-resp/{}", query.correlation_id);
+                        let resp_payload = serde_json::to_vec(&resp).unwrap_or_default();
 
-                        let resp_payload =
-                            serde_json::to_vec(&resp).unwrap_or_default();
-
-                        let _ = sub_client
-                            .publish(
-                                format!(
-                                    "ixmati/qry-resp/{}",
-                                    query.correlation_id
-                                ),
-                                QoS::AtMostOnce,
-                                false,
-                                resp_payload,
-                            )
-                            .await;
+                        if let Err(e) = sub_client
+                            .publish(resp_topic, QoS::AtMostOnce, false, resp_payload)
+                            .await
+                        {
+                            tracing::error!(error=%e, "CacheResponder: publish response failed");
+                        }
+                    }
+                    Ok(Event::Incoming(Packet::ConnAck(_))) => {
+                        sub_client
+                            .subscribe("ixmati/qry/#", QoS::AtMostOnce)
+                            .await
+                            .ok();
+                        tracing::info!("CacheResponder: reconnected");
                     }
                     Ok(_) => {}
                     Err(e) => {
-                        tracing::error!(
-                            error = %e,
-                            "CacheResponder MQTT eventloop error"
-                        );
+                        tracing::warn!(error=%e, "CacheResponder eventloop error");
                         tokio::time::sleep(Duration::from_secs(1)).await;
                     }
                 }
@@ -97,15 +102,5 @@ impl CacheResponder {
         });
 
         Self { cache, client }
-    }
-
-    #[allow(dead_code)]
-    pub fn client(&self) -> &AsyncClient {
-        &self.client
-    }
-
-    #[allow(dead_code)]
-    pub fn cache(&self) -> &Arc<dyn CacheBackend> {
-        &self.cache
     }
 }
