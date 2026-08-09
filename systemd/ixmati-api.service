@@ -1,7 +1,7 @@
 [Unit]
 Description=Ixmati API (REST + gRPC)
-After=network.target mosquitto.service
-Requires=mosquitto.service
+After=network.target mosquitto.service ixmati-cache-server.service
+Requires=mosquitto.service ixmati-cache-server.service
 Documentation=https://github.com/rafex/Ixmati
 
 [Service]
@@ -13,6 +13,8 @@ Environment=MQTT_BROKER=tcp://localhost:1883
 Environment=API_HOST=0.0.0.0
 Environment=API_PORT=30000
 Environment=IXMATI_API_KEYS=ix-default-key
+Environment=CACHE_READ_MODE=socket
+Environment=CACHE_SOCKET_PATH=/var/run/ixmati/cache.sock
 Restart=always
 RestartSec=5
 StandardOutput=journal

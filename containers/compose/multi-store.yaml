@@ -137,8 +137,8 @@ services:
       context: ../..
       dockerfile: containers/projector/Containerfile
     environment:
-      - IXMATI_MQTT_BROKER=tcp://mosquitto:30200
-      - IXMATI_CACHE_SOCKET=/var/run/ixmati/cache.sock
+      - MQTT_BROKER=tcp://mosquitto:30200
+      - CACHE_SOCKET_PATH=/var/run/ixmati/cache.sock
       - RUST_LOG=ixmati_projector=debug,ixmati_cache=debug
     depends_on:
       mosquitto:

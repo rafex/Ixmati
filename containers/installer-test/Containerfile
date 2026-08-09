@@ -1,0 +1,37 @@
+# containers/installer-test/Containerfile — Debian con systemd para validar
+# el instalador nativo (scripts/install.sh + helpers/python/installer.py).
+#
+# No es una imagen de producto: es un banco de pruebas efímero que arranca
+# systemd como PID 1 dentro del contenedor (requiere `podman run --privileged
+# -v /sys/fs/cgroup:/sys/fs/cgroup:rw`) para poder instalar y arrancar de
+# verdad las unidades .service que genera el instalador.
+#
+# Build: podman build -t ixmati-installer-test containers/installer-test
+# Uso:   helpers/shell/test_installer_debian.sh
+
+FROM debian:trixie-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        systemd systemd-sysv \
+        curl ca-certificates procps \
+    && rm -rf /var/lib/apt/lists/* \
+    && rm -f /lib/systemd/system/multi-user.target.wants/* \
+             /etc/systemd/system/*.wants/* \
+             /lib/systemd/system/local-fs.target.wants/* \
+             /lib/systemd/system/sockets.target.wants/*udev* \
+             /lib/systemd/system/sockets.target.wants/*initctl* \
+             /lib/systemd/system/sysinit.target.wants/systemd-tmpfiles-setup* \
+             /lib/systemd/system/systemd-update-utmp* \
+    && systemctl mask \
+        dev-hugepages.mount \
+        sys-fs-fuse-connections.mount \
+        systemd-udevd.service \
+        systemd-udev-trigger.service \
+        getty.target \
+        getty-static.service
+
+STOPSIGNAL SIGRTMIN+3
+
+VOLUME ["/sys/fs/cgroup"]
+
+CMD ["/lib/systemd/systemd"]

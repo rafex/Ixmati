@@ -1,0 +1,22 @@
+[Unit]
+Description=Ixmati Cache Server (Redb owner, socket IPC)
+After=network.target
+Documentation=https://github.com/rafex/Ixmati
+
+[Service]
+Type=simple
+User=ixmati
+Group=ixmati
+RuntimeDirectory=ixmati
+RuntimeDirectoryMode=0750
+ExecStart=/usr/local/bin/ixmati-cache-server
+Environment=CACHE_BACKEND=redb
+Environment=CACHE_DIR=/var/lib/ixmati/cache
+Environment=CACHE_SOCKET_PATH=/var/run/ixmati/cache.sock
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

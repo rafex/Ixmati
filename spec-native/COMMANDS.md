@@ -53,6 +53,41 @@ make dist                # ensamblar dist/ con checksums
 make clean               # limpiar target/ y dist/
 ```
 
+## Instalador nativo (systemd)
+
+Empaquetado del instalador (`dist/ixmati-<VERSION>-linux-amd64.tar.gz`):
+
+```bash
+make containers-builder      # imagen builder (compila los 6 binarios)
+make containers-compile      # extrae binarios a target/release/
+make dist                    # ensambla dist/ (incluye ixmati-cache-server)
+make dist-checksums          # genera .sha256
+make dist-validate           # verifica binarios/config/systemd en el tarball
+```
+
+Validación real en contenedor Debian con systemd como PID 1 (requiere Podman
+`--privileged` + cgroups montados):
+
+```bash
+just installer-test          # → make installer-test: flujo completo
+                              #   automatizado (instala, verifica round-trip
+                              #   write/read, reinstala, desinstala --purge)
+```
+
+Operativa granular para depuración manual del contenedor de test:
+
+```bash
+make installer-test-image      # build imagen Debian + systemd
+make installer-test-up         # levanta contenedor privilegiado
+make installer-test-install    # copia dist/ y corre install.sh dentro
+make installer-test-status     # systemctl is-active de los 5 servicios + /health
+make installer-test-logs SVC=ixmati-api   # journalctl de un servicio
+make installer-test-shell      # shell interactiva dentro del contenedor
+make installer-test-uninstall  # corre install.sh --uninstall --purge
+make installer-test-down       # detiene y elimina el contenedor
+make installer-test-clean      # down + elimina la imagen de test
+```
+
 ## Stores
 
 ```bash
@@ -151,3 +186,4 @@ curl http://localhost:8080/writes/pedidos/550e8400-e29b-41d4-a716-446655440000
 | `just docs-build` | `mdbook build docs/` |
 | `just docs-serve` | `mdbook serve --open docs/` |
 | `just env-up` | `docker compose -f docker/docker-compose.dev.yml up -d` |
+| `just installer-test` | `helpers/shell/test_installer_debian.sh` (vía `make installer-test`) |

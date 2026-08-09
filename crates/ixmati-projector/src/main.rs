@@ -50,9 +50,9 @@ async fn main() {
         .init();
 
     let mqtt_broker =
-        std::env::var("IXMATI_MQTT_BROKER").unwrap_or_else(|_| "tcp://localhost:1883".into());
-    let socket_path =
-        std::env::var("IXMATI_CACHE_SOCKET").unwrap_or_else(|_| "/tmp/ixmati-cache.sock".into());
+        std::env::var("MQTT_BROKER").unwrap_or_else(|_| "tcp://localhost:1883".into());
+    let socket_path = std::env::var("CACHE_SOCKET_PATH")
+        .unwrap_or_else(|_| "/var/run/ixmati/cache.sock".into());
     let projections_path =
         std::env::var("IXMATI_PROJECTIONS_PATH").unwrap_or_else(|_| "config/projections.toml".into());
     let dedup_capacity: usize = std::env::var("IXMATI_DEDUP_CAPACITY")

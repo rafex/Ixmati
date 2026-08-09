@@ -98,6 +98,22 @@ Tablero de tareas activo. Persiste entre sesiones.
 - [x] `TASK-AUTH-0002` — Implementar middleware de autorización
 - [x] `TASK-AUTH-0003` — Documentar setup operativo
 
+## Active — Native Installer Hardening (SPEC-INSTALL-0001)
+
+- [x] `TASK-INST-0001` — Unificar env vars de projector/reconciler con el resto
+      del sistema (`MQTT_BROKER`/`CACHE_SOCKET_PATH` en vez de
+      `IXMATI_MQTT_BROKER`/`IXMATI_CACHE_SOCKET`)
+- [x] `TASK-INST-0002` — Unidad systemd `ixmati-cache-server.service` +
+      dependencias `Requires=`/`After=` en api/writer/projector
+- [x] `TASK-INST-0003` — `installer.py`: empaquetar y arrancar cache-server y
+      projector, no sobrescribir config existente, `verify_health()`
+- [x] `TASK-INST-0004` — `installer.py --uninstall` / `--uninstall --purge`
+- [x] `TASK-INST-0005` — Incluir `ixmati-cache-server` en `make dist` /
+      `make dist-validate`
+- [x] `TASK-INST-0006` — Validación real del instalador en contenedor Debian
+      (`containers/installer-test/` + `helpers/shell/test_installer_debian.sh`
+      + `just installer-test`)
+
 ## Pendiente (post-v0.1.0)
 
 - [x] Fijar versiones de dependencias wildcard

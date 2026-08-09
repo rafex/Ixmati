@@ -12,5 +12,6 @@ include $(REPO_ROOT)/helpers/make/proto.mk
 include $(REPO_ROOT)/helpers/make/containers.mk
 include $(REPO_ROOT)/helpers/make/artifacts.mk
 include $(REPO_ROOT)/helpers/make/installer.mk
+include $(REPO_ROOT)/helpers/make/installer-test.mk
 include $(REPO_ROOT)/helpers/make/ci.mk
 include $(REPO_ROOT)/helpers/make/dist-validate.mk

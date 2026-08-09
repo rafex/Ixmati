@@ -14,7 +14,7 @@ DIST_NAME    := ixmati-$(VERSION)-linux-$(DIST_ARCH)
 DIST_DIR     := $(REPO_ROOT)/dist
 TARGET_DIR   := $(REPO_ROOT)/target
 SCRIPTS_DIR  := $(REPO_ROOT)/scripts
-BINARIES     := ixmati-api ixmati-writer ixmati-projector ixmati-supervisor ixmati-reconciler
+BINARIES     := ixmati-cache-server ixmati-api ixmati-writer ixmati-projector ixmati-supervisor ixmati-reconciler
 
 .PHONY: dist
 dist: installer

@@ -1,7 +1,7 @@
 [Unit]
 Description=Ixmati Projector (read models)
-After=network.target mosquitto.service ixmati-api.service
-Requires=mosquitto.service
+After=network.target mosquitto.service ixmati-cache-server.service ixmati-api.service
+Requires=mosquitto.service ixmati-cache-server.service
 Documentation=https://github.com/rafex/Ixmati
 
 [Service]
@@ -10,6 +10,8 @@ User=ixmati
 Group=ixmati
 ExecStart=/usr/local/bin/ixmati-projector
 Environment=MQTT_BROKER=tcp://localhost:1883
+Environment=CACHE_SOCKET_PATH=/var/run/ixmati/cache.sock
+Environment=IXMATI_PROJECTIONS_PATH=/etc/ixmati/projections.toml
 Restart=always
 RestartSec=5
 StandardOutput=journal
