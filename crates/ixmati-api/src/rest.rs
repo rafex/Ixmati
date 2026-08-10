@@ -184,8 +184,7 @@ async fn write_handler(
         if !throttle.allow(&envelope.store) {
             let depth = throttle.depth(&envelope.store);
             crate::metrics::QUEUE_DEPTH
-                .with_label_values(&[&envelope.store])
-                .set(depth as i64);
+                .record(depth as i64, &crate::metrics::kv_store(&envelope.store));
             return Err((
                 StatusCode::TOO_MANY_REQUESTS,
                 Json(ixmati_core::Error::QueueFull {
@@ -194,9 +193,7 @@ async fn write_handler(
             ));
         }
         let depth = throttle.depth(&envelope.store);
-        crate::metrics::QUEUE_DEPTH
-            .with_label_values(&[&envelope.store])
-            .set(depth as i64);
+        crate::metrics::QUEUE_DEPTH.record(depth as i64, &crate::metrics::kv_store(&envelope.store));
     }
 
     let idempotency_key = if envelope.idempotency_key.is_empty() {
@@ -297,9 +294,13 @@ async fn read_handler(
 
         if let Some(data) = cached {
             if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&data) {
-                crate::metrics::CACHE_HITS
-                    .with_label_values(&[proj, "projection"])
-                    .inc();
+                crate::metrics::CACHE_HITS.add(
+                    1,
+                    &[
+                        opentelemetry::KeyValue::new("store", proj.to_string()),
+                        opentelemetry::KeyValue::new("namespace", "projection"),
+                    ],
+                );
                 return Ok(Json(serde_json::json!({
                     "found": true,
                     "projection": proj,
@@ -309,9 +310,13 @@ async fn read_handler(
             }
         }
 
-        crate::metrics::CACHE_MISSES
-            .with_label_values(&[proj, "projection"])
-            .inc();
+        crate::metrics::CACHE_MISSES.add(
+            1,
+            &[
+                opentelemetry::KeyValue::new("store", proj.to_string()),
+                opentelemetry::KeyValue::new("namespace", "projection"),
+            ],
+        );
         return Ok(Json(serde_json::json!({
             "found": false,
             "projection": proj,
@@ -346,9 +351,13 @@ async fn read_handler(
 
     if let Some(cached) = cached {
         if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&cached) {
-            crate::metrics::CACHE_HITS
-                .with_label_values(&[&store, "cache"])
-                .inc();
+            crate::metrics::CACHE_HITS.add(
+                1,
+                &[
+                    opentelemetry::KeyValue::new("store", store.clone()),
+                    opentelemetry::KeyValue::new("namespace", "cache"),
+                ],
+            );
             return Ok(Json(serde_json::json!({
                 "found": true,
                 "store": store,
@@ -360,9 +369,13 @@ async fn read_handler(
         }
     }
 
-    crate::metrics::CACHE_MISSES
-        .with_label_values(&[&store, "cache"])
-        .inc();
+    crate::metrics::CACHE_MISSES.add(
+        1,
+        &[
+            opentelemetry::KeyValue::new("store", store.clone()),
+            opentelemetry::KeyValue::new("namespace", "cache"),
+        ],
+    );
 
     let db_path = state.db_path.as_ref().ok_or_else(|| {
         (

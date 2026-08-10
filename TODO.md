@@ -139,6 +139,22 @@ Tablero de tareas activo. Persiste entre sesiones.
       de doble prefijo: `Registry::new_custom(Some("ixmati"))` +
       nombres que ya empiezan con `ixmati_` produce
       `ixmati_ixmati_*` en `/metrics`.
+- [x] `TASK-VAL-0005` — Migrar instrumentación de Prometheus directo a
+      OpenTelemetry (vendor-neutral) en `ixmati-api`: `crates/ixmati-api/src/metrics.rs`
+      reescrito con `opentelemetry`/`opentelemetry_sdk` 0.32 + exporter
+      `opentelemetry-prometheus` 0.32 (mantiene `/metrics` en formato
+      Prometheus, sin romper scrapers existentes). De paso corrige el bug
+      de doble prefijo (namespace se configura una sola vez via
+      `.with_namespace("ixmati")` en el exporter, no en el nombre de cada
+      métrica). Call sites en `rest.rs` (QUEUE_DEPTH, CACHE_HITS,
+      CACHE_MISSES) migrados a la API de atributos de OTel
+      (`KeyValue`/`.add()`/`.record()`). Validado con test de regresión
+      (`metrics::tests::encode_metrics_has_single_ixmati_prefix...`) y con
+      tráfico real en el contenedor Debian: `/metrics` devuelve
+      `ixmati_cache_hits_total{namespace="cache",store="default",...}` sin
+      duplicación. `cargo test --workspace --lib` sigue en verde (100+ tests).
+      Pendiente (no en este alcance): instrumentar WRITE_REQUESTS/WRITE_LATENCY/
+      WRITE_ERRORS/OUTBOX_SIZE/PROJECTION_LAG/PROCESS_* en sus call sites reales.
 
 ## Pendiente (post-v0.1.0)
 

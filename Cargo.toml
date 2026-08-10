@@ -33,5 +33,8 @@ rumqttc = "0.25"
 axum = "0.8"
 tonic = "0.14"
 prost = "0.14"
-prometheus = "0.13"
+opentelemetry = { version = "0.32", default-features = false, features = ["metrics"] }
+opentelemetry_sdk = { version = "0.32", default-features = false, features = ["metrics"] }
+opentelemetry-prometheus = "0.32"
+prometheus = "0.14"
 toml = "0.8"
