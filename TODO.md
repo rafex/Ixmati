@@ -214,11 +214,27 @@ Tablero de tareas activo. Persiste entre sesiones.
 
 ## Backlog priorizado — viabilidad alto volumen/multi-tenant (DEC-0043)
 
-- [ ] `TASK-VAL-0008` (P0, bajo esfuerzo/alto impacto) — Reescribir
-      `crates/ixmati-writer/src/event_publisher.rs`: batch `UPDATE` en vez de
-      conexión SQLite por fila, intervalo/límite de publicación configurables
-      (hoy 1000ms/100 eventos hardcodeados en `main.rs`), publicación
-      concurrente respetando orden por store.
+- [x] `TASK-VAL-0008` (P0, bajo esfuerzo/alto impacto) — Reescribir
+      `crates/ixmati-writer/src/event_publisher.rs`: `publish_unpublished`
+      ahora fetch-ea el batch con una sola conexión, publica todos los
+      eventos concurrentemente vía `tokio::task::JoinSet` (antes: secuencial
+      con `.await` por evento), y marca los exitosos con un único
+      `Outbox::mark_published_batch` (`UPDATE ... WHERE id IN (...)`, nuevo
+      en `outbox.rs`) en vez de abrir una conexión SQLite nueva por fila.
+      `PUBLISH_INTERVAL_MS` (default 200, antes 1000 hardcodeado) y
+      `PUBLISH_BATCH_LIMIT` (default 500, antes 100 hardcodeado) ahora son
+      env vars configurables en `main.rs`. 2 tests nuevos en `outbox.rs`
+      (`mark_published_batch_marks_all_given_ids`,
+      `mark_published_batch_empty_is_noop`). `cargo test --workspace --lib`
+      sigue en verde (100+ tests, incluye los 2 nuevos).
+      **Validado con el mismo load test en Debian real, antes/después**:
+      antes del fix, 4762/13460 eventos sin publicar tras la carga (~35%,
+      confirmado por consulta SQL directa además del gauge). Después del
+      fix, con carga equivalente (12753 writes, 425 ops/s reales,
+      concurrencia 20, 30s), **0/12755 eventos sin publicar** (confirmado
+      por `SELECT COUNT(*) FROM _outbox WHERE published_at IS NULL` vía
+      python3/sqlite3 dentro del contenedor, no solo la métrica). Los 5
+      servicios systemd siguieron activos durante y después de la carga.
 - [ ] `TASK-VAL-0009` (P1, bloqueante para producción segura) — Backpressure
       real: rechazar/backoff de comandos cuando `OUTBOX_SIZE` de un store
       supera un umbral (la métrica ya existe desde TASK-VAL-0006). Alertas

@@ -38,48 +38,81 @@ impl EventPublisher {
         }
     }
 
+    /// Publica hasta `limit` eventos pendientes del outbox a MQTT en paralelo
+    /// y marca los exitosos con un único UPDATE en batch.
+    ///
+    /// Antes: una conexión SQLite nueva + un UPDATE individual por cada fila
+    /// publicada, y publicación secuencial con `.await` por evento — con QoS 1
+    /// (espera de PUBACK) eso topeaba el drenado muy por debajo del throughput
+    /// de entrada bajo carga real (ver DEC-0043: ~100 eventos/s de techo con
+    /// 448 writes/s de entrada, backlog creciendo sin límite). Ahora se
+    /// publican todos los eventos del batch concurrentemente y se hace un
+    /// solo UPDATE ... WHERE id IN (...) al final.
     pub async fn publish_unpublished(&self, store: &str, limit: usize) -> rusqlite::Result<usize> {
-        let conn = rusqlite::Connection::open(&self.db_path)?;
+        let rows = {
+            let conn = rusqlite::Connection::open(&self.db_path)?;
+            Outbox::fetch_unpublished(&conn, store, limit)?
+        };
 
-        let rows = Outbox::fetch_unpublished(&conn, store, limit)?;
-        let mut published = 0;
+        if rows.is_empty() {
+            return Ok(0);
+        }
 
-        for row in &rows {
-            let topic = format!("ixmati/evt/{}/{}/{}", row.store, row.entity, row.key);
+        let mut publishes = tokio::task::JoinSet::new();
+        for row in rows {
+            let client = self.client.clone();
+            publishes.spawn(async move {
+                let topic = format!("ixmati/evt/{}/{}/{}", row.store, row.entity, row.key);
+                let result = client
+                    .publish(&topic, QoS::AtLeastOnce, false, row.payload.clone())
+                    .await;
+                (row.id, row.event_id, row.store, result)
+            });
+        }
 
-            let payload = row.payload.clone();
-
-            match self
-                .client
-                .publish(&topic, QoS::AtLeastOnce, false, payload)
-                .await
-            {
-                Ok(_) => {
-                    let conn2 = rusqlite::Connection::open(&self.db_path)?;
-                    Outbox::mark_published(&conn2, row.id)?;
-                    published += 1;
+        let mut published_ids = Vec::new();
+        while let Some(joined) = publishes.join_next().await {
+            let (id, event_id, event_store, result) = match joined {
+                Ok(outcome) => outcome,
+                Err(e) => {
+                    tracing::error!(error = %e, "publish task panicked");
+                    continue;
                 }
+            };
+            match result {
+                Ok(_) => published_ids.push(id),
                 Err(e) => {
                     tracing::warn!(
                         error = %e,
-                        event_id = %row.event_id,
-                        store = %row.store,
+                        event_id = %event_id,
+                        store = %event_store,
                         "failed to publish event"
                     );
                 }
             }
         }
 
+        let published = published_ids.len();
+        if !published_ids.is_empty() {
+            let conn = rusqlite::Connection::open(&self.db_path)?;
+            Outbox::mark_published_batch(&conn, &published_ids)?;
+        }
+
         Ok(published)
     }
 
-    pub async fn publish_loop(publisher: Arc<EventPublisher>, store: String, interval_ms: u64) {
+    pub async fn publish_loop(
+        publisher: Arc<EventPublisher>,
+        store: String,
+        interval_ms: u64,
+        batch_limit: usize,
+    ) {
         let mut interval = tokio::time::interval(tokio::time::Duration::from_millis(interval_ms));
 
         loop {
             interval.tick().await;
 
-            match publisher.publish_unpublished(&store, 100).await {
+            match publisher.publish_unpublished(&store, batch_limit).await {
                 Ok(count) if count > 0 => {
                     tracing::info!(store = %store, count, "published events");
                 }

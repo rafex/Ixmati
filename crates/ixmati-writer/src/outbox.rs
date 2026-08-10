@@ -56,6 +56,23 @@ impl Outbox {
         Ok(())
     }
 
+    /// Marca múltiples filas como publicadas en un solo UPDATE, en vez de
+    /// una conexión + UPDATE por fila (ver DEC-0043: esto era el cuello de
+    /// botella real del publicador bajo carga sostenida).
+    pub fn mark_published_batch(conn: &Connection, outbox_ids: &[i64]) -> rusqlite::Result<()> {
+        if outbox_ids.is_empty() {
+            return Ok(());
+        }
+        let placeholders = vec!["?"; outbox_ids.len()].join(",");
+        let sql = format!(
+            "UPDATE _outbox SET published_at = datetime('now') WHERE id IN ({placeholders})"
+        );
+        let params: Vec<&dyn rusqlite::ToSql> =
+            outbox_ids.iter().map(|id| id as &dyn rusqlite::ToSql).collect();
+        conn.execute(&sql, params.as_slice())?;
+        Ok(())
+    }
+
     pub fn fetch_unpublished(
         conn: &Connection,
         store: &str,
@@ -157,6 +174,34 @@ mod tests {
 
         let rows = Outbox::fetch_unpublished(&conn, "pedidos", 10).unwrap();
         assert!(rows.is_empty());
+    }
+
+    #[test]
+    fn mark_published_batch_marks_all_given_ids() {
+        let conn = Connection::open_in_memory().unwrap();
+        Outbox::ensure_schema(&conn).unwrap();
+
+        let id1 = Outbox::insert(&conn, &make_event("evt-1", "pedidos", 1)).unwrap();
+        let id2 = Outbox::insert(&conn, &make_event("evt-2", "pedidos", 1)).unwrap();
+        let id3 = Outbox::insert(&conn, &make_event("evt-3", "pedidos", 1)).unwrap();
+
+        Outbox::mark_published_batch(&conn, &[id1, id3]).unwrap();
+
+        let rows = Outbox::fetch_unpublished(&conn, "pedidos", 10).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].id, id2);
+    }
+
+    #[test]
+    fn mark_published_batch_empty_is_noop() {
+        let conn = Connection::open_in_memory().unwrap();
+        Outbox::ensure_schema(&conn).unwrap();
+        Outbox::insert(&conn, &make_event("evt-1", "pedidos", 1)).unwrap();
+
+        Outbox::mark_published_batch(&conn, &[]).unwrap();
+
+        let rows = Outbox::fetch_unpublished(&conn, "pedidos", 10).unwrap();
+        assert_eq!(rows.len(), 1);
     }
 
     #[test]

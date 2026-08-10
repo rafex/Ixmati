@@ -30,6 +30,19 @@ async fn main() -> std::io::Result<()> {
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(50);
+    // Antes hardcodeado a 1000ms/100 eventos en el propio código (ver
+    // DEC-0043): a 448 writes/s de entrada esto topeaba el drenado del
+    // outbox a ~100 eventos/s y generaba un backlog sin límite. Ahora
+    // configurable, y publish_unpublished publica en paralelo en vez de
+    // secuencial, así que el límite ya no es un techo de "1 por await".
+    let publish_interval_ms: u64 = std::env::var("PUBLISH_INTERVAL_MS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(200);
+    let publish_batch_limit: usize = std::env::var("PUBLISH_BATCH_LIMIT")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(500);
     let client_id = format!("writer-{}", uuid::Uuid::new_v4());
 
     tracing::info!(
@@ -38,6 +51,8 @@ async fn main() -> std::io::Result<()> {
         broker = %mqtt_broker,
         batch_size,
         batch_interval_ms,
+        publish_interval_ms,
+        publish_batch_limit,
         "ixmati-writer starting"
     );
 
@@ -58,7 +73,13 @@ async fn main() -> std::io::Result<()> {
     let store_clone = store_name.clone();
 
     tokio::spawn(async move {
-        EventPublisher::publish_loop(publisher_clone, store_clone, 1000).await;
+        EventPublisher::publish_loop(
+            publisher_clone,
+            store_clone,
+            publish_interval_ms,
+            publish_batch_limit,
+        )
+        .await;
     });
 
     let cache_socket_path = std::env::var("CACHE_SOCKET_PATH")
