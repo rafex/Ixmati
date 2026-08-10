@@ -110,6 +110,26 @@ async fn main() -> std::io::Result<()> {
             .map_err(|e| std::io::Error::other(format!("SQLite: {}", e)))?,
     ));
 
+    // DEC-0050/Opción G: antes se creaba un `tokio::time::sleep(50ms)` nuevo
+    // en CADA iteración del loop, incluso aunque casi siempre pierde la
+    // carrera contra `recv()`. Registrar/desregistrar un timer en el driver
+    // de tokio tiene overhead real; para llenar un solo batch de 100
+    // comandos hacen falta 100 iteraciones, cada una pagando ese costo.
+    // Medido: con A (`synchronous=NORMAL`), F (`cache_sync` concurrente) y
+    // hasta triplicar CPU o cambiar de entorno por completo (Mac emulado →
+    // Debian real 8 cores nativo), el throughput se mantuvo fijo en
+    // ~30-34 commits/s — la firma de un costo por iteración, no de
+    // saturación de recursos. Un `interval` creado una sola vez fuera del
+    // loop reutiliza el mismo timer en cada `tick()` en vez de registrar
+    // uno nuevo por vuelta.
+    let mut flush_interval = tokio::time::interval(tokio::time::Duration::from_millis(50));
+    flush_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+
+    // Mapeo de puntos calientes: aísla el tiempo de "llenar" un batch (las
+    // hasta 100 llamadas a `recv()` vía select!) bajo carga real, separado
+    // del tiempo de procesarlo (WRITE_BATCH_DURATION/CACHE_SYNC_DURATION).
+    let mut fill_started = std::time::Instant::now();
+
     loop {
         tokio::select! {
             cmd = consumer.receiver().recv() => {
@@ -124,7 +144,12 @@ async fn main() -> std::io::Result<()> {
                         );
 
                         if let Some(batch) = batcher.push(cmd) {
+                            ixmati_writer::metrics::BATCH_FILL_DURATION.record(
+                                fill_started.elapsed().as_secs_f64(),
+                                &[opentelemetry::KeyValue::new("store", store_name.clone())],
+                            );
                             process_batch(&conn, &batch, &store_name, &cache_sync).await;
+                            fill_started = std::time::Instant::now();
                         }
                     }
                     None => {
@@ -133,10 +158,15 @@ async fn main() -> std::io::Result<()> {
                     }
                 }
             }
-            _ = tokio::time::sleep(tokio::time::Duration::from_millis(50)) => {
+            _ = flush_interval.tick() => {
                 if batcher.should_flush() && !batcher.is_empty() {
+                    ixmati_writer::metrics::BATCH_FILL_DURATION.record(
+                        fill_started.elapsed().as_secs_f64(),
+                        &[opentelemetry::KeyValue::new("store", store_name.clone())],
+                    );
                     let batch = batcher.flush();
                     process_batch(&conn, &batch, &store_name, &cache_sync).await;
+                    fill_started = std::time::Instant::now();
                 }
             }
         }
@@ -151,11 +181,29 @@ async fn process_batch(
     store_name: &str,
     cache_sync: &Arc<CacheSync>,
 ) {
-    let cmds = &batch.commands;
-    let mut guard = conn.lock().await;
+    // Opción H (mapeo de puntos calientes): `WriteEngine::process_batch` es
+    // síncrono/bloqueante y antes se llamaba directo dentro de esta `async
+    // fn`, sobre un hilo del runtime de tokio — el mismo patrón que ya se
+    // había identificado y corregido en `cache_server.rs` (DEC-0045). Los
+    // benchmarks aislados (`examples/bench_disk.rs`) descartaron que SQLite
+    // en sí sea el cuello de botella (3900+ writes/s incluso en el disco
+    // más lento del contenedor, contra ~30-35 commits/s del sistema
+    // completo en vivo) — la sospecha recae en la contención por hilos del
+    // runtime entre esta llamada bloqueante y las hasta 100 tareas
+    // concurrentes que `cache_sync.sync_batch` lanza por batch.
+    // `blocking_lock()` es la forma correcta de tomar un `tokio::sync::
+    // Mutex` desde dentro de una closure no-async ejecutada en
+    // `spawn_blocking`.
+    let conn = Arc::clone(conn);
+    let cmds = batch.commands.clone();
 
     let started = std::time::Instant::now();
-    let result = WriteEngine::process_batch(&mut guard, cmds);
+    let result = tokio::task::spawn_blocking(move || {
+        let mut guard = conn.blocking_lock();
+        WriteEngine::process_batch(&mut guard, &cmds)
+    })
+    .await
+    .expect("process_batch blocking task panicked");
     ixmati_writer::metrics::WRITE_BATCH_DURATION.record(
         started.elapsed().as_secs_f64(),
         &[opentelemetry::KeyValue::new("store", store_name.to_string())],
@@ -163,6 +211,7 @@ async fn process_batch(
 
     match result {
         Ok(result) => {
+            let cache_sync_started = std::time::Instant::now();
             cache_sync.sync_batch(&result.events
                 .iter()
                 .map(|e| ixmati_core::WriteEnvelope {
@@ -176,7 +225,12 @@ async fn process_batch(
                     ack_mode: "accepted".into(),
                     payload: e.payload.clone(),
                 })
-                .collect::<Vec<_>>());
+                .collect::<Vec<_>>())
+                .await;
+            ixmati_writer::metrics::CACHE_SYNC_DURATION.record(
+                cache_sync_started.elapsed().as_secs_f64(),
+                &[opentelemetry::KeyValue::new("store", store_name.to_string())],
+            );
 
             tracing::info!(
                 store = %store_name,

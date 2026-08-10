@@ -45,6 +45,41 @@ pub static CONSUMER_QUEUE_DEPTH: LazyLock<Gauge<u64>> = LazyLock::new(|| {
         .build()
 });
 
+// Mapeo de puntos calientes (ver conversación TASK-VAL-0018): WRITE_BATCH_DURATION
+// ya aísla el costo de SQLite (~250ms/batch medido, contra 6-25ms en
+// benchmarks aislados sin el resto de la tubería). Esta métrica aísla el
+// otro tramo del ciclo — la llamada a `cache_sync.sync_batch()` contra el
+// cache-server real — para confirmar o descartar de una vez si ahí está el
+// tiempo que ninguno de los benchmarks sintéticos (que no incluyen esta
+// llamada) logró reproducir.
+pub static CACHE_SYNC_DURATION: LazyLock<Histogram<f64>> = LazyLock::new(|| {
+    METER
+        .f64_histogram("cache_sync_duration_seconds")
+        .with_description("Time to sync a batch of writes to the cache-server")
+        .with_boundaries(vec![
+            0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0,
+        ])
+        .build()
+});
+
+// WRITE_BATCH_DURATION + CACHE_SYNC_DURATION juntas no explican el ciclo
+// completo medido en producción (~187ms de ~454ms observados por batch,
+// dejando ~268ms/batch sin atribuir) — a diferencia de
+// `bench_channel_loop.rs`, que reproduce el mismo canal/select!/interval
+// pero SIN el resto de la tubería real (eventloop de MQTT, servidor de
+// métricas) compitiendo por el runtime. Esta métrica aísla el tiempo de
+// "llenar" un batch (recibir hasta 100 comandos vía `recv()`) bajo carga
+// real, para ver si ahí está el resto.
+pub static BATCH_FILL_DURATION: LazyLock<Histogram<f64>> = LazyLock::new(|| {
+    METER
+        .f64_histogram("batch_fill_duration_seconds")
+        .with_description("Time spent accumulating a batch before it's flushed")
+        .with_boundaries(vec![
+            0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0,
+        ])
+        .build()
+});
+
 pub fn encode_metrics() -> String {
     use prometheus::Encoder;
     let encoder = prometheus::TextEncoder::new();

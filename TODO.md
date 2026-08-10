@@ -452,6 +452,42 @@ Tablero de tareas activo. Persiste entre sesiones.
 - [ ] Dashboard web de operación
 - [ ] Migración de stores (renombrar, merge, split)
 
+## Active — Investigación de techo de throughput del writer (DEC-0050)
+
+- [x] `TASK-VAL-0018` — Investigar por qué el writer solo compromete ~30-40
+      comandos/s a SQLite bajo carga sostenida (hallado en DEC-0049). 8
+      hipótesis probadas con datos reales (ver tabla completa en DEC-0050):
+      `fsync`/`synchronous=NORMAL` (sin cambio), `cache_sync` secuencial
+      (sin cambio), CPU insuficiente 2→6 vCPU (sin cambio), entorno
+      emulado→Debian real nativo amd64 (sin cambio), timer recreado por
+      iteración→`interval` persistente (sin cambio), contención de lock con
+      `event_publisher` (descartada, 1000/1000 commits/s en aislamiento),
+      mecánica del canal/`select!` (descartada, 1099.9 commits/s en
+      aislamiento). Se corrigieron 2 bugs reales de rendimiento:
+      `cache_sync.rs` sin `block_in_place` innecesario + despacho
+      concurrente, y `WriteEngine::process_batch` movido a
+      `tokio::task::spawn_blocking` (no estaba, mismo anti-patrón que
+      `cache_server.rs`/DEC-0045) — mejora medida de ~13% (35.64→40.11
+      commits/s). Se crearon 3 benchmarks aislados reusables
+      (`crates/ixmati-writer/examples/bench_disk.rs`,
+      `bench_contention.rs`, `bench_channel_loop.rs`) y 2 métricas nuevas
+      (`CACHE_SYNC_DURATION`, `BATCH_FILL_DURATION`). **Resultado**: el
+      41% del ciclo de cada batch sigue sin explicarse con instrumentación
+      de aplicación — probable overhead de scheduling del runtime de tokio
+      bajo contención real, no reproducible en benchmarks aislados.
+- [ ] `TASK-VAL-0019` (seguimiento, no iniciado) — Profiling a nivel de
+      sistema (`perf`, `strace`, o `tokio-console`) dentro del contenedor
+      Debian real para aislar el 41% del ciclo que las métricas de
+      aplicación no explican (ver DEC-0050). La instrumentación de
+      aplicación llegó a su límite razonable de utilidad para este
+      problema específico.
+- [ ] `TASK-VAL-0020` (seguimiento) — Recalibrar `OUTBOX_BACKPRESSURE_THRESHOLD`
+      (default 5000, DEC-0045) y el rate-limiter default
+      (`MAX_WRITES_PER_WINDOW=1000/s`, TASK-VAL-0013) contra la capacidad
+      real medida (~30-40 commits/s) — hoy el rate-limiter default es ~25x
+      mayor que lo que el writer puede sostener, por lo que nunca actúa
+      antes de que el verdadero cuello de botella (SQLite) se sature.
+
 ## Cancelled / Replaced
 
 - [x] `TASK-WRITE-0002` — Spike comparativa Opción A vs B (cerrada por diseño)
