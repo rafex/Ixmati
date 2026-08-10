@@ -114,6 +114,32 @@ Tablero de tareas activo. Persiste entre sesiones.
       (`containers/installer-test/` + `helpers/shell/test_installer_debian.sh`
       + `just installer-test`)
 
+## Active — Validation & Load Testing (SPEC-VAL-0001)
+
+- [x] `TASK-VAL-0001` — Extender Prometheus metrics:
+      `ixmati_process_memory_rss_bytes`, `ixmati_process_cpu_user_seconds_total`,
+      `ixmati_write_batch_duration_seconds`
+- [x] `TASK-VAL-0002` — Crear `helpers/shell/test_stack_validation.sh`:
+      write/read round-trip, idempotencia, load testing (100 ops/s).
+      NOTA: no valida proyecciones — la config de instalación default es
+      single-store y `projections.toml` (pattern R/M) requiere stores
+      `pedidos`/`usuarios` que no existen en esa config
+- [x] `TASK-VAL-0003` — Crear load test harness (integrado en test_stack_validation.sh):
+      constant throughput, recolecta métricas y percentiles p50/p99 en paralelo
+- [x] `TASK-VAL-0004` — Ejecutar validación end-to-end en Debian container:
+      instala stack, valida, corre carga, reporta métricas.
+      Resultado: 5/5 servicios estables, write/read/idempotencia OK,
+      8545 writes secuenciales en 30s (285 ops/s, p50=2ms, p99=3ms, 0 errores),
+      RSS: writer 8.3MB, projector 7.7MB, api 6.1MB, cache-server 3.9MB.
+      GAP encontrado: `ixmati_write_requests_total`, `write_latency_seconds`,
+      `write_errors_total`, `outbox_size`, `projection_lag_events` y las 3
+      métricas nuevas de VAL-0001 están registradas pero nunca se
+      incrementan/observan en el código — solo `cache_hits/misses_total` y
+      `queue_depth` tienen call sites reales en `rest.rs`. Además hay un bug
+      de doble prefijo: `Registry::new_custom(Some("ixmati"))` +
+      nombres que ya empiezan con `ixmati_` produce
+      `ixmati_ixmati_*` en `/metrics`.
+
 ## Pendiente (post-v0.1.0)
 
 - [x] Fijar versiones de dependencias wildcard
