@@ -42,6 +42,14 @@ pub struct AppState {
     cache: Arc<dyn CacheBackend>,
     cache_read_mode: CacheReadMode,
     cache_proxy_client: Arc<Mutex<Option<AsyncClient>>>,
+    outbox_backlog: Arc<crate::backpressure::OutboxBacklog>,
+}
+
+fn outbox_backpressure_threshold_from_env() -> i64 {
+    std::env::var("OUTBOX_BACKPRESSURE_THRESHOLD")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(5000)
 }
 
 impl AppState {
@@ -94,6 +102,9 @@ impl AppState {
             cache,
             cache_read_mode,
             cache_proxy_client: Arc::new(Mutex::new(proxy_client)),
+            outbox_backlog: Arc::new(crate::backpressure::OutboxBacklog::new(
+                outbox_backpressure_threshold_from_env(),
+            )),
         }
     }
 
@@ -145,11 +156,18 @@ impl AppState {
             cache,
             cache_read_mode,
             cache_proxy_client,
+            outbox_backlog: Arc::new(crate::backpressure::OutboxBacklog::new(
+                outbox_backpressure_threshold_from_env(),
+            )),
         }
     }
 
     pub fn broker(&self) -> &str {
         &self.mqtt_broker
+    }
+
+    pub fn outbox_backlog(&self) -> Arc<crate::backpressure::OutboxBacklog> {
+        Arc::clone(&self.outbox_backlog)
     }
 }
 
@@ -194,6 +212,29 @@ async fn write_handler(
         );
         crate::metrics::WRITE_LATENCY.record(started.elapsed().as_secs_f64(), &crate::metrics::kv_store(&store));
     };
+
+    // Backpressure real (DEC-0043/DEC-0044): a diferencia del throttle de
+    // abajo (limita cuántas escrituras se ACEPTAN por ventana), esto mira
+    // si el writer está DRENANDO el outbox al mismo ritmo. Umbral vía
+    // OUTBOX_BACKPRESSURE_THRESHOLD, deshabilitado si es <= 0.
+    if let Some(depth) = state.outbox_backlog.check(&envelope.store) {
+        let threshold = state.outbox_backlog.threshold();
+        tracing::warn!(
+            store = %envelope.store,
+            depth,
+            threshold,
+            "rejecting write: outbox backlog over threshold"
+        );
+        record_error("outbox_backlog");
+        return Err((
+            StatusCode::TOO_MANY_REQUESTS,
+            Json(ixmati_core::Error::OutboxBacklog {
+                store: envelope.store.clone(),
+                depth,
+                threshold,
+            }),
+        ));
+    }
 
     {
         let mut throttle = state.throttle.lock().await;

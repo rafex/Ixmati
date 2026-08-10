@@ -1,4 +1,5 @@
 pub mod auth;
+pub mod backpressure;
 pub mod cache_client;
 pub mod cache_proxy;
 pub mod health;
@@ -164,7 +165,7 @@ pub async fn serve(config: ApiConfig) -> std::io::Result<()> {
             .collect(),
     );
 
-    self_monitor::spawn(config.db_path.clone());
+    self_monitor::spawn(config.db_path.clone(), state.outbox_backlog());
 
     let app = Router::new().merge(rest::routes(state, auth_config));
 

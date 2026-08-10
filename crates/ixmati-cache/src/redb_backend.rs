@@ -1,11 +1,20 @@
 use crate::CacheBackend;
 use redb::{Database, ReadableDatabase, ReadableTable, TableDefinition};
-use std::sync::Mutex;
 
 const CACHE_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("cache");
 
+/// Sin `Mutex` a propósito (ver DEC-0043/DEC-0044): `Database::begin_read`
+/// toma `&self` y soporta lecturas concurrentes reales sin lock externo, y
+/// `Database::begin_write` también toma `&self` — su propia documentación
+/// dice literalmente "only a single write may be in progress at a time...
+/// this function will block until it completes", es decir, redb ya
+/// serializa las escrituras internamente vía su `transaction_tracker`. El
+/// `Mutex<Database>` que había antes era redundante para escrituras y
+/// activamente dañino para lecturas: forzaba a que todos los GET
+/// (get/entre stores/tenants distintos) hicieran cola detrás de cualquier
+/// operación en curso, en vez de correr en paralelo como redb permite.
 pub struct RedbCacheBackend {
-    db: Mutex<Database>,
+    db: Database,
     readonly: bool,
 }
 
@@ -20,7 +29,7 @@ impl RedbCacheBackend {
         txn.commit().map_err(|e| format!("Redb: commit: {}", e))?;
 
         tracing::info!(path = %path, "RedbCacheBackend initialized (read-write)");
-        Ok(Self { db: Mutex::new(db), readonly: false })
+        Ok(Self { db, readonly: false })
     }
 
     pub fn new_readonly(path: &str) -> Result<Self, String> {
@@ -36,7 +45,7 @@ impl RedbCacheBackend {
             })?;
 
         tracing::info!(path = %path, "RedbCacheBackend initialized (read-only)");
-        Ok(Self { db: Mutex::new(db), readonly: true })
+        Ok(Self { db, readonly: true })
     }
 
     fn internal_key(ns: &str, entity: &str, key: &str) -> String {
@@ -51,8 +60,7 @@ impl RedbCacheBackend {
 impl CacheBackend for RedbCacheBackend {
     fn get(&self, ns: &str, entity: &str, key: &str) -> Option<Vec<u8>> {
         let k = Self::internal_key(ns, entity, key);
-        let guard = self.db.lock().ok()?;
-        let txn = guard.begin_read().ok()?;
+        let txn = self.db.begin_read().ok()?;
         let table = txn.open_table(CACHE_TABLE).ok()?;
         table.get(k.as_str()).ok().flatten().map(|v| v.value().to_vec())
     }
@@ -62,11 +70,7 @@ impl CacheBackend for RedbCacheBackend {
             return;
         }
         let k = Self::internal_key(ns, entity, key);
-        let guard = match self.db.lock() {
-            Ok(g) => g,
-            Err(_) => return,
-        };
-        let txn = match guard.begin_write() {
+        let txn = match self.db.begin_write() {
             Ok(t) => t,
             Err(_) => return,
         };
@@ -87,11 +91,7 @@ impl CacheBackend for RedbCacheBackend {
             return;
         }
         let k = Self::internal_key(ns, entity, key);
-        let guard = match self.db.lock() {
-            Ok(g) => g,
-            Err(_) => return,
-        };
-        let txn = match guard.begin_write() {
+        let txn = match self.db.begin_write() {
             Ok(t) => t,
             Err(_) => return,
         };
@@ -110,12 +110,8 @@ impl CacheBackend for RedbCacheBackend {
             return;
         }
         let prefix = format!("{}:{}", ns, prefix);
-        let guard = match self.db.lock() {
-            Ok(g) => g,
-            Err(_) => return,
-        };
         let keys: Vec<String> = {
-            let read_txn = match guard.begin_read() {
+            let read_txn = match self.db.begin_read() {
                 Ok(t) => t,
                 Err(_) => return,
             };
@@ -139,7 +135,7 @@ impl CacheBackend for RedbCacheBackend {
             }
         };
 
-        let txn = match guard.begin_write() {
+        let txn = match self.db.begin_write() {
             Ok(t) => t,
             Err(_) => return,
         };

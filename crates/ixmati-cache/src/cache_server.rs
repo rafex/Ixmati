@@ -69,21 +69,38 @@ async fn handle_client(stream: UnixStream, cache: Arc<dyn CacheBackend>) {
             continue;
         }
 
-        if process_command(&*cache, trimmed, &mut reader, &mut writer).await.is_err() {
+        if process_command(Arc::clone(&cache), trimmed, &mut reader, &mut writer)
+            .await
+            .is_err()
+        {
             break;
         }
     }
 }
 
+/// `CacheBackend` es un trait síncrono (bloquea en el `Mutex<Database>` de
+/// Redb durante toda la transacción). Antes se llamaba directamente dentro
+/// del handler async, bloqueando el hilo del executor de tokio que lo
+/// atendía mientras sostenía el lock — bajo alta concurrencia eso puede
+/// saturar el pool de hilos, no solo el propio Redb (ver DEC-0043). Cada
+/// operación se despacha ahora a `spawn_blocking`, que corre en el pool de
+/// hilos bloqueantes dedicado de tokio, dejando libres los hilos del
+/// executor async para aceptar y despachar el resto de las conexiones.
 async fn process_command(
-    cache: &dyn CacheBackend,
+    cache: Arc<dyn CacheBackend>,
     line: &str,
     reader: &mut BufReader<tokio::net::unix::OwnedReadHalf>,
     writer: &mut tokio::net::unix::OwnedWriteHalf,
 ) -> std::io::Result<()> {
     if let Some(key) = line.strip_prefix("GET ") {
-        let key = key.trim();
-        match cache.get("cache", key, "") {
+        let key = key.trim().to_string();
+        let payload = tokio::task::spawn_blocking(move || cache.get("cache", &key, ""))
+            .await
+            .unwrap_or_else(|e| {
+                tracing::error!(error = %e, "GET spawn_blocking panicked");
+                None
+            });
+        match payload {
             Some(payload) => {
                 let header = format!("HIT {}\n", payload.len());
                 writer.write_all(header.as_bytes()).await?;
@@ -100,7 +117,7 @@ async fn process_command(
             writer.write_all(b"ERR invalid SET\n").await?;
             return Ok(());
         }
-        let key = parts[0];
+        let key = parts[0].to_string();
         let len: usize = match parts[1].parse() {
             Ok(l) => l,
             Err(_) => {
@@ -114,18 +131,19 @@ async fn process_command(
         let mut newline = [0u8; 1];
         let _ = reader.read_exact(&mut newline).await;
 
-        cache.set("cache", key, "", &payload);
+        let _ = tokio::task::spawn_blocking(move || cache.set("cache", &key, "", &payload)).await;
         writer.write_all(b"OK\n").await?;
     } else if let Some(key) = line.strip_prefix("DEL ") {
-        let key = key.trim();
-        cache.del("cache", key, "");
+        let key = key.trim().to_string();
+        let _ = tokio::task::spawn_blocking(move || cache.del("cache", &key, "")).await;
         writer.write_all(b"OK\n").await?;
     } else if let Some(prefix) = line.strip_prefix("DEL_PREFIX ") {
-        let prefix = prefix.trim();
-        cache.delete_by_prefix("cache", prefix);
+        let prefix = prefix.trim().to_string();
+        let _ =
+            tokio::task::spawn_blocking(move || cache.delete_by_prefix("cache", &prefix)).await;
         writer.write_all(b"OK\n").await?;
     } else if line.trim() == "FLUSH" {
-        cache.flush("cache");
+        let _ = tokio::task::spawn_blocking(move || cache.flush("cache")).await;
         writer.write_all(b"OK\n").await?;
     } else {
         writer.write_all(b"ERR unknown command\n").await?;

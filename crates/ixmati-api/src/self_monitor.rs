@@ -11,12 +11,12 @@ const CLK_TCK: u64 = 100;
 
 static LAST_UTIME_TICKS: AtomicU64 = AtomicU64::new(0);
 
-pub fn spawn(db_path: Option<String>) {
+pub fn spawn(db_path: Option<String>, outbox_backlog: std::sync::Arc<crate::backpressure::OutboxBacklog>) {
     tokio::spawn(async move {
         loop {
             collect_process_metrics();
             if let Some(ref path) = db_path {
-                collect_outbox_metrics(path);
+                collect_outbox_metrics(path, &outbox_backlog);
             }
             tokio::time::sleep(std::time::Duration::from_secs(5)).await;
         }
@@ -53,7 +53,7 @@ fn collect_process_metrics() {
     }
 }
 
-fn collect_outbox_metrics(db_path: &str) {
+fn collect_outbox_metrics(db_path: &str, outbox_backlog: &crate::backpressure::OutboxBacklog) {
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,
         Err(_) => return,
@@ -68,8 +68,20 @@ fn collect_outbox_metrics(db_path: &str) {
         Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
     });
     let Ok(rows) = rows else { return };
+
+    let mut seen = std::collections::HashSet::new();
     for row in rows.flatten() {
         let (store, count) = row;
+        seen.insert(store.clone());
         crate::metrics::OUTBOX_SIZE.record(count, &crate::metrics::kv_store(&store));
+        outbox_backlog.update(&store, count);
+    }
+
+    // Stores conocidos previamente que ya no aparecen en el resultado (0
+    // filas sin publicar) no salen en el GROUP BY — sin esto, tanto la
+    // métrica como la backpressure quedarían con el último valor != 0
+    // stale para siempre una vez que el writer drena el backlog.
+    for store in outbox_backlog.reset_missing(&seen) {
+        crate::metrics::OUTBOX_SIZE.record(0, &crate::metrics::kv_store(&store));
     }
 }

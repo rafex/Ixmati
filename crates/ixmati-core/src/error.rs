@@ -33,6 +33,13 @@ pub enum Error {
     #[error("queue full: {store}")]
     QueueFull { store: String },
 
+    #[error("outbox backlog over threshold: {store} ({depth} > {threshold})")]
+    OutboxBacklog {
+        store: String,
+        depth: i64,
+        threshold: i64,
+    },
+
     #[error("projection error: {detail}")]
     ProjectionError { detail: String },
 
@@ -51,6 +58,7 @@ impl Error {
             Error::EntityNotFound { .. } => "ENTITY_NOT_FOUND",
             Error::WriteRejected { .. } => "WRITE_REJECTED",
             Error::QueueFull { .. } => "QUEUE_FULL",
+            Error::OutboxBacklog { .. } => "OUTBOX_BACKLOG",
             Error::ProjectionError { .. } => "PROJECTION_ERROR",
             Error::Internal { .. } => "INTERNAL",
         }

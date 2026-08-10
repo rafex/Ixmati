@@ -235,14 +235,56 @@ Tablero de tareas activo. Persiste entre sesiones.
       por `SELECT COUNT(*) FROM _outbox WHERE published_at IS NULL` vía
       python3/sqlite3 dentro del contenedor, no solo la métrica). Los 5
       servicios systemd siguieron activos durante y después de la carga.
-- [ ] `TASK-VAL-0009` (P1, bloqueante para producción segura) — Backpressure
-      real: rechazar/backoff de comandos cuando `OUTBOX_SIZE` de un store
-      supera un umbral (la métrica ya existe desde TASK-VAL-0006). Alertas
-      sobre outbox estancado (Fase 5 del ROADMAP, nunca implementada).
-- [ ] `TASK-VAL-0010` (P2, requiere decisión de diseño) — Evaluar opciones
-      para el cache-server centralizado: sharding del `Mutex<Database>` por
-      store, `spawn_blocking` para no bloquear el pool de tokio, o aceptar el
-      límite y documentar un techo de tenants/throughput recomendado.
+- [x] `TASK-VAL-0009` (P1, bloqueante para producción segura) — Backpressure
+      real: nuevo módulo `crates/ixmati-api/src/backpressure.rs`
+      (`OutboxBacklog`) mantiene el último `OUTBOX_SIZE` conocido por store
+      (poblado por `self_monitor.rs` en cada poll de 5s) y `write_handler`
+      rechaza con `429` + `Error::OutboxBacklog` (nueva variante en
+      `ixmati-core`) cuando el backlog de un store supera
+      `OUTBOX_BACKPRESSURE_THRESHOLD` (default 5000, `<=0` deshabilita). De
+      paso se corrigió un bug real que esto expuso: `collect_outbox_metrics`
+      solo agrupaba stores CON backlog (`GROUP BY` sin filas para stores ya
+      drenados), así que tanto la métrica como el backlog cacheado se
+      quedaban con el último valor != 0 para siempre una vez que el writer
+      alcanzaba a drenar — `reset_missing()` ahora pone en 0 explícitamente
+      los stores que desaparecen del resultado. 6 tests nuevos
+      (`backpressure.rs`: bajo umbral, sobre umbral, store desconocido,
+      umbral 0 deshabilita, reset de stores drenados, reset es idempotente).
+      **Validado en Debian real de punta a punta**: con el writer detenido
+      y 50 filas sintéticas insertadas directo en `_outbox` (umbral=20), un
+      `POST /write` fue rechazado con `429 {"OutboxBacklog":{"depth":50,
+      "threshold":20}}` y el log estructurado correspondiente; al reiniciar
+      el writer y esperar el drenado, `OUTBOX_SIZE` volvió a `0` explícito
+      (ya no desaparece la serie) y el siguiente write fue aceptado (200)
+      automáticamente, sin reiniciar el API. `WRITE_ERRORS{error_type=
+      "outbox_backlog"}` quedó contabilizado correctamente.
+- [x] `TASK-VAL-0010` (P2, decisión de diseño) — Investigado el
+      `Mutex<Database>` de `RedbCacheBackend`
+      (`crates/ixmati-cache/src/redb_backend.rs`): resultó ser un lock
+      externo redundante, no una necesidad real. El propio código fuente de
+      redb 4.1.0 documenta que `Database::begin_write(&self)` ya serializa
+      internamente ("only a single write may be in progress at a time...
+      this function will block until it completes") y que
+      `Database::begin_read(&self)` soporta lecturas concurrentes reales sin
+      lock externo — `Database` es `Send + Sync` de fábrica. El `Mutex`
+      forzaba a que TODAS las lecturas de TODOS los stores/tenants hicieran
+      cola entre sí, cuando redb ya las permite en paralelo. Se eliminó el
+      `Mutex`, `RedbCacheBackend` ahora sostiene `Database` directamente.
+      Además, `crates/ixmati-cache/src/cache_server.rs` despacha ahora cada
+      operación (`GET`/`SET`/`DEL`/`DEL_PREFIX`/`FLUSH`) a
+      `tokio::task::spawn_blocking`, así una transacción larga no bloquea
+      los hilos del executor async que atienden el resto de las conexiones
+      del socket. `cargo check` confirmó en el momento que `Database` sigue
+      cumpliendo `Send + Sync` sin el `Mutex` (si no lo fuera, el trait
+      bound `CacheBackend: Send + Sync` no habría compilado). Validado con
+      el mismo load test en Debian real tras el cambio: 13382 writes, 0
+      errores, comportamiento idéntico al anterior. NOTA: esto resuelve la
+      serialización *interna* del proceso cache-server; no es sharding por
+      store ni multi-proceso — sigue siendo un solo proceso/archivo Redb
+      para todos los tenants (mitigado, no eliminado, como punto único de
+      fallo — ver DEC-0037). Sharding real por store (múltiples archivos
+      Redb o particionamiento) queda fuera de este alcance si se necesita
+      aislamiento de fallos entre tenants, no solo throughput.
 - [ ] `TASK-VAL-0011` (P3) — Load test real sin overhead de proceso-por-request
       (bash+curl secuencial/paralelo actual mide el harness, no el servidor —
       ver DEC-0042): usar `hey`/`vegeta`/`wrk` o un cliente async, corrida
