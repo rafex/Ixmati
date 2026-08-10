@@ -199,6 +199,42 @@ Tablero de tareas activo. Persiste entre sesiones.
       `ixmati-api`. Para medir capacidad real del servidor haría falta un
       cliente de carga sin ese overhead (ej. `hey`, `vegeta`, o un cliente
       async en Rust/Python) — queda como mejora pendiente, no bloqueante.
+- [x] `TASK-VAL-0007` — Análisis de viabilidad para alto volumen/multi-tenant:
+      investigada la causa raíz del backlog de outbox (TASK-VAL-0006) y los
+      límites estructurales de escalabilidad multi-tenant. Veredicto y
+      backlog priorizado registrados en DEC-0043. Resumen: el motor de
+      escritura (outbox transaccional, idempotencia, single-writer-por-store)
+      es sólido y no requiere rediseño; el backlog de outbox es un bug barato
+      en `event_publisher.rs` (intervalo/límite hardcodeados + conexión SQLite
+      por fila), no un límite arquitectónico; el cache-server centralizado
+      (`std::sync::Mutex<Database>` único para todos los stores/tenants) SÍ
+      es un techo real para multi-tenant de alto volumen, ya documentado sin
+      profundizar en DEC-0036/DEC-0037. No viable *hoy* para ese caso de uso
+      sin ejecutar el backlog de abajo.
+
+## Backlog priorizado — viabilidad alto volumen/multi-tenant (DEC-0043)
+
+- [ ] `TASK-VAL-0008` (P0, bajo esfuerzo/alto impacto) — Reescribir
+      `crates/ixmati-writer/src/event_publisher.rs`: batch `UPDATE` en vez de
+      conexión SQLite por fila, intervalo/límite de publicación configurables
+      (hoy 1000ms/100 eventos hardcodeados en `main.rs`), publicación
+      concurrente respetando orden por store.
+- [ ] `TASK-VAL-0009` (P1, bloqueante para producción segura) — Backpressure
+      real: rechazar/backoff de comandos cuando `OUTBOX_SIZE` de un store
+      supera un umbral (la métrica ya existe desde TASK-VAL-0006). Alertas
+      sobre outbox estancado (Fase 5 del ROADMAP, nunca implementada).
+- [ ] `TASK-VAL-0010` (P2, requiere decisión de diseño) — Evaluar opciones
+      para el cache-server centralizado: sharding del `Mutex<Database>` por
+      store, `spawn_blocking` para no bloquear el pool de tokio, o aceptar el
+      límite y documentar un techo de tenants/throughput recomendado.
+- [ ] `TASK-VAL-0011` (P3) — Load test real sin overhead de proceso-por-request
+      (bash+curl secuencial/paralelo actual mide el harness, no el servidor —
+      ver DEC-0042): usar `hey`/`vegeta`/`wrk` o un cliente async, corrida
+      sostenida de 5-10 min, observando `OUTBOX_SIZE`, RSS/CPU y tasa de error.
+- [ ] `TASK-VAL-0012` (P4, menor prioridad) — Instrumentar
+      `PROJECTION_LAG`/`WRITE_BATCH_DURATION` (requiere `/metrics` en
+      `ixmati-projector`/`ixmati-writer`), clustering de Mosquitto, sharding
+      interno de un store (ítems ya listados sin marcar en `ROADMAP.md`).
 
 ## Pendiente (post-v0.1.0)
 
