@@ -494,20 +494,37 @@ Tablero de tareas activo. Persiste entre sesiones.
       (`messages/stored` en el tope). Causa raíz no confirmada — candidato
       más probable: pérdida de wakeup entre el eventloop de `rumqttc` y el
       resto del pipeline. Ver DEC-0051.
-- [ ] `TASK-VAL-0019` (seguimiento, no iniciado) — De paso se descubrió que
-      `event_publisher.rs` tiene el mismo anti-patrón que `process_batch`
-      tenía (conexiones SQLite síncronas sin `spawn_blocking`) — corregirlo
-      con `spawn_blocking` (no con un hilo compartido, dado el resultado de
-      `TASK-VAL-0021`) queda pendiente por separado. Y retomar profiling
-      de sistema (`tokio-console`, o un host sin restricción de `ptrace`
-      anidado) si se quiere diagnosticar el cuelgue de `TASK-VAL-0022` o el
-      41% del ciclo sin explicar de DEC-0050.
+- [x] `TASK-VAL-0019` — `event_publisher.rs` tenía el mismo anti-patrón que
+      `process_batch` (conexiones SQLite síncronas dentro de `async fn`, sin
+      `spawn_blocking`). Confirmado el mecanismo con una prueba unitaria
+      pura (`event_publisher::tests::worker_starvation`, sin Debian/carga
+      real): con `worker_threads=1`, una llamada bloqueante sin
+      `spawn_blocking` congela otras tareas del runtime (≤3 ticks en
+      300ms); envuelta en `spawn_blocking`, no las afecta (>100 ticks).
+      Corregido envolviendo las 4 llamadas en 2 `tokio::task::spawn_blocking`
+      (apertura+fetch, apertura+mark_published_batch), mismo patrón que
+      Opción H (DEC-0050). `cargo test --workspace --lib` en verde, sin
+      regresiones. Ver DEC-0052. **Pendiente**: revalidar en Debian real con
+      `wrk` para medir cuánto del 41% no explicado de DEC-0050 cierra esto
+      — no se hizo en esta sesión (sin acceso a la infra remota).
+- [ ] `DEC-0052` (decisión pendiente del usuario) — Propuesta de motor de
+      escritura 100% síncrono para `ixmati-writer` (sin tokio en el proceso,
+      un hilo de SO dueño exclusivo de SQLite con colas bloqueantes
+      explícitas, MQTT vía `rumqttc::Client` síncrono). Documentada en
+      DECISIONS.md como `PROPUESTA — no implementada`; resolvería de raíz
+      la clase de bug de `TASK-VAL-0019`/`TASK-VAL-0021` (frontera
+      async/sync frágil) en vez de seguir parcheándola caso por caso. No
+      implementar sin decisión explícita — es un cambio grande.
 - [ ] `TASK-VAL-0020` (seguimiento) — Recalibrar `OUTBOX_BACKPRESSURE_THRESHOLD`
       (default 5000, DEC-0045) y el rate-limiter default
       (`MAX_WRITES_PER_WINDOW=1000/s`, TASK-VAL-0013) contra la capacidad
       real medida (~30-40 commits/s) — hoy el rate-limiter default es ~25x
       mayor que lo que el writer puede sostener, por lo que nunca actúa
       antes de que el verdadero cuello de botella (SQLite) se sature.
+- [ ] Retomar profiling de sistema (`tokio-console`, o un host sin
+      restricción de `ptrace` anidado) si se quiere diagnosticar el cuelgue
+      de `TASK-VAL-0022` o el 41% del ciclo sin explicar de DEC-0050 con más
+      precisión que la hipótesis confirmada en `TASK-VAL-0019`/DEC-0052.
 
 ## Cancelled / Replaced
 
