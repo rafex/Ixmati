@@ -50,7 +50,7 @@ impl EventPublisher {
     /// solo UPDATE ... WHERE id IN (...) al final.
     pub async fn publish_unpublished(&self, store: &str, limit: usize) -> rusqlite::Result<usize> {
         let rows = {
-            let conn = rusqlite::Connection::open(&self.db_path)?;
+            let conn = crate::db::open_with_pragmas(&self.db_path)?;
             Outbox::fetch_unpublished(&conn, store, limit)?
         };
 
@@ -94,7 +94,7 @@ impl EventPublisher {
 
         let published = published_ids.len();
         if !published_ids.is_empty() {
-            let conn = rusqlite::Connection::open(&self.db_path)?;
+            let conn = crate::db::open_with_pragmas(&self.db_path)?;
             Outbox::mark_published_batch(&conn, &published_ids)?;
         }
 

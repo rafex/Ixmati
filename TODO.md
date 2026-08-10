@@ -350,30 +350,52 @@ Tablero de tareas activo. Persiste entre sesiones.
       DEC-0044/0045), pero bajo la carga que la propia capa HTTP puede
       aceptar sin rechazar, puede reconocer como "ACCEPTED" escrituras que
       nunca se persisten. Ver `TASK-VAL-0015..0017` para el seguimiento.
-- [ ] `TASK-VAL-0015` (CRÍTICO, nuevo — descubierto en TASK-VAL-0014) — El
-      cliente MQTT de la API (`rest.rs`) y del writer (`event_publisher.rs`)
-      no propagan errores del `eventloop` de `rumqttc` de vuelta a quien
-      llamó `publish()` — la única señal de fallo queda en logs de
-      `tracing::error!`, invisible para el llamador. Definir e implementar
-      una estrategia real: opciones incluyen (a) hacer que `ack_mode:
-      committed` espere confirmación real vía polling interno antes de
-      responder, (b) agregar un canal de feedback desde el `eventloop` hacia
-      `publish()` para detectar fallos de entrega, (c) al mínimo, renombrar
-      `"committed"` para dejar de sugerir una garantía que no existe. Sin
-      esto, el sistema puede perder escrituras silenciosamente bajo presión
-      de recursos — ver DEC-0048.
-- [ ] `TASK-VAL-0016` (CRÍTICO, nuevo) — `ixmati-writer` no tiene ningún
-      límite de memoria ni backpressure en su propio consumo de MQTT —
-      puede ser OOM-killed por el kernel bajo carga sostenida (confirmado 2
-      veces en TASK-VAL-0014). Investigar la causa de crecimiento de
-      memoria (¿buffer del canal interno de `rumqttc`? ¿acumulación por los
-      reintentos fallidos de `"database is locked"`?) e implementar un
-      límite explícito y una degradación controlada (rechazar/backoff) en
-      vez de un crash abrupto.
-- [ ] `TASK-VAL-0017` (alta prioridad) — `event_publisher.rs` sigue sin
-      `PRAGMA busy_timeout` en las conexiones SQLite que abre (señalado ya
-      en DEC-0043, causa directa de los errores "database is locked"
-      observados justo antes de ambos OOM-kills en TASK-VAL-0014).
+- [x] `TASK-VAL-0017` (P1 de DEC-0049, hecho primero — barato) —
+      `crates/ixmati-writer/src/db.rs` nuevo (`open_with_pragmas`), aplica
+      `PRAGMA busy_timeout=5000` (antes ausente) en los 4 sitios donde el
+      writer abría conexiones SQLite (`main.rs` x2, `event_publisher.rs`
+      x2). 1 test nuevo. **Validado en Debian**: 0 líneas "database is
+      locked" en 3 min de carga sostenida (antes: repetidas).
+- [x] `TASK-VAL-0016` (P2 de DEC-0049) — `crates/ixmati-writer/src/
+      consumer.rs`: `mpsc::unbounded_channel()` (causa del crecimiento de
+      memoria sin límite) → `mpsc::channel(capacity)` (`CONSUMER_CHANNEL_
+      CAPACITY`, default 5000) + `mqtt_options.set_manual_acks(true)` —
+      solo se ackea al broker lo que efectivamente entra al canal acotado;
+      si está lleno, el mensaje queda sin ackear y Mosquitto lo
+      redistribuye (backpressure trasladada al broker, que ya tiene su
+      propio límite conocido, en vez de RAM sin límite del writer).
+      Mensajes que fallan deserialización se ackean igual (evita loop
+      infinito de redelivery de mensajes envenenados). Métrica nueva
+      `CONSUMER_QUEUE_DEPTH`. 2 tests nuevos (mecanismo real de
+      `try_send`, sin necesitar broker). **Validado en Debian repitiendo
+      la MISMA carga de 3 min que causó el OOM en TASK-VAL-0014**: 0
+      reinicios del writer (antes: 2 OOM-kills), memoria estable 15.3MB
+      pico 15.9MB (antes: crecimiento sin límite), 5,743,227 requests,
+      31,903 req/s, 0 errores HTTP, 0 timeouts (antes: 54), p99=4.14ms
+      (antes: 720.66ms).
+- [x] `TASK-VAL-0015` (P3 de DEC-0049) — `write_handler` (`rest.rs`) hace
+      polling real contra `_idempotency` (reutilizando `StatusQuery::
+      query`) cuando `ack_mode: "committed"`, antes de responder. Confirma
+      `200 APPLIED` con datos reales si comete dentro de
+      `WRITE_COMMITTED_TIMEOUT_MS` (default 2000ms), o `202 PENDING`
+      (nunca `"ACCEPTED"` falso) si vence el timeout. Sin `SQLITE_PATH`
+      configurado, rechaza con `400` explícito en vez de degradar
+      silenciosamente a `"accepted"`. Lógica extraída a `wait_for_commit()`
+      testeable sin MQTT — 3 tests nuevos (aplicado inmediato, timeout,
+      commit tardío dentro del deadline). **Validado en Debian bajo la
+      misma sobrecarga**: con backlog activo, una escritura `committed`
+      respondió honestamente `202 PENDING` en vez de un falso `200
+      ACCEPTED`.
+      **Hallazgo adicional de esta validación**: de 5.7M escrituras
+      aceptadas, solo ~5400 se comprometieron en la ventana de 3 min — pero
+      ya NO es pérdida silenciosa: `$SYS/broker/messages/stored` mostró
+      100,093 en cola (el límite propio de Mosquitto,
+      `max_queued_messages`) y `$SYS/broker/publish/messages/dropped`
+      mostró ~5.6M descartados **de forma visible y contable**, no por un
+      crash invisible. El techo real de comandos/s comprometidos a SQLite
+      en este contenedor de 2 vCPUs sigue siendo bajo bajo esta carga
+      extrema, pero ahora falla de forma segura, acotada y observable.
+      DEC-0049 registrada, cierra el seguimiento de DEC-0048.
 - [x] `TASK-VAL-0012` (P4, parcial — ver desglose) — De los 3 ítems de este
       punto, se hizo el primero y se dejaron los otros 2 explícitamente como
       roadmap, no como "hecho":

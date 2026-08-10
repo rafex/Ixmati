@@ -8,7 +8,7 @@
 //! operador que quiera scrapear cada store por separado debe asignar un
 //! `METRICS_PORT` único por instancia (drop-in de systemd).
 
-use opentelemetry::metrics::{Histogram, Meter, MeterProvider};
+use opentelemetry::metrics::{Gauge, Histogram, Meter, MeterProvider};
 use opentelemetry_sdk::metrics::SdkMeterProvider;
 use std::sync::LazyLock;
 
@@ -32,6 +32,16 @@ pub static WRITE_BATCH_DURATION: LazyLock<Histogram<f64>> = LazyLock::new(|| {
         .with_boundaries(vec![
             0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0,
         ])
+        .build()
+});
+
+// Ver DEC-0048/TASK-VAL-0016: antes de esto, el canal entre el eventloop de
+// MQTT y el loop principal era `mpsc::unbounded_channel()` — sin límite ni
+// visibilidad. Ahora es acotado y se observa su profundidad acá.
+pub static CONSUMER_QUEUE_DEPTH: LazyLock<Gauge<u64>> = LazyLock::new(|| {
+    METER
+        .u64_gauge("consumer_queue_depth")
+        .with_description("Commands buffered between the MQTT eventloop and the batcher")
         .build()
 });
 

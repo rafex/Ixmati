@@ -4,6 +4,7 @@ pub mod cache_server;
 pub mod cache_sync;
 pub mod cdc;
 pub mod consumer;
+pub mod db;
 pub mod dedup;
 pub mod event_publisher;
 pub mod metrics;

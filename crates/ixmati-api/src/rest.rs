@@ -194,13 +194,71 @@ pub fn routes(state: AppState, auth_config: crate::auth::AuthConfig) -> Router {
         .with_state(state)
 }
 
+// DEC-0048/TASK-VAL-0015: `publish().await` a MQTT solo confirma encolado
+// local (rumqttc), no entrega real ni menos commit en SQLite — bajo carga
+// real esto permitía responder "ACCEPTED" a escrituras que después se
+// perdían silenciosamente (ver DEC-0048). `ack_mode: "committed"` prometía
+// justamente esto en su nombre sin cumplirlo: hacía exactamente el mismo
+// publish-and-return que "accepted". Ahora hace polling real contra
+// `_idempotency` (la misma tabla que ya expone `GET
+// /writes/{store}/{idempotency_key}`) antes de responder.
+fn write_committed_timeout() -> std::time::Duration {
+    let ms: u64 = std::env::var("WRITE_COMMITTED_TIMEOUT_MS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(2000);
+    std::time::Duration::from_millis(ms)
+}
+
+const WRITE_COMMITTED_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(30);
+
+enum CommitOutcome {
+    Applied {
+        entity: String,
+        key: String,
+        version: u64,
+        applied_at: String,
+    },
+    TimedOut,
+}
+
+async fn wait_for_commit(
+    db_path: &str,
+    store: &str,
+    idempotency_key: &str,
+    deadline: std::time::Instant,
+) -> CommitOutcome {
+    loop {
+        if let Ok(crate::status::WriteStatus::Applied {
+            entity,
+            key,
+            version,
+            applied_at,
+            ..
+        }) = crate::status::StatusQuery::query(db_path, store, idempotency_key)
+        {
+            return CommitOutcome::Applied {
+                entity,
+                key,
+                version,
+                applied_at,
+            };
+        }
+        if std::time::Instant::now() >= deadline {
+            return CommitOutcome::TimedOut;
+        }
+        tokio::time::sleep(WRITE_COMMITTED_POLL_INTERVAL).await;
+    }
+}
+
 async fn write_handler(
     State(state): State<AppState>,
     Json(envelope): Json<WriteEnvelope>,
-) -> Result<Json<AckResponse>, (StatusCode, Json<ixmati_core::Error>)> {
+) -> Result<(StatusCode, Json<AckResponse>), (StatusCode, Json<ixmati_core::Error>)> {
     let started = std::time::Instant::now();
     let store = envelope.store.clone();
     let entity = envelope.entity.clone();
+    let wants_commit_confirmation = envelope.ack_mode == "committed";
 
     let record_error = |error_type: &str| {
         crate::metrics::WRITE_ERRORS.add(
@@ -212,6 +270,18 @@ async fn write_handler(
         );
         crate::metrics::WRITE_LATENCY.record(started.elapsed().as_secs_f64(), &crate::metrics::kv_store(&store));
     };
+
+    if wants_commit_confirmation && state.db_path.is_none() {
+        record_error("committed_unsupported");
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ixmati_core::Error::WriteRejected {
+                detail: "ack_mode=committed requiere que la API tenga SQLITE_PATH configurado para poder confirmar el commit".into(),
+                store: envelope.store.clone(),
+                idempotency_key: envelope.idempotency_key.clone(),
+            }),
+        ));
+    }
 
     // Backpressure real (DEC-0043/DEC-0044): a diferencia del throttle de
     // abajo (limita cuántas escrituras se ACEPTAN por ventana), esto mira
@@ -312,22 +382,64 @@ async fn write_handler(
     );
     crate::metrics::WRITE_LATENCY.record(started.elapsed().as_secs_f64(), &crate::metrics::kv_store(&cmd.store));
 
-    let ack = match cmd.ack_mode.as_str() {
-        "committed" => AckResponse {
-            status: "ACCEPTED".into(),
-            store: cmd.store.clone(),
-            idempotency_key,
-            message: Some("published, waiting commit".into()),
-        },
-        _ => AckResponse {
+    if wants_commit_confirmation {
+        // db_path ya se validó Some() al principio del handler.
+        let db_path = state.db_path.clone().expect("checked at handler entry");
+        let deadline = std::time::Instant::now() + write_committed_timeout();
+
+        return Ok(
+            match wait_for_commit(&db_path, &cmd.store, &idempotency_key, deadline).await {
+                CommitOutcome::Applied {
+                    entity,
+                    key,
+                    version,
+                    applied_at,
+                } => (
+                    StatusCode::OK,
+                    Json(AckResponse {
+                        status: "APPLIED".into(),
+                        store: cmd.store.clone(),
+                        idempotency_key,
+                        message: Some(format!(
+                            "committed: {entity}/{key} v{version} at {applied_at}"
+                        )),
+                    }),
+                ),
+                CommitOutcome::TimedOut => {
+                    tracing::warn!(
+                        store = %cmd.store,
+                        idempotency_key = %idempotency_key,
+                        timeout_ms = write_committed_timeout().as_millis(),
+                        "ack_mode=committed: timeout esperando confirmación de commit"
+                    );
+                    (
+                        StatusCode::ACCEPTED,
+                        Json(AckResponse {
+                            status: "PENDING".into(),
+                            store: cmd.store.clone(),
+                            idempotency_key: idempotency_key.clone(),
+                            message: Some(format!(
+                                "aún no comprometido tras {}ms; consultar GET /writes/{}/{}",
+                                write_committed_timeout().as_millis(),
+                                cmd.store,
+                                idempotency_key
+                            )),
+                        }),
+                    )
+                }
+            },
+        );
+    }
+
+    Ok((
+        StatusCode::OK,
+        Json(AckResponse {
             status: "ACCEPTED".into(),
             store: cmd.store.clone(),
             idempotency_key,
             message: Some("published".into()),
-        },
-    };
-
-    Ok(Json(ack))
+        }),
+    ))
 }
 
 #[derive(Deserialize)]
@@ -600,4 +712,97 @@ async fn health_handler(State(state): State<AppState>) -> Json<serde_json::Value
 async fn metrics_handler() -> (StatusCode, String) {
     let encoded = crate::metrics::encode_metrics();
     (StatusCode::OK, encoded)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rusqlite::Connection;
+
+    fn tmp_db_path(name: &str) -> String {
+        let mut p = std::env::temp_dir();
+        p.push(format!("ixmati-rest-test-{}-{}.db", name, uuid::Uuid::new_v4()));
+        p.to_str().unwrap().to_string()
+    }
+
+    fn ensure_idempotency_schema(db_path: &str) {
+        let conn = Connection::open(db_path).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS _idempotency (
+                idempotency_key TEXT NOT NULL,
+                store           TEXT NOT NULL,
+                entity          TEXT NOT NULL,
+                key             TEXT NOT NULL,
+                version         INTEGER NOT NULL,
+                applied_at      TEXT NOT NULL DEFAULT (datetime('now')),
+                PRIMARY KEY (store, idempotency_key)
+            );",
+        )
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn wait_for_commit_returns_applied_immediately_when_already_committed() {
+        let db_path = tmp_db_path("applied");
+        ensure_idempotency_schema(&db_path);
+        {
+            let conn = Connection::open(&db_path).unwrap();
+            conn.execute(
+                "INSERT INTO _idempotency (idempotency_key, store, entity, key, version) VALUES (?1, ?2, ?3, ?4, ?5)",
+                rusqlite::params!["ik-1", "pedidos", "pedido", "p1", 1],
+            )
+            .unwrap();
+        }
+
+        let deadline = std::time::Instant::now() + std::time::Duration::from_millis(500);
+        match wait_for_commit(&db_path, "pedidos", "ik-1", deadline).await {
+            CommitOutcome::Applied { entity, key, version, .. } => {
+                assert_eq!(entity, "pedido");
+                assert_eq!(key, "p1");
+                assert_eq!(version, 1);
+            }
+            CommitOutcome::TimedOut => panic!("expected Applied, got TimedOut"),
+        }
+
+        let _ = std::fs::remove_file(&db_path);
+    }
+
+    #[tokio::test]
+    async fn wait_for_commit_times_out_when_never_applied() {
+        let db_path = tmp_db_path("pending");
+        ensure_idempotency_schema(&db_path);
+
+        let deadline = std::time::Instant::now() + std::time::Duration::from_millis(80);
+        match wait_for_commit(&db_path, "pedidos", "ik-never", deadline).await {
+            CommitOutcome::TimedOut => {}
+            CommitOutcome::Applied { .. } => panic!("expected TimedOut, got Applied"),
+        }
+
+        let _ = std::fs::remove_file(&db_path);
+    }
+
+    #[tokio::test]
+    async fn wait_for_commit_picks_up_late_commit_within_deadline() {
+        let db_path = tmp_db_path("late");
+        ensure_idempotency_schema(&db_path);
+
+        let db_path_clone = db_path.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(60)).await;
+            let conn = Connection::open(&db_path_clone).unwrap();
+            conn.execute(
+                "INSERT INTO _idempotency (idempotency_key, store, entity, key, version) VALUES (?1, ?2, ?3, ?4, ?5)",
+                rusqlite::params!["ik-late", "pedidos", "pedido", "p2", 1],
+            )
+            .unwrap();
+        });
+
+        let deadline = std::time::Instant::now() + std::time::Duration::from_millis(500);
+        match wait_for_commit(&db_path, "pedidos", "ik-late", deadline).await {
+            CommitOutcome::Applied { key, .. } => assert_eq!(key, "p2"),
+            CommitOutcome::TimedOut => panic!("expected Applied (commit llegó antes del deadline)"),
+        }
+
+        let _ = std::fs::remove_file(&db_path);
+    }
 }

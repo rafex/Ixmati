@@ -45,6 +45,12 @@ async fn main() -> std::io::Result<()> {
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(500);
+    // Ver DEC-0048/TASK-VAL-0016: antes era un mpsc::unbounded_channel(),
+    // causa confirmada de OOM-kill del writer bajo carga sostenida real.
+    let consumer_channel_capacity: usize = std::env::var("CONSUMER_CHANNEL_CAPACITY")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(5000);
     let client_id = format!("writer-{}", uuid::Uuid::new_v4());
 
     tracing::info!(
@@ -55,20 +61,21 @@ async fn main() -> std::io::Result<()> {
         batch_interval_ms,
         publish_interval_ms,
         publish_batch_limit,
+        consumer_channel_capacity,
         "ixmati-writer starting"
     );
 
     {
-        let conn = Connection::open(&db_path)
+        let conn = ixmati_writer::db::open_with_pragmas(&db_path)
             .map_err(|e| std::io::Error::other(format!("SQLite: {}", e)))?;
-        conn.execute_batch("PRAGMA journal_mode=WAL;").ok();
         WriteEngine::ensure_schema(&conn, &store_name)
             .map_err(|e| std::io::Error::other(format!("Schema: {}", e)))?;
     }
 
     let topic = format!("ixmati/cmd/{}/#", store_name);
 
-    let (mut consumer, _tx) = MqttConsumer::new(&mqtt_broker, &client_id, &topic);
+    let (mut consumer, _tx) =
+        MqttConsumer::with_capacity(&mqtt_broker, &client_id, &topic, consumer_channel_capacity);
     let mut batcher = Batcher::new(batch_size, batch_interval_ms);
     let publisher = Arc::new(EventPublisher::new(&mqtt_broker, &client_id, &db_path));
     let publisher_clone = Arc::clone(&publisher);
@@ -99,7 +106,8 @@ async fn main() -> std::io::Result<()> {
     let cache_sync = Arc::new(CacheSync::new(Arc::clone(&cache_client)));
 
     let conn = Arc::new(Mutex::new(
-        Connection::open(&db_path).map_err(|e| std::io::Error::other(format!("SQLite: {}", e)))?,
+        ixmati_writer::db::open_with_pragmas(&db_path)
+            .map_err(|e| std::io::Error::other(format!("SQLite: {}", e)))?,
     ));
 
     loop {
