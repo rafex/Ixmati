@@ -320,10 +320,60 @@ Tablero de tareas activo. Persiste entre sesiones.
       de forma más visible? Hoy solo se puede cambiar vía env var
       `MAX_WRITES_PER_WINDOW` sin que el instalador lo exponga ni lo
       documente.
-- [ ] `TASK-VAL-0014` (limpieza del load test) — Correr `wrk` (o equivalente)
-      desde un contenedor/máquina separado del target para obtener un número
-      de capacidad del writer sin contención de CPU con el generador de
-      carga — ver el caveat de `TASK-VAL-0011`.
+- [x] `TASK-VAL-0014` (limpieza del load test) — `wrk` instalado en el host
+      macOS (10 cores) vía Homebrew, contenedor con puerto 30000 publicado
+      (`podman run -p 30000:30000`), carga sostenida de 3 min desde fuera de
+      la VM de podman. **Resultado limpio**: 17,960 req/s, 0 errores HTTP,
+      p50=2.36ms — más bajo que los 44k del intento anterior (esperable: ya
+      no hay 2 procesos compitiendo por los mismos 2 vCPUs, así que el
+      contenedor de 2 vCPUs es ahora el límite real, no el generador de
+      carga muriendo de hambre de CPU).
+      **HALLAZGO CRÍTICO, no buscado, mucho más importante que el número de
+      req/s**: de las 3,232,239 escrituras `ACCEPTED`, solo 27,400 (0.85%)
+      llegaron a comprometerse de verdad en `_outbox` — `ixmati-writer`
+      murió por **OOM-kill dos veces** durante la corrida (confirmado por
+      `systemctl status`), precedido por errores `"database is locked"` y
+      `"Broken pipe"` en su cliente MQTT. Se confirmó con 3 evidencias
+      independientes (ver DEC-0048 para el detalle completo) que el
+      `duplicates=0` en los logs del writer descarta que fuera una colisión
+      de `idempotency_key` del test — es pérdida real: `rumqttc::
+      AsyncClient::publish()` solo confirma encolado local (`client.rs:87`,
+      `request_tx.send_async(...).await?`), no entrega real al broker; si el
+      `eventloop` del cliente falla en medio (como pasó, por presión de
+      memoria), esos mensajes se pierden sin que el código que llamó a
+      `publish()` se entere — ya había devuelto `Ok(())`. Mosquitto mismo no
+      descartó nada (`$SYS/broker/load/publish/dropped/*min = 0.00` en todas
+      las ventanas). Hallazgo secundario: `ack_mode: "committed"` no espera
+      ni verifica nada distinto de `"accepted"` — el nombre es engañoso.
+      **Esto revisa a la baja el veredicto de DEC-0043**: el motor es sólido
+      en el camino feliz probado hasta ahora (≤450 ops/s reales en
+      DEC-0044/0045), pero bajo la carga que la propia capa HTTP puede
+      aceptar sin rechazar, puede reconocer como "ACCEPTED" escrituras que
+      nunca se persisten. Ver `TASK-VAL-0015..0017` para el seguimiento.
+- [ ] `TASK-VAL-0015` (CRÍTICO, nuevo — descubierto en TASK-VAL-0014) — El
+      cliente MQTT de la API (`rest.rs`) y del writer (`event_publisher.rs`)
+      no propagan errores del `eventloop` de `rumqttc` de vuelta a quien
+      llamó `publish()` — la única señal de fallo queda en logs de
+      `tracing::error!`, invisible para el llamador. Definir e implementar
+      una estrategia real: opciones incluyen (a) hacer que `ack_mode:
+      committed` espere confirmación real vía polling interno antes de
+      responder, (b) agregar un canal de feedback desde el `eventloop` hacia
+      `publish()` para detectar fallos de entrega, (c) al mínimo, renombrar
+      `"committed"` para dejar de sugerir una garantía que no existe. Sin
+      esto, el sistema puede perder escrituras silenciosamente bajo presión
+      de recursos — ver DEC-0048.
+- [ ] `TASK-VAL-0016` (CRÍTICO, nuevo) — `ixmati-writer` no tiene ningún
+      límite de memoria ni backpressure en su propio consumo de MQTT —
+      puede ser OOM-killed por el kernel bajo carga sostenida (confirmado 2
+      veces en TASK-VAL-0014). Investigar la causa de crecimiento de
+      memoria (¿buffer del canal interno de `rumqttc`? ¿acumulación por los
+      reintentos fallidos de `"database is locked"`?) e implementar un
+      límite explícito y una degradación controlada (rechazar/backoff) en
+      vez de un crash abrupto.
+- [ ] `TASK-VAL-0017` (alta prioridad) — `event_publisher.rs` sigue sin
+      `PRAGMA busy_timeout` en las conexiones SQLite que abre (señalado ya
+      en DEC-0043, causa directa de los errores "database is locked"
+      observados justo antes de ambos OOM-kills en TASK-VAL-0014).
 - [x] `TASK-VAL-0012` (P4, parcial — ver desglose) — De los 3 ítems de este
       punto, se hizo el primero y se dejaron los otros 2 explícitamente como
       roadmap, no como "hecho":
