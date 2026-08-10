@@ -1,3 +1,4 @@
+pub mod metrics;
 pub mod pattern_m;
 pub mod pattern_r;
 

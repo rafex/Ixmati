@@ -49,6 +49,8 @@ async fn main() {
         .json()
         .init();
 
+    ixmati_projector::metrics::maybe_spawn_server();
+
     let mqtt_broker =
         std::env::var("MQTT_BROKER").unwrap_or_else(|_| "tcp://localhost:1883".into());
     let socket_path = std::env::var("CACHE_SOCKET_PATH")
@@ -128,6 +130,7 @@ async fn main() {
 
                 tracing::debug!(event_id = %event.event_id, store = %event.store, entity = %event.entity, "processing event");
                 engine.process_event_async(&event, &cache).await;
+                ixmati_projector::metrics::record_lag(&event.occurred_at);
                 processed += 1;
 
                 if processed % 1000 == 0 {

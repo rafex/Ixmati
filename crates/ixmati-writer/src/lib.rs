@@ -6,6 +6,7 @@ pub mod cdc;
 pub mod consumer;
 pub mod dedup;
 pub mod event_publisher;
+pub mod metrics;
 pub mod outbox;
 pub mod standby;
 pub mod write_engine;

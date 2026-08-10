@@ -18,6 +18,8 @@ async fn main() -> std::io::Result<()> {
         .json()
         .init();
 
+    ixmati_writer::metrics::maybe_spawn_server();
+
     let mqtt_broker =
         std::env::var("MQTT_BROKER").unwrap_or_else(|_| "tcp://localhost:1883".into());
     let store_name = std::env::var("STORE_NAME").unwrap_or_else(|_| "pedidos".into());
@@ -144,7 +146,14 @@ async fn process_batch(
     let cmds = &batch.commands;
     let mut guard = conn.lock().await;
 
-    match WriteEngine::process_batch(&mut guard, cmds) {
+    let started = std::time::Instant::now();
+    let result = WriteEngine::process_batch(&mut guard, cmds);
+    ixmati_writer::metrics::WRITE_BATCH_DURATION.record(
+        started.elapsed().as_secs_f64(),
+        &[opentelemetry::KeyValue::new("store", store_name.to_string())],
+    );
+
+    match result {
         Ok(result) => {
             cache_sync.sync_batch(&result.events
                 .iter()

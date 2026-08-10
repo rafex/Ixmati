@@ -324,10 +324,39 @@ Tablero de tareas activo. Persiste entre sesiones.
       desde un contenedor/máquina separado del target para obtener un número
       de capacidad del writer sin contención de CPU con el generador de
       carga — ver el caveat de `TASK-VAL-0011`.
-- [ ] `TASK-VAL-0012` (P4, menor prioridad) — Instrumentar
-      `PROJECTION_LAG`/`WRITE_BATCH_DURATION` (requiere `/metrics` en
-      `ixmati-projector`/`ixmati-writer`), clustering de Mosquitto, sharding
-      interno de un store (ítems ya listados sin marcar en `ROADMAP.md`).
+- [x] `TASK-VAL-0012` (P4, parcial — ver desglose) — De los 3 ítems de este
+      punto, se hizo el primero y se dejaron los otros 2 explícitamente como
+      roadmap, no como "hecho":
+      1. **Instrumentado**: `WRITE_BATCH_DURATION` (`ixmati-writer`) y
+         `PROJECTION_LAG` (`ixmati-projector`) — cada crate tiene ahora su
+         propio `metrics.rs` (mismo patrón OTel+Prometheus que `ixmati-api`)
+         y un endpoint `/metrics` HTTP **opt-in vía `METRICS_PORT`** (sin esa
+         env var no se abre ningún puerto — a propósito, porque
+         `ixmati-writer` corre como unidad systemd template
+         `ixmati-writer@<store>`, una instancia por store, y un puerto fijo
+         por defecto colisionaría entre instancias del mismo host).
+         `WRITE_BATCH_DURATION` mide el tiempo real de
+         `WriteEngine::process_batch` (SQLite). `PROJECTION_LAG` mide
+         `ahora - occurred_at` del evento procesado (lag de tiempo, no de
+         cantidad de eventos — el projector es un consumidor de stream MQTT
+         puro, sin visibilidad de un "total publicado" independiente contra
+         el cual contar backlog en eventos). 3 tests nuevos entre ambos
+         crates. Validado en Debian real con `METRICS_PORT` configurado por
+         override: `write_batch_duration_seconds` con 10 muestras
+         (mayoría <1ms) y `projection_lag_seconds` con 9 muestras
+         (50-250ms), ambos con datos genuinos de tráfico real, no ceros.
+         Confirmado además que sin `METRICS_PORT` (comportamiento default)
+         nada cambia — write/read normal sigue funcionando igual.
+      2. **NO implementado, roadmap**: clustering de Mosquitto — sigue
+         siendo un broker único sin HA, tal como estaba. Es una feature de
+         infraestructura de varias semanas (requiere decisión de topología:
+         bridge, shared subscription, etc.), no algo para resolver como
+         parte de este backlog de viabilidad.
+      3. **NO implementado, roadmap**: sharding interno de un store —
+         sigue siendo un solo escritor/archivo SQLite por store (DEC-0002,
+         por diseño). Implementarlo de verdad es un cambio de arquitectura
+         mayor (particionamiento de datos dentro de un store), fuera de
+         alcance de una tarea de instrumentación/backpressure.
 
 ## Pendiente (post-v0.1.0)
 

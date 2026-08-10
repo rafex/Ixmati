@@ -712,8 +712,14 @@ dependencies = [
 name = "ixmati-projector"
 version = "0.1.0"
 dependencies = [
+ "axum",
+ "chrono",
  "ixmati-cache",
  "ixmati-core",
+ "opentelemetry",
+ "opentelemetry-prometheus",
+ "opentelemetry_sdk",
+ "prometheus",
  "rumqttc",
  "serde",
  "serde_json",
@@ -756,9 +762,14 @@ dependencies = [
 name = "ixmati-writer"
 version = "0.1.0"
 dependencies = [
+ "axum",
  "chrono",
  "ixmati-cache",
  "ixmati-core",
+ "opentelemetry",
+ "opentelemetry-prometheus",
+ "opentelemetry_sdk",
+ "prometheus",
  "rumqttc",
  "rusqlite",
  "serde",
