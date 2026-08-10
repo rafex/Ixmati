@@ -144,53 +144,74 @@ test_idempotency() {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-# LOAD TESTING
+# LOAD TESTING (concurrente: N workers en paralelo, cada uno en su propio
+# subshell/archivo — un loop curl secuencial nunca supera ~1/latencia ops/s)
 
 LOAD_OPS_DONE=0
 LOAD_OPS_ERRORS=0
 LOAD_P50_MS=0
 LOAD_P99_MS=0
 LOAD_AVG_MS=0
+LOAD_WORKER_PREFIX="/tmp/stack-load-worker"
 LATENCIES_FILE="/tmp/stack-load-latencies.txt"
+
+load_worker() {
+    local worker_id="$1"
+    local end_time_epoch="$2"
+    local out_file="${LOAD_WORKER_PREFIX}-${worker_id}.txt"
+    local seq=0
+    local status latency_ms req_start req_end
+
+    : > "$out_file"
+    while [ "$(date +%s)" -lt "$end_time_epoch" ]; do
+        req_start=$(date +%s%N)
+        status=$(curl -sS --max-time 5 -o /dev/null -w '%{http_code}' -X POST "${API_URL}/write" \
+            -H "Authorization: ApiKey ${API_KEY}" \
+            -H "Content-Type: application/json" \
+            -d "{\"op\":\"upsert\",\"store\":\"default\",\"entity\":\"load\",\"key\":\"k${worker_id}-${seq}\",\"version\":1,\"ts\":\"2026-01-01T00:00:00Z\",\"idempotency_key\":\"load-${worker_id}-${seq}\",\"ack_mode\":\"accepted\",\"payload\":{\"seq\":${seq}}}" 2>/dev/null || echo "000")
+        req_end=$(date +%s%N)
+        latency_ms=$(( (req_end - req_start) / 1000000 ))
+
+        case "$status" in
+            2??) echo "OK $latency_ms" >> "$out_file" ;;
+            *) echo "ERR $latency_ms" >> "$out_file" ;;
+        esac
+        seq=$((seq + 1))
+    done
+}
 
 load_test() {
     local duration_sec="${1:-30}"
     local target_ops_per_sec="${2:-100}"
+    local concurrency="${3:-${LOAD_CONCURRENCY:-20}}"
+    LOAD_DURATION_SEC="$duration_sec"
+    LOAD_TARGET_OPS="$target_ops_per_sec"
+    LOAD_CONCURRENCY_USED="$concurrency"
 
-    log "load test: ${target_ops_per_sec} ops/s durante ${duration_sec}s..."
+    log "load test: concurrencia=${concurrency}, target=${target_ops_per_sec} ops/s, duración=${duration_sec}s..."
 
-    : > "$LATENCIES_FILE"
+    rm -f "${LOAD_WORKER_PREFIX}"-*.txt
+    local end_time_epoch=$(( $(date +%s) + duration_sec ))
 
-    local start_time
-    start_time=$(date +%s%N)
-
-    local ops_done=0
-    local ops_errors=0
-
-    local end_time=$((start_time + duration_sec * 1000000000))
-
-    while [ "$(date +%s%N)" -lt "$end_time" ]; do
-        local req_start
-        req_start=$(date +%s%N)
-
-        # HTTP request
-        if curl -sS -X POST "${API_URL}/write" \
-            -H "Authorization: ApiKey ${API_KEY}" \
-            -H "Content-Type: application/json" \
-            -d "{\"op\":\"upsert\",\"store\":\"default\",\"entity\":\"load\",\"key\":\"k${ops_done}\",\"version\":1,\"ts\":\"2026-01-01T00:00:00Z\",\"idempotency_key\":\"load-${ops_done}\",\"ack_mode\":\"accepted\",\"payload\":{\"seq\":${ops_done}}}" >/dev/null 2>&1; then
-            ops_done=$((ops_done + 1))
-        else
-            ops_errors=$((ops_errors + 1))
-        fi
-
-        local req_end
-        req_end=$(date +%s%N)
-        local latency_ms=$(( (req_end - req_start) / 1000000 ))
-        echo "$latency_ms" >> "$LATENCIES_FILE"
+    local pids=()
+    for w in $(seq 1 "$concurrency"); do
+        load_worker "$w" "$end_time_epoch" &
+        pids+=("$!")
+    done
+    for pid in "${pids[@]}"; do
+        wait "$pid"
     done
 
-    LOAD_OPS_DONE=$ops_done
-    LOAD_OPS_ERRORS=$ops_errors
+    : > "$LATENCIES_FILE"
+    cat "${LOAD_WORKER_PREFIX}"-*.txt > /tmp/stack-load-raw.txt 2>/dev/null || true
+
+    local ops_done ops_errors
+    ops_done=$( (grep -c '^OK' /tmp/stack-load-raw.txt || true) )
+    ops_errors=$( (grep -c '^ERR' /tmp/stack-load-raw.txt || true) )
+    awk '{print $2}' /tmp/stack-load-raw.txt > "$LATENCIES_FILE"
+
+    LOAD_OPS_DONE=${ops_done:-0}
+    LOAD_OPS_ERRORS=${ops_errors:-0}
 
     local n
     n=$(wc -l < "$LATENCIES_FILE" | tr -d ' ')
@@ -206,8 +227,12 @@ load_test() {
         rm -f "$sorted"
     fi
 
-    ok "load test: ${ops_done} ops ejecutadas, ${ops_errors} errores"
-    echo "  ops_done=$ops_done ops_errors=$ops_errors p50=${LOAD_P50_MS}ms p99=${LOAD_P99_MS}ms avg=${LOAD_AVG_MS}ms"
+    rm -f "${LOAD_WORKER_PREFIX}"-*.txt /tmp/stack-load-raw.txt
+
+    local achieved
+    achieved=$(awk "BEGIN {printf \"%.1f\", ${LOAD_OPS_DONE}/${duration_sec}}")
+    ok "load test: ${LOAD_OPS_DONE} ops ejecutadas, ${LOAD_OPS_ERRORS} errores, ${achieved} ops/s reales (concurrencia=${concurrency})"
+    echo "  ops_done=$LOAD_OPS_DONE ops_errors=$LOAD_OPS_ERRORS p50=${LOAD_P50_MS}ms p99=${LOAD_P99_MS}ms avg=${LOAD_AVG_MS}ms"
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -251,11 +276,12 @@ generate_report() {
     "idempotency": "$RESULT_IDEMPOTENCY"
   },
   "load_test": {
-    "duration_sec": 30,
-    "target_ops_per_sec": 100,
+    "duration_sec": ${LOAD_DURATION_SEC:-30},
+    "target_ops_per_sec": ${LOAD_TARGET_OPS:-100},
+    "concurrency": ${LOAD_CONCURRENCY_USED:-20},
     "ops_done": $LOAD_OPS_DONE,
     "ops_errors": $LOAD_OPS_ERRORS,
-    "achieved_ops_per_sec": $(awk "BEGIN {printf \"%.1f\", $LOAD_OPS_DONE/30}"),
+    "achieved_ops_per_sec": $(awk "BEGIN {printf \"%.1f\", $LOAD_OPS_DONE/${LOAD_DURATION_SEC:-30}}"),
     "latency_p50_ms": ${LOAD_P50_MS:-0},
     "latency_p99_ms": ${LOAD_P99_MS:-0},
     "latency_avg_ms": ${LOAD_AVG_MS:-0}
@@ -297,7 +323,7 @@ main() {
     write_read_roundtrip
     test_idempotency
 
-    # Load testing
+    # Load testing (concurrencia configurable via LOAD_CONCURRENCY, default 20)
     load_test 30 100
 
     # Recolectar métricas

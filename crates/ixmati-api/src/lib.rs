@@ -4,6 +4,7 @@ pub mod cache_proxy;
 pub mod health;
 pub mod metrics;
 pub mod rest;
+pub mod self_monitor;
 pub mod status;
 pub mod throttle;
 
@@ -162,6 +163,8 @@ pub async fn serve(config: ApiConfig) -> std::io::Result<()> {
             })
             .collect(),
     );
+
+    self_monitor::spawn(config.db_path.clone());
 
     let app = Router::new().merge(rest::routes(state, auth_config));
 

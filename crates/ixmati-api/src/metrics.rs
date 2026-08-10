@@ -90,9 +90,9 @@ pub static PROCESS_MEMORY_RSS: LazyLock<Gauge<u64>> = LazyLock::new(|| {
         .build()
 });
 
-pub static PROCESS_CPU_USER: LazyLock<Counter<u64>> = LazyLock::new(|| {
+pub static PROCESS_CPU_USER: LazyLock<Counter<f64>> = LazyLock::new(|| {
     METER
-        .u64_counter("process_cpu_user_seconds")
+        .f64_counter("process_cpu_user_seconds")
         .with_description("Process user CPU time in seconds")
         .build()
 });

@@ -10,6 +10,7 @@ use axum::{
 };
 use ixmati_cache::CacheBackend;
 use ixmati_core::{AckResponse, WriteEnvelope};
+use opentelemetry::KeyValue;
 use rumqttc::{AsyncClient, MqttOptions, QoS};
 use serde::Deserialize;
 use std::sync::Arc;
@@ -179,12 +180,28 @@ async fn write_handler(
     State(state): State<AppState>,
     Json(envelope): Json<WriteEnvelope>,
 ) -> Result<Json<AckResponse>, (StatusCode, Json<ixmati_core::Error>)> {
+    let started = std::time::Instant::now();
+    let store = envelope.store.clone();
+    let entity = envelope.entity.clone();
+
+    let record_error = |error_type: &str| {
+        crate::metrics::WRITE_ERRORS.add(
+            1,
+            &[
+                KeyValue::new("store", store.clone()),
+                KeyValue::new("error_type", error_type.to_string()),
+            ],
+        );
+        crate::metrics::WRITE_LATENCY.record(started.elapsed().as_secs_f64(), &crate::metrics::kv_store(&store));
+    };
+
     {
         let mut throttle = state.throttle.lock().await;
         if !throttle.allow(&envelope.store) {
             let depth = throttle.depth(&envelope.store);
             crate::metrics::QUEUE_DEPTH
                 .record(depth as i64, &crate::metrics::kv_store(&envelope.store));
+            record_error("queue_full");
             return Err((
                 StatusCode::TOO_MANY_REQUESTS,
                 Json(ixmati_core::Error::QueueFull {
@@ -210,6 +227,7 @@ async fn write_handler(
     let topic = format!("ixmati/cmd/{}/{}/{}", cmd.store, cmd.entity, cmd.key);
 
     let payload = serde_json::to_vec(&cmd).map_err(|e| {
+        record_error("serialize");
         (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ixmati_core::Error::Internal {
@@ -220,6 +238,7 @@ async fn write_handler(
 
     let guard = state.mqtt_client.lock().await;
     let client = guard.as_ref().ok_or_else(|| {
+        record_error("mqtt_unavailable");
         (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(ixmati_core::Error::Internal {
@@ -232,6 +251,7 @@ async fn write_handler(
         .publish(&topic, QoS::AtLeastOnce, false, payload)
         .await
         .map_err(|e| {
+            record_error("mqtt_publish");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(ixmati_core::Error::Internal {
@@ -240,6 +260,16 @@ async fn write_handler(
             )
         })?;
     drop(guard);
+
+    crate::metrics::WRITE_REQUESTS.add(
+        1,
+        &[
+            KeyValue::new("store", cmd.store.clone()),
+            KeyValue::new("entity", entity),
+            KeyValue::new("status", "success"),
+        ],
+    );
+    crate::metrics::WRITE_LATENCY.record(started.elapsed().as_secs_f64(), &crate::metrics::kv_store(&cmd.store));
 
     let ack = match cmd.ack_mode.as_str() {
         "committed" => AckResponse {

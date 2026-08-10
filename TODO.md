@@ -155,6 +155,50 @@ Tablero de tareas activo. Persiste entre sesiones.
       duplicación. `cargo test --workspace --lib` sigue en verde (100+ tests).
       Pendiente (no en este alcance): instrumentar WRITE_REQUESTS/WRITE_LATENCY/
       WRITE_ERRORS/OUTBOX_SIZE/PROJECTION_LAG/PROCESS_* en sus call sites reales.
+- [x] `TASK-VAL-0006` — Instrumentar métricas pendientes de VAL-0005 + load test
+      concurrente real:
+      1. `write_handler` (`rest.rs`) ahora incrementa `WRITE_REQUESTS`,
+         `WRITE_ERRORS` (con `error_type`: queue_full/serialize/mqtt_unavailable/
+         mqtt_publish) y observa `WRITE_LATENCY` en todo camino de salida.
+      2. Nuevo módulo `crates/ixmati-api/src/self_monitor.rs`: tarea de fondo
+         cada 5s que lee `/proc/self/status` (VmRSS → `PROCESS_MEMORY_RSS`) y
+         `/proc/self/stat` (utime delta → `PROCESS_CPU_USER`, asume
+         `CLK_TCK=100`, estándar en Linux/Debian). Si `SQLITE_PATH` está
+         configurado, también consulta `SELECT store, COUNT(*) FROM _outbox
+         WHERE published_at IS NULL GROUP BY store` → `OUTBOX_SIZE`.
+      3. `helpers/shell/test_stack_validation.sh`: `load_test()` reescrito de
+         loop secuencial de curl a N workers concurrentes en subshells de
+         bash (default `LOAD_CONCURRENCY=20`), cada uno con su propio archivo
+         de resultados, agregados al final.
+      4. `PROJECTION_LAG` y `WRITE_BATCH_DURATION` siguen sin instrumentar:
+         requieren datos que solo existen en `ixmati-projector`/`ixmati-writer`,
+         procesos que no exponen `/metrics` — instrumentarlos de verdad
+         implicaría agregar un endpoint de métricas a esos binarios, fuera
+         de alcance de esta tarea.
+      Validado con tráfico real en Debian (`make installer-test` +
+      reinstalación con binarios recompilados): con `LOAD_CONCURRENCY=20`
+      durante 30s se lograron 13460 writes (448.7 ops/s reales, vs 285 ops/s
+      del loop secuencial anterior), `ixmati_write_requests_total` coincidió
+      exactamente con `ops_done` del script (13460), `PROCESS_MEMORY_RSS`
+      reportó 7.4MB reales, `PROCESS_CPU_USER` 0.33s acumulados. `OUTBOX_SIZE`
+      se verificó por separado con `SQLITE_PATH` forzado vía override de
+      systemd (el instalador nativo no lo setea por defecto — el API en modo
+      `CACHE_READ_MODE=socket` no necesita SQLite directo salvo para esta
+      métrica) y reveló un backlog real de 4762 eventos sin publicar tras la
+      carga — el writer no vació la cola al ritmo de escritura, dato genuino
+      que amerita seguimiento (no corregido, fuera de alcance de esta tarea).
+      HALLAZGO IMPORTANTE: `WRITE_LATENCY` medida en servidor (que solo cubre
+      publish a un canal MQTT en memoria, no un round-trip real) dio un
+      promedio de ~2.4 microsegundos, mientras el script de carga midió
+      p50=37ms/p99=66ms del lado cliente (curl vía HTTP). La brecha de 4
+      órdenes de magnitud es real y se debe a que el script gasta un proceso
+      `curl` nuevo por request sin keep-alive, más contención de CPU entre 20
+      workers de bash+curl en paralelo — no es tiempo de procesamiento del
+      servidor. Los números de "ops/s" y latencia del load test reflejan el
+      techo del harness de bash, no necesariamente el techo real de
+      `ixmati-api`. Para medir capacidad real del servidor haría falta un
+      cliente de carga sin ese overhead (ej. `hey`, `vegeta`, o un cliente
+      async en Rust/Python) — queda como mejora pendiente, no bloqueante.
 
 ## Pendiente (post-v0.1.0)
 
