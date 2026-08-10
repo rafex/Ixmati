@@ -475,12 +475,33 @@ Tablero de tareas activo. Persiste entre sesiones.
       41% del ciclo de cada batch sigue sin explicarse con instrumentación
       de aplicación — probable overhead de scheduling del runtime de tokio
       bajo contención real, no reproducible en benchmarks aislados.
-- [ ] `TASK-VAL-0019` (seguimiento, no iniciado) — Profiling a nivel de
-      sistema (`perf`, `strace`, o `tokio-console`) dentro del contenedor
-      Debian real para aislar el 41% del ciclo que las métricas de
-      aplicación no explican (ver DEC-0050). La instrumentación de
-      aplicación llegó a su límite razonable de utilidad para este
-      problema específico.
+- [x] `TASK-VAL-0021` (intentado, REVERTIDO) — Hilo de sistema operativo
+      dedicado (`WriteActor`) en vez de `spawn_blocking` por llamada.
+      **158.35 commits/s en ráfaga (~4x sobre spawn_blocking)**, pero el
+      writer dejaba de procesar batches silenciosamente después de ~90-95
+      batches bajo carga sostenida de 3 min — sin error, sin panic, sin
+      reinicio de systemd. Revertido por seguridad: preferible más lento
+      pero confiable (spawn_blocking) que más rápido pero con cuelgues
+      silenciosos. Ver DEC-0051 para la implementación completa
+      documentada (por si se retoma) y la evidencia del cuelgue.
+- [x] `TASK-VAL-0022` (investigación del cuelgue, sin causa raíz confirmada)
+      — `strace` no funcionable en el contenedor (ptrace bloqueado por
+      política anidada del host). Con `/proc/<pid>/task/*/wchan` se
+      confirmó que los 12 hilos del proceso estaban dormidos (ninguno
+      atascado en I/O) durante el cuelgue — descarta el deadlock de
+      contención SQLite que se sospechaba. Mosquitto mostraba el cliente
+      del writer conectado pero sin recibir mensajes nuevos
+      (`messages/stored` en el tope). Causa raíz no confirmada — candidato
+      más probable: pérdida de wakeup entre el eventloop de `rumqttc` y el
+      resto del pipeline. Ver DEC-0051.
+- [ ] `TASK-VAL-0019` (seguimiento, no iniciado) — De paso se descubrió que
+      `event_publisher.rs` tiene el mismo anti-patrón que `process_batch`
+      tenía (conexiones SQLite síncronas sin `spawn_blocking`) — corregirlo
+      con `spawn_blocking` (no con un hilo compartido, dado el resultado de
+      `TASK-VAL-0021`) queda pendiente por separado. Y retomar profiling
+      de sistema (`tokio-console`, o un host sin restricción de `ptrace`
+      anidado) si se quiere diagnosticar el cuelgue de `TASK-VAL-0022` o el
+      41% del ciclo sin explicar de DEC-0050.
 - [ ] `TASK-VAL-0020` (seguimiento) — Recalibrar `OUTBOX_BACKPRESSURE_THRESHOLD`
       (default 5000, DEC-0045) y el rate-limiter default
       (`MAX_WRITES_PER_WINDOW=1000/s`, TASK-VAL-0013) contra la capacidad
