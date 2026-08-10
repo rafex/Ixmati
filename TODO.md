@@ -285,10 +285,45 @@ Tablero de tareas activo. Persiste entre sesiones.
       fallo — ver DEC-0037). Sharding real por store (múltiples archivos
       Redb o particionamiento) queda fuera de este alcance si se necesita
       aislamiento de fallos entre tenants, no solo throughput.
-- [ ] `TASK-VAL-0011` (P3) — Load test real sin overhead de proceso-por-request
-      (bash+curl secuencial/paralelo actual mide el harness, no el servidor —
-      ver DEC-0042): usar `hey`/`vegeta`/`wrk` o un cliente async, corrida
-      sostenida de 5-10 min, observando `OUTBOX_SIZE`, RSS/CPU y tasa de error.
+- [x] `TASK-VAL-0011` (P3) — Load test real sin overhead de proceso-por-request:
+      `wrk` (disponible en apt de Debian trixie) + script Lua nuevo
+      (`helpers/wrk/write.lua`) contra `POST /write`, corrida sostenida de 60s
+      y de 3 min, con `MAX_WRITES_PER_WINDOW` elevado temporalmente (el
+      default de 1000/s/store rechazaba casi todo con 429 antes de llegar a
+      medir nada — ver DEC-0046 para el detalle de por qué eso también es un
+      hallazgo real, no solo un obstáculo del test).
+      **Resultado real**: 44,281-45,531 req/s sostenidos (3 min y 60s
+      respectivamente), 0 errores HTTP, p50=0.35-0.89ms, p99=2.57-34.75ms,
+      RSS estable ~11MB, los 5 servicios activos durante y después.
+      Comparado con los 425-448 ops/s medidos con el harness de bash+curl
+      (DEC-0042): confirma que ese número anterior efectivamente medía el
+      harness, no el servidor — el techo real de aceptación de la API es
+      ~100x mayor.
+      **CAVEAT CRÍTICO, no resuelto**: `wrk` corrió DENTRO del mismo
+      contenedor que los 5 servicios de Ixmati, sobre una VM de podman con
+      solo 2 vCPUs asignadas — compitiendo por los mismos cores que
+      `ixmati-api`/`ixmati-writer`. Se observó que bajo esta carga el
+      `ixmati-writer` solo lograba comprometer ~100 batches/s a SQLite (vía
+      logs de `journalctl`), muy por debajo de los ~425/s vistos en el test
+      más liviano de DEC-0044 — probable contención de CPU con el propio
+      generador de carga, no necesariamente un techo real del writer. No se
+      puede separar limpiamente "capacidad del servidor" de "contención con
+      el harness" en este entorno. Un número de capacidad limpio requeriría
+      correr `wrk` en una máquina/contenedor separado del target.
+- [ ] `TASK-VAL-0013` (nuevo, descubierto durante P3) — El rate-limiter
+      default (`MAX_WRITES_PER_WINDOW=1000` escrituras/s por store,
+      `throttle.rs`) rechaza con `429 QueueFull` cualquier carga sostenida
+      por encima de ese umbral, independientemente de la capacidad real del
+      servidor (que P3 mostró ser ~44 veces mayor). Es una decisión de
+      producto pendiente, no un bug: ¿1000/s/store es el límite deseado por
+      defecto para el instalador nativo, o debería ser más alto/configurable
+      de forma más visible? Hoy solo se puede cambiar vía env var
+      `MAX_WRITES_PER_WINDOW` sin que el instalador lo exponga ni lo
+      documente.
+- [ ] `TASK-VAL-0014` (limpieza del load test) — Correr `wrk` (o equivalente)
+      desde un contenedor/máquina separado del target para obtener un número
+      de capacidad del writer sin contención de CPU con el generador de
+      carga — ver el caveat de `TASK-VAL-0011`.
 - [ ] `TASK-VAL-0012` (P4, menor prioridad) — Instrumentar
       `PROJECTION_LAG`/`WRITE_BATCH_DURATION` (requiere `/metrics` en
       `ixmati-projector`/`ixmati-writer`), clustering de Mosquitto, sharding
