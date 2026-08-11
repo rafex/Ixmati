@@ -36,8 +36,11 @@ quedó pendiente y debe consultarse con `GET /writes/{store}/{idempotency_key}`.
 ## Capacidad y límites conocidos
 
 - El throttle productivo predeterminado es de 40 escrituras por segundo.
-- La validación rate-controlled en Debian amd64 sostuvo 40–120 solicitudes/s
-  sin `202` ni crecimiento de `consumer_queue_depth`.
+- Una validación de capacidad con throttle temporal elevado en Debian amd64
+  sostuvo 40–120 solicitudes/s sin `202` ni crecimiento de cola.
+- En la comparativa completa, con el perfil productivo, el writer confirmó
+  aproximadamente 40 escrituras durables/s; no debe confundirse con la tasa
+  de capacidad temporal anterior.
 - 150 solicitudes/s produjo la primera señal de saturación; no se presenta
   como capacidad sostenible.
 - La entrega de eventos es at-least-once: un crash en la ventana de PUBACK
@@ -74,6 +77,28 @@ tasa ofrecida al API. Desde 40–60/s aparecen `429` y pendientes; por eso la
 tabla no presenta 100 o 200/s como capacidad productiva. Los números de
 SQLite/PostgreSQL no son equivalentes al pipeline completo: sirven para
 separar el costo del motor del costo de durabilidad, mensajería y proyección.
+
+### Qué dicen estos resultados del producto
+
+Ixmati no compite por throughput SQL bruto. La comparativa demuestra que
+convierte la limitación de escritor único de SQLite en un servicio explícito:
+coordina productores, confirma durabilidad mediante `_idempotency`, aplica
+backpressure, publica mediante outbox y ofrece lecturas aceleradas por cache y
+proyecciones.
+
+La lectura es el lado fuerte del producto: el camino completo sostuvo 1,000
+lecturas/s con p99 aproximado de 1.64 ms en este workload. El lado de escritura
+es el límite actual: aproximadamente 40 escrituras durables/s y p99 cercana a
+2 s en `ack_mode=committed`. Los `429` por encima del límite son una señal de
+backpressure correcta, no capacidad adicional oculta.
+
+La conclusión de producto es **beta viable para single-host/edge, escritura
+moderada y alta fan-out de lectura**. Estos resultados no justifican afirmar
+que Ixmati supera a SQLite o PostgreSQL en capacidad bruta, que soporta
+100–200 escrituras durables/s, ni que ya es un reemplazo general de PostgreSQL.
+El siguiente trabajo de rendimiento debe concentrarse en la latencia del
+writer y en la observabilidad de la cola; la prueba determinista de crash
+entre PUBACK y `published_at` sigue pendiente.
 
 ## Stack
 

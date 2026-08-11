@@ -25,6 +25,10 @@ La suite de comparativa de capacidad está implementada y ejecutada en Debian
 amd64. Usó 1,000 usuarios y 10,000 pedidos comunes, tres repeticiones,
 SQLite directo, PostgreSQL 18 e Ixmati completo. La evidencia quedó en
 `spec-native/evidence/DB-COMPARISON-20260811.md` y en sus JSON/snapshots crudos.
+La interpretación de producto quedó consolidada en DEC-0064, PRODUCT.md,
+README.md y la guía de uso: lectura hasta 1,000/s; aproximadamente 40/s de
+escritura durable con el perfil productivo; p99 cercana a 2 s en
+`ack_mode=committed`; no se presenta Ixmati como motor SQL de throughput bruto.
 
 ## Next steps
 
@@ -32,9 +36,9 @@ La lectura cacheada y la vista materializada se validaron a 100–1000/s sin
 errores en esta ejecución. El writer confirmó aproximadamente 40 escrituras
 durables/s; desde 40–60/s aparecen `429`/pendientes y no crece el commit rate.
 La suite también confirmó que `consumer_queue_depth` no aparece en `/metrics`.
-Después deben priorizarse Pattern R mutable, el crash determinista entre
-PUBACK y `published_at`, las alertas operativas y el atasco MQTT bajo
-sobrecarga extrema.
+Después deben priorizarse la reducción de latencia del writer, Pattern R
+mutable, el crash determinista entre PUBACK y `published_at`, las alertas
+operativas y el atasco MQTT bajo sobrecarga extrema.
 
 ## Context for next agent
 

@@ -127,24 +127,27 @@ Registro de decisiones persistentes del proyecto.
   - (-) N procesos de Litestream (uno por store) → mayor consumo de recursos.
 - **Reemplaza**: `none`
 
-### DEC-0008 — Semántica de escritura dual: async (`accepted`) y sync (`committed`), seleccionable por request
+### DEC-0008 — Confirmación durable de escritura: `accepted` como alias de `committed`
 
 - **Fecha**: 2026-07-29
 - **Estado**: `accepted`
 - **Enmienda**: 2026-07-29 — el ack sync está acotado a 1 store; **invariante: un comando toca exactamente 1 store**
 - **Relacionado con specs**: `SPEC-WRITE-0001`
 - **Relacionado con tareas**: `TASK-WRITE-0009`, `TASK-WRITE-0010`
-- **Contexto**: diferentes operaciones tienen diferentes requisitos de consistencia. Una actualización de perfil puede tolerar consistencia eventual (async), pero una deducción de saldo requiere confirmación de commit (sync).
+- **Contexto**: el contrato implementado debe distinguir una escritura durable confirmada de una solicitud que todavía está en proceso. La implementación actual no tiene un modo async de ACK inmediato: tanto `accepted` como `committed` esperan confirmación de `_idempotency` o devuelven `202 PENDING` al agotar el timeout.
 - **Decisión**:
-  1. El campo `ack_mode` en el comando acepta `accepted` (async) o `committed` (sync).
-  2. Modo `accepted`: ack inmediato al recibir el mensaje. El backend puede consultar `GET /writes/{store}/{idempotency_key}`.
-  3. Modo `committed`: el writer retiene la conexión hasta el commit en SQLite, y envía el ack con el resultado.
+  1. El campo `ack_mode` acepta `accepted` y `committed` por compatibilidad, pero ambos tienen semántica durable.
+  2. La API devuelve `200` sólo después de confirmar el commit en `_idempotency`.
+  3. Si el commit no puede confirmarse dentro de `WRITE_COMMITTED_TIMEOUT_MS`, devuelve `202 PENDING`; el backend consulta `GET /writes/{store}/{idempotency_key}`.
   4. La correlación usa `(store, idempotency_key)`.
   5. **Invariante**: un comando apunta a 1 store. Si una operación de negocio requiere tocar 2 stores, la aplicación debe emitir 2 comandos separados y coordinar (saga fuera del motor).
+  6. Un modo async de ACK inmediato requerirá una decisión y contrato separados; no se infiere de `accepted`.
 - **Consecuencias**:
-  - (+) Latencia mínima para escrituras que no requieren confirmación inmediata.
-  - (+) Read-your-writes garantizado en modo sync, acotado al store del comando.
+  - (+) No se confunde aceptación en memoria con durabilidad SQLite.
+  - (+) Read-your-writes garantizado cuando la API devuelve `200`.
+  - (+) Los benchmarks de `accepted` y `committed` pueden compararse porque comparten frontera de éxito.
   - (+) Sin transacciones distribuidas en el motor.
+  - (-) No existe actualmente una opción de baja latencia con consistencia eventual.
   - (-) El backend debe coordinar operaciones multi-store por su cuenta.
 - **Reemplaza**: `none`
 
@@ -1324,3 +1327,47 @@ capacidad observada en este host y configuración, no garantías universales.
 La ejecución mostró además que `consumer_queue_depth` no está expuesta en el
 endpoint `/metrics`; su ausencia se dejó como gap de observabilidad, no como
 valor cero.
+
+### DEC-0064 — Posicionamiento del producto según la comparativa de capacidad
+
+- Fecha: 2026-08-11
+- Estado: `accepted`
+- Relacionado con tareas: `TASK-VAL-0037`, `TASK-VAL-0025`, `TASK-VAL-0034`
+- Evidencia: `spec-native/evidence/DB-COMPARISON-20260811.md`
+
+**Contexto**: la comparativa separó el rendimiento del motor SQLite del costo
+del pipeline completo de Ixmati. SQLite y PostgreSQL directos tienen menos
+capas que Ixmati y, por tanto, sus números no representan el mismo producto.
+
+**Decisión**: Ixmati se posiciona como una capa durable de escritura y
+aceleración de lecturas sobre SQLite, no como un motor de SQL de throughput
+bruto superior a SQLite o PostgreSQL. La capacidad observada en la
+comparativa completa queda documentada así:
+
+1. El camino de lectura cacheado y proyectado sostuvo 1,000 operaciones/s
+   con p99 aproximado de 1.6 ms en el workload de Debian, sin saturación del
+   generador.
+2. El camino de escritura durable confirmó aproximadamente 40 escrituras/s
+   con el throttle productivo; ofrecer más carga produjo `429`/pendientes sin
+   aumentar el commit rate.
+3. La latencia p99 cercana a 2 s en las escrituras `ack_mode=committed` es un
+   cuello de botella actual del camino durable. No se presenta como un SLO
+   deseado ni se oculta detrás del throughput.
+4. El producto es adecuado para cargas single-host o edge con escritura
+   durable moderada, alta fan-out de lectura, idempotencia y outbox. No se
+   presenta todavía como solución para workloads write-heavy ni como
+   reemplazo general de PostgreSQL.
+5. Los `429` bajo sobrecarga se consideran backpressure correcto y observable,
+   siempre que el límite, la latencia y la recuperación estén documentados y
+   monitorizados; aceptar trabajo que luego no se persiste sería peor.
+
+**Consecuencias**: (+) la propuesta de valor queda alineada con evidencia
+real: coordinación durable de productores, outbox, idempotencia, cache y
+proyecciones; (+) los baselines directos sirven para cuantificar el costo de
+esas garantías; (-) antes de reclamar alto throughput de escritura hay que
+reducir la cola/latencia del writer y completar la observabilidad; (-) la
+prueba determinista de crash entre PUBACK y `published_at` sigue siendo
+necesaria para cerrar la afirmación de entrega sin pérdida.
+- Reemplaza: cualquier lectura que interprete los resultados directos como
+  prueba de que Ixmati supera a SQLite/PostgreSQL en capacidad bruta, o que
+  presente 100–200 escrituras/s del API como capacidad durable productiva.

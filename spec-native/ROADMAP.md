@@ -10,12 +10,18 @@ producto viable beta.
 - Instalador nativo Debian, unidades systemd, cache-server y health checks:
   **hecho**.
 - Backpressure, métricas y validación en Debian amd64: **hecho**.
-- Capacidad sostenible validada: 40–120 solicitudes/s rate-controlled.
+- Capacidad rate-controlled validada: 40–120 solicitudes/s con throttle
+  temporal elevado; el perfil productivo queda limitado a aproximadamente
+  40 escrituras durables/s.
 - Primer escalón de saturación observado: 150 solicitudes/s.
+- Lecturas cacheadas/proyectadas validadas hasta 1,000 operaciones/s; p99 de
+  escritura `ack_mode=committed` cercano a 2 s en la comparativa completa.
 
 ## Próximo ciclo — hardening de producción
 
-1. Documentación de uso, instalación, upgrades, backup, restore y troubleshooting.
+1. Reducir la latencia de cola del writer y validar el SLO de escritura durable
+   con `accepted`/`committed` como alias durable. Un modo async real queda como
+   iniciativa independiente.
 2. Prueba determinista del crash entre PUBACK y `published_at`.
 3. Alertas de writer detenido, último batch, cola de consumo, outbox, errores
    MQTT y lag de proyecciones.

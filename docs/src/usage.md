@@ -88,9 +88,18 @@ deben deduplicar por identificador de evento.
 ## Capacidad de referencia
 
 El throttle predeterminado de 40/s es el perfil de producción validado. En una
-prueba rate-controlled sobre Debian amd64 se observaron 40–120/s sin respuestas
-`202` ni crecimiento de cola. A 150/s aparecieron `202`, latencia de segundos y
-cola; ese escalón representa saturación, no capacidad sostenible.
+prueba de capacidad con throttle temporal elevado sobre Debian amd64 se
+observaron 40–120/s sin respuestas `202` ni crecimiento de cola. A 150/s
+aparecieron `202`, latencia de segundos y cola; ese escalón representa
+saturación, no capacidad sostenible. En la comparativa completa con el perfil
+productivo, el writer confirmó aproximadamente 40 escrituras durables/s y el
+camino de lecturas cacheadas/proyectadas alcanzó 1,000 operaciones/s.
+
+La p99 de las escrituras `ack_mode=committed` fue cercana a 2 s en esa
+comparativa. Por eso Ixmati debe considerarse beta viable para escritura
+moderada y alta fan-out de lectura, no un reemplazo de PostgreSQL para cargas
+intensivas de escritura. Los `429` por encima del límite son backpressure
+esperado y deben monitorizarse junto con el último commit, outbox y cola.
 
 El sistema sigue siendo beta: el atasco de sesión MQTT bajo sobrecarga extrema
 continúa como riesgo operativo conocido y la prueba determinista de crash en

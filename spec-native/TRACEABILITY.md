@@ -24,4 +24,4 @@ Vínculos entre artefactos del proyecto.
 
 | Tarea | Implementación | Evidencia | Decisión |
 |---|---|---|---|
-| `TASK-VAL-0037` | `benchmarks/`, `just benchmark-db` | `spec-native/evidence/DB-COMPARISON-20260811.md` | `DEC-0063` |
+| `TASK-VAL-0037` | `benchmarks/`, `just benchmark-db` | `spec-native/evidence/DB-COMPARISON-20260811.md` | `DEC-0063`, `DEC-0064` |

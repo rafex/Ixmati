@@ -22,10 +22,12 @@
 }
 ```
 
-`ack_mode=accepted` se conserva como alias compatible, pero no cambia la
-durabilidad: la API sólo devuelve `200 OK` después de confirmar el commit en
-SQLite. Si el commit todavía no puede confirmarse dentro del timeout devuelve
-`202 Accepted` con la `idempotency_key` para consultar `GET /writes/{store}/{idempotency_key}`.
+`ack_mode=accepted` se conserva como alias compatible de `committed`; no existe
+un ACK async en el contrato actual. Ambos modos esperan confirmación del commit
+en SQLite: la API sólo devuelve `200 OK` después de confirmar `_idempotency`. Si
+el commit todavía no puede confirmarse dentro del timeout devuelve `202
+Accepted` con la `idempotency_key` para consultar
+`GET /writes/{store}/{idempotency_key}`.
 
 En un despliegue multi-store, configurar `SQLITE_PATHS` como una lista
 `store=/ruta/db,otro=/ruta/otra.db` para que cada confirmación consulte el

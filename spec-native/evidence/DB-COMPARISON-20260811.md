@@ -76,6 +76,30 @@ throttle configurado; ofrecer 60/s o más no aumenta el commit rate y sí genera
 rechazos. SQLite y PostgreSQL directos son referencias de motor, no sustitutos
 del pipeline HTTP/MQTT/outbox/cache.
 
+## Interpretación de producto
+
+Estos resultados demuestran que Ixmati es funcional como una capa durable de
+escritura y aceleración de lecturas sobre SQLite, no que sea un motor SQL de
+throughput bruto superior a SQLite o PostgreSQL. Los baselines directos tienen
+menos capas y permiten estimar el costo de añadir API, MQTT, serialización del
+writer, confirmación de `_idempotency`, outbox, cache y proyecciones.
+
+La lectura es el lado fuerte del producto en este workload: el camino completo
+sostuvo 1,000 operaciones/s cacheadas o proyectadas con p99 aproximado de
+1.6 ms y sin saturación del generador. La escritura durable es el límite
+actual: con el perfil productivo confirmó aproximadamente 40 escrituras/s;
+por encima de ese nivel aparecieron `429`/pendientes sin aumentar el commit
+rate. La p99 cercana a 2 s en `ack_mode=committed` debe tratarse como un
+cuello de botella de rendimiento, no como un SLO cumplido.
+
+La conclusión de producto es **beta viable para single-host/edge, escritura
+moderada y alta fan-out de lectura**. Ixmati convierte la limitación de
+escritor único de SQLite en un servicio durable, observable y con backpressure
+explícito; no elimina esa limitación. No se deben presentar estos datos como
+prueba de que Ixmati supera a SQLite/PostgreSQL, como soporte para 100–200
+escrituras durables/s, ni como sustitución general de PostgreSQL. La prueba
+determinista de crash entre PUBACK y `published_at` sigue pendiente.
+
 ## Operaciones adicionales
 
 | Motor | Operación a 100/s | Éxito/s | p50 | p95 | p99 | Errores | Validez |

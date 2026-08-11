@@ -4,11 +4,19 @@ Fuente de verdad del producto.
 
 ## Estado actual
 
-Ixmati es un producto viable en **beta técnica**. La validación rate-controlled
-en Debian amd64 sostuvo 40–120 solicitudes de escritura por segundo con el
-throttle productivo de 40/s como perfil predeterminado, sin `202` ni crecimiento
-de la cola de consumo. A 150/s apareció saturación observable; no es una cifra
-de capacidad sostenible.
+Ixmati es un producto viable en **beta técnica**, orientado a cargas con alta
+lectura y escritura durable moderada. En una prueba de capacidad con throttle
+temporal elevado sostuvo 40–120 solicitudes/s y mostró el primer escalón de
+saturación en 150/s. En la comparativa del pipeline completo con el perfil
+productivo, el writer confirmó aproximadamente 40 escrituras durables/s y la
+lectura cacheada/proyectada alcanzó 1,000 operaciones/s.
+
+La comparativa también mostró una p99 cercana a 2 s para escrituras con
+`ack_mode=committed`. Ese número es un cuello de botella actual del camino
+durable, no una capacidad objetivo ni una razón para presentar Ixmati como
+motor de alto throughput de escrituras. El producto coordina productores y
+expone durabilidad, idempotencia, outbox y modelos de lectura; no pretende
+superar a SQLite o PostgreSQL en throughput SQL bruto.
 
 La operación sigue requiriendo administración de systemd, Mosquitto y
 Litestream. La entrega de eventos es at-least-once y puede repetir eventos
@@ -32,7 +40,9 @@ Múltiples pods o backends necesitan escribir en una misma base de datos SQLite,
   - 0 errores `SQLITE_BUSY` propagados al cliente en condiciones normales.
   - 0 comandos perdidos ante caída y recuperación del writer (kill -9, reinicio).
   - 0 eventos perdidos ante crash entre commit y publicación (outbox transaccional).
-  - p99 de latencia de ack de escritura < 50ms en modo async.
+  - p99 de latencia de ACK durable dentro del guardrail operativo definido por
+    la validación de producción; un modo async real no forma parte del
+    contrato actual.
   - Orden de comandos preservado por `(store, entity, id)`.
   - Read-your-writes garantizado en modo sync (`ack=committed`), acotado al store del comando.
   - RPO < 5s, RTO < 60s en disaster recovery vía Litestream por store.
@@ -58,5 +68,18 @@ Múltiples pods o backends necesitan escribir en una misma base de datos SQLite,
 - **Cache dual**: FlashDB sirve como cache-aside (lazy, sin configuración) y como read model proyectado (eager, declarativo). El backend elige el camino óptimo por consulta.
 - **0 eventos perdidos por diseño**: el outbox transaccional garantiza que cada comando aplicado genera exactamente un evento, sin dual-write, sin Debezium, sin triggers.
 - **Backup continuo por store**: Litestream replica cada store a uno o más destinos remotos con RPO de segundos. Stores críticos pueden tener frecuencias más agresivas que stores no críticos.
-- **Semántica de escritura flexible**: el backend elige entre async (baja latencia, consistencia eventual) y sync (read-your-writes garantizado) por comando.
+- **Semántica de escritura durable**: `accepted` y `committed` son aliases compatibles y ambos garantizan read-your-writes cuando la API devuelve `200`; un modo async eventual requerirá una iniciativa y contrato separados.
 - **Funciona con 1 store sin overhead**: el caso base no activa bus de eventos, outbox ni proyectores. La complejidad escala con la necesidad.
+
+## Lectura de los resultados de capacidad
+
+Los baselines de SQLite y PostgreSQL directos miden el motor con menos capas;
+no son una comparación uno-a-uno contra el servicio completo. La diferencia
+de latencia y throughput cuantifica el costo de añadir API, MQTT, serialización
+del writer, confirmación en `_idempotency`, outbox, cache y proyecciones.
+
+Por ello, la afirmación actual del producto es: **Ixmati convierte la
+limitación de escritor único de SQLite en un servicio durable, observable y
+con backpressure explícito; no elimina esa limitación**. Es una buena opción
+para single-host/edge, escritura moderada y lecturas de alto fan-out. No debe
+usarse todavía como reemplazo de PostgreSQL para cargas intensivas de escritura.
