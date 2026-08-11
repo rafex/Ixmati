@@ -1,6 +1,6 @@
 [book]
 authors = ["Ixmati contributors"]
-language = "en"
+language = "es"
 src = "src"
 title = "Ixmati — Motor de escritura serializada para SQLite"
 

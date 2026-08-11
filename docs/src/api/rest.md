@@ -34,10 +34,10 @@ SQLite del writer correspondiente.
 #### GET /writes/{store}/{idempotency_key}
 
 ```json
-{"status": "applied", "applied_at": "2026-07-29T10:30:00Z"}
+{"status": "APPLIED", "applied_at": "2026-07-29T10:30:00Z"}
 ```
 
-Estados: `pending`, `applied`, `rejected` (con error code).
+Estados: `PENDING`, `APPLIED`, `REJECTED` (con error code).
 
 #### GET /read
 

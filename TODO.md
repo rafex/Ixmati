@@ -453,6 +453,18 @@ Tablero de tareas activo. Persiste entre sesiones.
 
 ## Active — Investigación de techo de throughput del writer (DEC-0050)
 
+### Próximo ciclo de beta
+
+- [x] Documentación pública y release: README, guía de uso, instalación nativa,
+      upgrade, backup/restore y troubleshooting reproducible. La validación
+      del libro requiere instalar `mdbook` en el entorno del agente.
+- [ ] `TASK-VAL-0033` — Forzar de forma determinista el crash entre PUBACK y
+      `published_at`; verificar que no haya pérdida y cuantificar duplicados.
+- [ ] `TASK-VAL-0034` — Alertas operativas para writer detenido, último commit,
+      cola de consumo, outbox, errores MQTT y lag de proyecciones.
+- [ ] `TASK-VAL-0035` — Investigar y documentar el atasco de sesión MQTT bajo
+      sobrecarga extrema; definir recuperación automática sólo con evidencia.
+
 - [x] `TASK-VAL-0018` — Investigar por qué el writer solo compromete ~30-40
       comandos/s a SQLite bajo carga sostenida (hallado en DEC-0049). 8
       hipótesis probadas con datos reales (ver tabla completa en DEC-0050):

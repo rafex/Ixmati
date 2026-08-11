@@ -37,8 +37,8 @@ chmod +x e2e-test.sh
 === Ixmati Quickstart E2E Test ===
   [1/5] Health check... PASS
   [2/5] POST /write sin auth... 401 PASS
-  [3/5] POST /write ped_1... ACCEPTED PASS
-  [4/5] POST /write ped_2... ACCEPTED PASS
+  [3/5] POST /write ped_1... APPLIED PASS
+  [4/5] POST /write ped_2... APPLIED PASS
   [5/5] GET /writes/pedidos/{key}... APPLIED PASS
 ```
 
@@ -64,7 +64,8 @@ curl -X POST http://localhost:8080/write \
     "payload": {"total": 1500, "estado": "pendiente"}
   }' | jq
 
-# El writer procesa el comando en ~1-3 segundos
+# Con ack_mode=accepted, 200 significa commit SQLite confirmado. Si devuelve
+# 202, consultar el endpoint de estado hasta obtener APPLIED.
 sleep 3
 
 # Consultar estado

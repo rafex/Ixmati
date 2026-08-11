@@ -2,6 +2,7 @@
 
 - [Introducción](introduction.md)
 - [Comenzando](getting-started.md)
+- [Guía de uso](usage.md)
 - [Conceptos](concepts.md)
 - Configuración
   - [Stores](configuration/stores.md)

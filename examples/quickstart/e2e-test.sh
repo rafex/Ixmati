@@ -44,7 +44,7 @@ resp=$(curl -s -X POST "$API/write" \
     -H "Content-Type: application/json" \
     -d "{\"op\":\"upsert\",\"store\":\"pedidos\",\"entity\":\"pedido\",\"key\":\"e2e-1\",\"version\":1,\"ts\":\"2026-07-30T00:00:00Z\",\"idempotency_key\":\"$IDEM1\",\"ack_mode\":\"accepted\",\"payload\":{\"total\":1500,\"estado\":\"pendiente\"}}")
 status=$(echo "$resp" | python3 -c "import sys,json; print(json.load(sys.stdin)['status'])" 2>/dev/null || echo "FAIL")
-check "POST /write e2e-1 → ACCEPTED" "ACCEPTED" "$status"
+check "POST /write e2e-1 → APPLIED" "APPLIED" "$status"
 
 # 4. POST /write pedido 2
 IDEM2="$(uuidgen)"
@@ -53,7 +53,7 @@ resp=$(curl -s -X POST "$API/write" \
     -H "Content-Type: application/json" \
     -d "{\"op\":\"upsert\",\"store\":\"pedidos\",\"entity\":\"pedido\",\"key\":\"e2e-2\",\"version\":1,\"ts\":\"2026-07-30T00:00:00Z\",\"idempotency_key\":\"$IDEM2\",\"ack_mode\":\"accepted\",\"payload\":{\"total\":2500,\"estado\":\"confirmado\"}}")
 status=$(echo "$resp" | python3 -c "import sys,json; print(json.load(sys.stdin)['status'])" 2>/dev/null || echo "FAIL")
-check "POST /write e2e-2 → ACCEPTED" "ACCEPTED" "$status"
+check "POST /write e2e-2 → APPLIED" "APPLIED" "$status"
 
 # 5. Wait for writer to process and query status
 echo ""

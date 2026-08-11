@@ -3,8 +3,8 @@
 state = "waiting_handoff"
 agent = "codex"
 initiative = "validation-durability-hardening"
-task = "TASK-VAL-0032"
-intent = "Corregir el límite temporal del batcher y demostrar concurrencia productiva en Debian"
+task = "TASK-VAL-0033"
+intent = "Documentar el producto viable beta y continuar el hardening de durabilidad"
 last_updated = "2026-08-11T06:40:00Z"
 +++
 
@@ -14,15 +14,18 @@ last_updated = "2026-08-11T06:40:00Z"
 
 Validación de carga y durabilidad ejecutada en Debian amd64 contra el árbol
 que produjo `9d96b0b`. El instalador fue idempotente, los cinco servicios
-quedaron activos y `/health` respondió `OK`.
+quedaron activos y `/health` respondió `OK`. La documentación pública y la
+guía de uso beta ya están actualizadas; `cargo test --workspace --lib`,
+`cargo fmt`, validación de configuración, scripts y distribución pasan.
+El build/check de mdBook queda pendiente porque `mdbook` no está instalado en
+el entorno local.
 
 ## Next steps
 
-La concurrencia productiva está validada. El próximo agente puede:
-1. Ejecutar `just installer-test` para revalidar tras cualquier cambio en installer.py/systemd/*
-2. Forzar de forma determinista el crash entre PUBACK y `published_at` con una inyección de fallo controlada
-3. Recalibrar el SLO productivo con la evidencia de DEC-0061
-4. Considerar reiniciar servicios automáticamente en upgrades de versión (ver DEC-0040, consecuencia pendiente)
+La concurrencia productiva está validada y la documentación de uso queda como
+la siguiente entrega. Después deben priorizarse el crash determinista entre
+PUBACK y `published_at`, las alertas operativas y la investigación del atasco
+MQTT bajo sobrecarga extrema.
 
 ## Context for next agent
 

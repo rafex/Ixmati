@@ -2,6 +2,18 @@
 
 Fuente de verdad del producto.
 
+## Estado actual
+
+Ixmati es un producto viable en **beta técnica**. La validación rate-controlled
+en Debian amd64 sostuvo 40–120 solicitudes de escritura por segundo con el
+throttle productivo de 40/s como perfil predeterminado, sin `202` ni crecimiento
+de la cola de consumo. A 150/s apareció saturación observable; no es una cifra
+de capacidad sostenible.
+
+La operación sigue requiriendo administración de systemd, Mosquitto y
+Litestream. La entrega de eventos es at-least-once y puede repetir eventos
+alrededor de un crash; los consumidores deben deduplicar.
+
 ## Problema
 
 Múltiples pods o backends necesitan escribir en una misma base de datos SQLite, pero SQLite solo soporta un escritor simultáneo por archivo. Abrir conexiones de escritura desde cada backend provoca contención, `SQLITE_BUSY`, y degradación de latencia. En arquitecturas con múltiples bounded contexts, además se necesita aislamiento de fallo (un dominio no puede tirar abajo a otro) y evolución desacoplada de esquemas (migrar `pedidos` sin afectar `usuarios`). Se necesita un motor que serialice las escrituras, aisle los dominios, y escale sin introducir infraestructura pesada (Postgres, MySQL, Kafka).
