@@ -15,6 +15,14 @@ ttl_seconds = 300
 
 El proyector guarda `{usr_id: 9}` en el read model. La consulta completa hace 2 lecturas a FlashDB (`ped:123` + `usr:9`) y las combina en Rust. Sin fan-out en escritura.
 
+En la implementación actual, Pattern R materializa el snapshot disponible al
+procesar el evento. Si cambia posteriormente una entidad referenciada (por
+ejemplo, el usuario de un pedido), la vista existente no se actualiza de forma
+automática para todos los pedidos que la referencian. Para datos relacionados
+que cambian y deben reflejarse inmediatamente, usar Pattern M o ejecutar una
+reproyección/fan-out controlado con el reconciler. Esta limitación queda fuera
+del perfil de lectura productiva mutable hasta implementar el fan-out.
+
 ### Patrón M (materializado)
 
 ```toml

@@ -53,7 +53,7 @@ class TestCrashDurability:
         )
         post_crash_result = http_write(api, post_crash_payload)
 
-        assert post_crash_result.status == "ACCEPTED", (
+        assert post_crash_result.status == "APPLIED", (
             f"Writer not responsive after restart: {post_crash_result}"
         )
 
@@ -75,4 +75,4 @@ class TestCrashDurability:
         )
         result = http_write(api, payload)
 
-        assert result.status == "ACCEPTED", f"Writer stuck after restart: {result}"
+        assert result.status == "APPLIED", f"Writer stuck after restart: {result}"

@@ -14,13 +14,13 @@ from helpers.python.mqtt_harness import (
 
 @pytest.mark.smoke
 class TestWriteRead:
-    def test_write_accepted(self, compose_up, api_config, mqtt_config, smoke_store):
-        """POST /write devuelve ACCEPTED."""
+    def test_write_applied(self, compose_up, api_config, mqtt_config, smoke_store):
+        """POST /write devuelve APPLIED después del commit SQLite."""
         api = ApiConfig(**api_config)
         payload = make_write_payload(store=smoke_store, entity="item")
         result = http_write(api, payload)
 
-        assert result.status == "ACCEPTED", f"Expected ACCEPTED, got {result.status}"
+        assert result.status == "APPLIED", f"Expected APPLIED, got {result.status}"
         assert result.store == smoke_store
 
     def test_write_status_applied(

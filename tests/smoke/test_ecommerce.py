@@ -9,9 +9,24 @@ from helpers.python.mqtt_harness import (
     http_write,
     http_read,
     http_read_projection,
+    http_write_status,
     make_write_payload,
     wait_for_message,
 )
+
+
+def assert_applied(api: ApiConfig, result, timeout: float = 10.0) -> None:
+    """Acepta 200/APPLIED o espera un 202/PENDING hasta confirmar el commit."""
+    if result.status == "APPLIED":
+        return
+    deadline = time.monotonic() + timeout
+    status = None
+    while time.monotonic() < deadline:
+        status = http_write_status(api, result.store, result.idempotency_key)
+        if status and status.get("status") == "APPLIED":
+            return
+        time.sleep(0.25)
+    raise AssertionError(f"write not applied after {timeout}s: {result}, status={status}")
 
 
 @pytest.mark.smoke
@@ -45,7 +60,7 @@ class TestEcommerceProjections:
                 },
             },
         )
-        assert resp.status == "ACCEPTED"
+        assert_applied(api, resp)
 
         time.sleep(2)
 
@@ -55,6 +70,11 @@ class TestEcommerceProjections:
         payload = proj.get("payload", {})
         assert payload.get("nombre") == "Ana", f"nombre={payload.get('nombre')}"
         assert payload.get("email") == "ana@example.com", f"email={payload.get('email')}"
+
+        cached = http_read(api, "usuarios", "usuario", "usr_100")
+        assert cached is not None
+        assert cached.get("source") == "cache", f"lectura no servida por cache: {cached}"
+        assert cached.get("payload", {}).get("nombre") == "Ana"
 
         client.disconnect()
 
@@ -66,7 +86,7 @@ class TestEcommerceProjections:
         mqtt_cfg = MqttConfig(**mqtt_config_multi, client_id="e2e-r")
         client = create_client(mqtt_cfg)
 
-        http_write(
+        user_resp = http_write(
             api,
             {
                 "op": "upsert",
@@ -84,6 +104,7 @@ class TestEcommerceProjections:
                 },
             },
         )
+        assert_applied(api, user_resp)
 
         time.sleep(1)
 
@@ -106,7 +127,7 @@ class TestEcommerceProjections:
                 },
             },
         )
-        assert resp.status == "ACCEPTED"
+        assert_applied(api, resp)
 
         time.sleep(3)
 
@@ -129,7 +150,7 @@ class TestEcommerceProjections:
         mqtt_cfg = MqttConfig(**mqtt_config_multi, client_id="e2e-idem")
         client = create_client(mqtt_cfg)
 
-        http_write(
+        user_resp = http_write(
             api,
             {
                 "op": "upsert",
@@ -147,6 +168,7 @@ class TestEcommerceProjections:
                 },
             },
         )
+        assert_applied(api, user_resp)
 
         time.sleep(1)
 
@@ -169,9 +191,9 @@ class TestEcommerceProjections:
         }
 
         r1 = http_write(api, dict(payload_template))
-        assert r1.status == "ACCEPTED"
+        assert_applied(api, r1)
         r2 = http_write(api, dict(payload_template))
-        assert r2.status == "ACCEPTED"
+        assert_applied(api, r2)
 
         time.sleep(3)
 
@@ -241,7 +263,7 @@ class TestEcommerceProjections:
 
             for f in user_futures + order_futures:
                 result = f.result(timeout=15)
-                assert result.status == "ACCEPTED", f"write failed: {result}"
+                assert_applied(api, result)
 
         time.sleep(5)
 
@@ -254,3 +276,42 @@ class TestEcommerceProjections:
             assert payload.get("usuarios", {}).get("nombre") == f"User_{i}"
 
         client.disconnect()
+
+    def test_materialized_view_and_cache_refresh_after_update(
+        self, compose_up_multi, api_config_multi, mqtt_config_multi
+    ):
+        """Una actualización durable refresca cache-aside y Pattern M."""
+        api = ApiConfig(**api_config_multi)
+
+        for version, name in ((1, "Eva"), (2, "Eva Actualizada")):
+            result = http_write(
+                api,
+                {
+                    "op": "upsert",
+                    "store": "usuarios",
+                    "entity": "usuario",
+                    "key": "usr_refresh",
+                    "version": version,
+                    "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                    "idempotency_key": f"e2e-refresh-{version}",
+                    "ack_mode": "accepted",
+                    "payload": {
+                        "usuario_id": "usr_refresh",
+                        "nombre": name,
+                        "email": "eva@example.com",
+                    },
+                },
+            )
+            assert_applied(api, result)
+            time.sleep(2)
+
+            cached = http_read(api, "usuarios", "usuario", "usr_refresh")
+            assert cached is not None
+            assert cached.get("source") == "cache"
+            assert cached.get("payload", {}).get("nombre") == name
+
+            projection = http_read_projection(
+                api, "usuarios_materializados", "usr_refresh"
+            )
+            assert projection and projection.get("found") is True
+            assert projection.get("payload", {}).get("nombre") == name

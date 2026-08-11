@@ -105,28 +105,36 @@ impl HealthChecker {
     }
 
     fn check_mosquitto(&self, broker: &str) -> ComponentHealth {
-        use std::net::TcpStream;
+        use std::net::{TcpStream, ToSocketAddrs};
 
         let addr = broker
             .trim_start_matches("tcp://")
             .trim_start_matches("mqtt://");
 
-        match TcpStream::connect_timeout(
-            &addr
-                .parse()
-                .unwrap_or_else(|_| "127.0.0.1:1883".parse().unwrap()),
-            Duration::from_secs(2),
-        ) {
-            Ok(_) => ComponentHealth {
+        let reachable = addr
+            .to_socket_addrs()
+            .ok()
+            .and_then(|mut addrs| {
+                addrs.find_map(|socket| {
+                    TcpStream::connect_timeout(&socket, Duration::from_secs(2)).ok()
+                })
+            })
+            .is_some();
+
+        match reachable {
+            true => ComponentHealth {
                 name: "mosquitto".into(),
                 status: Health::Ok,
                 detail: Some(format!("{} reachable", broker)),
             },
-            Err(e) => ComponentHealth {
-                name: "mosquitto".into(),
-                status: Health::Unavailable,
-                detail: Some(e.to_string()),
-            },
+            false => {
+                let detail = format!("unable to connect to {}", broker);
+                ComponentHealth {
+                    name: "mosquitto".into(),
+                    status: Health::Unavailable,
+                    detail: Some(detail),
+                }
+            }
         }
     }
 }

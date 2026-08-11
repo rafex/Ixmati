@@ -3,8 +3,8 @@
 state = "waiting_handoff"
 agent = "codex"
 initiative = "validation-durability-hardening"
-task = "TASK-VAL-0033"
-intent = "Documentar el producto viable beta y continuar el hardening de durabilidad"
+task = "TASK-VAL-0036"
+intent = "Resolver la invalidación de Pattern R cuando cambia una entidad relacionada"
 last_updated = "2026-08-11T06:40:00Z"
 +++
 
@@ -12,20 +12,21 @@ last_updated = "2026-08-11T06:40:00Z"
 
 ## Current state
 
-Validación de carga y durabilidad ejecutada en Debian amd64 contra el árbol
-que produjo `9d96b0b`. El instalador fue idempotente, los cinco servicios
-quedaron activos y `/health` respondió `OK`. La documentación pública y la
-guía de uso beta ya están actualizadas; `cargo test --workspace --lib`,
-`cargo fmt`, validación de configuración, scripts y distribución pasan.
-El build/check de mdBook queda pendiente porque `mdbook` no está instalado en
-el entorno local.
+Validación de cache y proyecciones ejecutada en Debian amd64. El compose
+multi-store fue corregido para montar cada SQLite como directorio de store;
+cache-aside, Pattern M, Pattern R inicial, idempotencia y concurrencia pasan.
+Se agregó reconexión del CacheClient después de reiniciar cache-server y
+resolución de hostnames en `/health`. Pattern R no refresca automáticamente
+referencias existentes cuando cambia el store relacionado; queda como
+TASK-VAL-0036. El build/check de mdBook sigue pendiente porque `mdbook` no está
+instalado en el entorno local.
 
 ## Next steps
 
-La concurrencia productiva está validada y la documentación de uso queda como
-la siguiente entrega. Después deben priorizarse el crash determinista entre
-PUBACK y `published_at`, las alertas operativas y la investigación del atasco
-MQTT bajo sobrecarga extrema.
+La lectura cacheada se validó a 100–500/s sin errores; a 1000/s no hubo errores
+pero apareció saturación del generador y p99≈710ms en cache-aside. Después deben
+priorizarse Pattern R mutable, el crash determinista entre PUBACK y
+`published_at`, las alertas operativas y el atasco MQTT bajo sobrecarga extrema.
 
 ## Context for next agent
 

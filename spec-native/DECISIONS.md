@@ -1241,3 +1241,40 @@ determinista permanece pendiente.
 - Reemplaza: la explicación abierta de DEC-0060 sobre la regresión a 40/s y
   la hipótesis no confirmada de que la degradación provenía principalmente
   del polling SQLite.
+
+### DEC-0062 — Validación e2e de lecturas, cache y proyecciones
+
+- Fecha: 2026-08-11
+- Estado: `accepted`
+- Relacionado con tareas: `TASK-VAL-0036`
+- Evidencia: `spec-native/evidence/READ-CACHE-20260811.md`
+
+**Contexto**: la validación de escritura no demostraba que el camino de
+lectura multi-store funcionara bajo carga ni después de reiniciar el
+cache-server. El compose montaba los volúmenes SQLite en rutas que el API no
+podía abrir como archivos, y `CacheClient` conservaba un socket roto después
+de un reinicio.
+
+**Decisión**:
+
+1. El compose multi-store monta cada volumen en `/data/<store>` y configura
+   `SQLITE_PATHS` con `/data/<store>/<store>.db`.
+2. `CacheClient` reconecta automáticamente una vez después de detectar una
+   desconexión en GET, SET, DEL, `DEL_PREFIX` o FLUSH.
+3. El health check resuelve nombres DNS de brokers antes de probar TCP.
+4. La validación de lectura usa respuestas y payloads reales, no sólo códigos
+   HTTP: cache-aside y Pattern M sostuvieron 100–500/s sin errores; a 1000/s
+   no hubo errores, pero el generador mostró saturación y degradación de
+   latencia en cache-aside.
+5. Pattern R se considera válido para construir el snapshot inicial, pero no
+   para relaciones mutables: un cambio en una entidad referenciada no refresca
+   automáticamente todos los read models existentes. Se mantiene como
+   limitación documentada y queda pendiente fan-out, índice inverso o lookup
+   en lectura.
+
+**Consecuencias**: (+) cache-aside tiene fallback y repoblación después de un
+reinicio del cache-server sin reiniciar el API; (+) las vistas M y R iniciales
+quedan verificadas en Debian amd64; (+) el health check refleja correctamente
+un broker con hostname; (-) Pattern R no es actualmente seguro como vista viva
+cuando cambian sus stores referenciados; (-) 1000/s no es un SLO sostenible
+porque el cliente de prueba se saturó, aunque no hubo respuestas erróneas.

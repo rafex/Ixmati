@@ -5,7 +5,8 @@ use tokio::net::UnixStream;
 use tokio::sync::Mutex;
 
 pub struct CacheClient {
-    stream: Arc<Mutex<UnixStream>>,
+    path: String,
+    stream: Arc<Mutex<Option<UnixStream>>>,
 }
 
 impl CacheClient {
@@ -13,7 +14,8 @@ impl CacheClient {
         let stream = UnixStream::connect(path).await?;
         tracing::info!(path = %path, "CacheClient connected");
         Ok(Self {
-            stream: Arc::new(Mutex::new(stream)),
+            path: path.to_owned(),
+            stream: Arc::new(Mutex::new(Some(stream))),
         })
     }
 
@@ -45,17 +47,23 @@ impl CacheClient {
 
     pub async fn set_raw(&self, key: &str, value: &[u8]) {
         let req = format!("SET {key} {}\n", value.len());
-        let mut guard = self.stream.lock().await;
-        if guard.write_all(req.as_bytes()).await.is_err() {
-            tracing::warn!("CacheClient: SET write header failed");
-            return;
+        for _ in 0..2 {
+            let mut guard = self.stream.lock().await;
+            if guard.is_none() {
+                *guard = UnixStream::connect(&self.path).await.ok();
+                if guard.is_some() {
+                    tracing::info!(path = %self.path, "CacheClient reconnected");
+                }
+            }
+            let Some(stream) = guard.as_mut() else {
+                continue;
+            };
+            if Self::write_set(stream, &req, value).await {
+                return;
+            }
+            *guard = None;
         }
-        if guard.write_all(value).await.is_err() {
-            tracing::warn!("CacheClient: SET write value failed");
-            return;
-        }
-        let _ = guard.write_all(b"\n").await;
-        self.read_simple_response(&mut guard).await;
+        tracing::warn!(path = %self.path, "CacheClient: SET failed after reconnect");
     }
 
     pub async fn set_projection(&self, name: &str, key: &str, value: &[u8]) {
@@ -68,39 +76,72 @@ impl CacheClient {
 
     pub async fn del_raw(&self, key: &str) {
         let req = format!("DEL {key}\n");
-        let mut guard = self.stream.lock().await;
-        if guard.write_all(req.as_bytes()).await.is_err() {
-            return;
-        }
-        self.read_simple_response(&mut guard).await;
+        self.send_simple(&req).await;
     }
 
     pub async fn delete_by_prefix(&self, prefix: &str) {
         let req = format!("DEL_PREFIX {prefix}\n");
-        let mut guard = self.stream.lock().await;
-        if guard.write_all(req.as_bytes()).await.is_err() {
-            return;
-        }
-        self.read_simple_response(&mut guard).await;
+        self.send_simple(&req).await;
     }
 
     pub async fn flush(&self) {
-        let mut guard = self.stream.lock().await;
-        if guard.write_all(b"FLUSH\n").await.is_err() {
-            return;
-        }
-        self.read_simple_response(&mut guard).await;
+        self.send_simple("FLUSH\n").await;
     }
 
     async fn send_command_with_response(&self, req: &str) -> Option<Vec<u8>> {
-        let mut guard = self.stream.lock().await;
-        if guard.write_all(req.as_bytes()).await.is_err() {
+        for _ in 0..2 {
+            let mut guard = self.stream.lock().await;
+            if guard.is_none() {
+                *guard = UnixStream::connect(&self.path).await.ok();
+                if guard.is_some() {
+                    tracing::info!(path = %self.path, "CacheClient reconnected");
+                }
+            }
+            let Some(stream) = guard.as_mut() else {
+                continue;
+            };
+            if let Some(payload) = Self::read_get(stream, req).await {
+                return Some(payload);
+            }
+            *guard = None;
+        }
+        None
+    }
+
+    async fn send_simple(&self, req: &str) {
+        for _ in 0..2 {
+            let mut guard = self.stream.lock().await;
+            if guard.is_none() {
+                *guard = UnixStream::connect(&self.path).await.ok();
+                if guard.is_some() {
+                    tracing::info!(path = %self.path, "CacheClient reconnected");
+                }
+            }
+            let Some(stream) = guard.as_mut() else {
+                continue;
+            };
+            if Self::read_simple_response(stream, req).await {
+                return;
+            }
+            *guard = None;
+        }
+    }
+
+    async fn write_set(stream: &mut UnixStream, req: &str, value: &[u8]) -> bool {
+        if stream.write_all(req.as_bytes()).await.is_err()
+            || stream.write_all(value).await.is_err()
+            || stream.write_all(b"\n").await.is_err()
+        {
+            return false;
+        }
+        Self::read_simple_response(stream, "").await
+    }
+
+    async fn read_get(stream: &mut UnixStream, req: &str) -> Option<Vec<u8>> {
+        if stream.write_all(req.as_bytes()).await.is_err() {
             return None;
         }
-
-        let reader = BufReader::new(&mut *guard);
-        let mut reader = reader;
-
+        let mut reader = BufReader::new(stream);
         let mut header = String::new();
         let read_result = tokio::time::timeout(Duration::from_secs(5), async {
             loop {
@@ -119,27 +160,21 @@ impl CacheClient {
             Ok::<_, std::io::Error>(())
         })
         .await;
-
-        match read_result {
-            Ok(Ok(())) => {}
-            _ => return None,
+        if !matches!(read_result, Ok(Ok(()))) {
+            return None;
         }
-
-        if let Some(len_str) = header.trim().strip_prefix("HIT ")
-            && let Ok(len) = len_str.trim().parse::<usize>()
-        {
-            let mut payload = vec![0u8; len];
-            if reader.read_exact(&mut payload).await.is_ok() {
-                let mut trail = vec![0u8; 1];
-                let _ = reader.read_exact(&mut trail).await;
-                return Some(payload);
-            }
-        }
-
-        None
+        let len = header.trim().strip_prefix("HIT ")?.trim().parse().ok()?;
+        let mut payload = vec![0u8; len];
+        reader.read_exact(&mut payload).await.ok()?;
+        let mut trail = [0u8; 1];
+        reader.read_exact(&mut trail).await.ok()?;
+        Some(payload)
     }
 
-    async fn read_simple_response(&self, stream: &mut UnixStream) {
+    async fn read_simple_response(stream: &mut UnixStream, req: &str) -> bool {
+        if !req.is_empty() && stream.write_all(req.as_bytes()).await.is_err() {
+            return false;
+        }
         let reader = BufReader::new(stream);
         let mut reader = reader;
         let mut line = String::new();
@@ -148,13 +183,18 @@ impl CacheClient {
                 let resp = line.trim();
                 if resp != "OK" {
                     tracing::warn!(response = %resp, "CacheClient: unexpected response");
+                    false
+                } else {
+                    true
                 }
             }
             Ok(Err(e)) => {
                 tracing::warn!(error = %e, "CacheClient: read response failed");
+                false
             }
             Err(_) => {
                 tracing::warn!("CacheClient: read response timed out");
+                false
             }
         }
     }

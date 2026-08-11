@@ -18,6 +18,11 @@ target_key = "pedido_id"
 GET /read?projection=pedidos_con_usuario&key=ped_123
 ```
 
+Pattern R sirve el snapshot construido al recibir los eventos. Un cambio en
+una entidad referenciada no busca automáticamente todos los read models que la
+usan; si esa relación debe mantenerse fresca, usar Pattern M o reproyectar con
+`ixmati-reconciler` antes de servir el nuevo estado.
+
 5. Para migrar el esquema de una proyección, purgar y reproyectar:
 ```bash
 just purge-projection pedidos_con_usuario

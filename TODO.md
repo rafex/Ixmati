@@ -464,6 +464,10 @@ Tablero de tareas activo. Persiste entre sesiones.
       cola de consumo, outbox, errores MQTT y lag de proyecciones.
 - [ ] `TASK-VAL-0035` — Investigar y documentar el atasco de sesión MQTT bajo
       sobrecarga extrema; definir recuperación automática sólo con evidencia.
+- [ ] `TASK-VAL-0036` — Resolver la actualización de Pattern R cuando cambia
+      una entidad referenciada. La validación Debian confirma que la vista
+      inicial es correcta, pero conserva el snapshot anterior después del
+      update; requiere fan-out, índice inverso o lookup en lectura.
 
 - [x] `TASK-VAL-0018` — Investigar por qué el writer solo compromete ~30-40
       comandos/s a SQLite bajo carga sostenida (hallado en DEC-0049). 8

@@ -57,4 +57,4 @@ class TestProjectionLag:
                 "payload": {"data": f"v{version}"},
             }
             result = http_write(api, payload)
-            assert result.status == "ACCEPTED"
+            assert result.status == "APPLIED"

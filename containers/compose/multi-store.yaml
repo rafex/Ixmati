@@ -62,7 +62,7 @@ services:
       - CACHE_SOCKET_PATH=/var/run/ixmati/cache.sock
       - CACHE_READ_MODE=socket
       - IXMATI_API_KEYS=ix-default-key
-      - SQLITE_PATHS=pedidos=/data/pedidos.db,usuarios=/data/usuarios.db,inventario=/data/inventario.db
+      - SQLITE_PATHS=pedidos=/data/pedidos/pedidos.db,usuarios=/data/usuarios/usuarios.db,inventario=/data/inventario/inventario.db
       - RUST_LOG=ixmati_api=info
     depends_on:
       mosquitto:
@@ -71,9 +71,9 @@ services:
         condition: service_healthy
     volumes:
       - cache_socket:/var/run/ixmati:U
-      - store_pedidos:/data/pedidos.db:ro
-      - store_usuarios:/data/usuarios.db:ro
-      - store_inventario:/data/inventario.db:ro
+      - store_pedidos:/data/pedidos:ro
+      - store_usuarios:/data/usuarios:ro
+      - store_inventario:/data/inventario:ro
 
   writer-pedidos:
     image: localhost/ixmati-writer:local
