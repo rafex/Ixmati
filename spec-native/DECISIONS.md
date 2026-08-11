@@ -1312,3 +1312,15 @@ cache, proyecciones y durabilidad; (+) el resultado queda reproducible por
    es equivalente al pipeline completo de Ixmati; (-) `cold-first-pass` no
    implica vaciar la page cache del kernel; (-) Pattern R mutable permanece
    fuera de los escenarios aceptados para producción.
+
+**Resultado de la ejecución 2026-08-11**: con 1,000 usuarios y 10,000
+pedidos, SQLite directo sostuvo 1,000 lecturas/s y 200 escrituras/s en este
+workload; PostgreSQL 18 sostuvo 500 lecturas/s puntuales y 200 escrituras/s
+antes de saturar el cliente en lecturas de mayor concurrencia; Ixmati sostuvo
+1,000 lecturas/s cacheadas/proyectadas sin errores y aproximadamente 40
+escrituras durables/s. A partir de 40–60 escrituras/s el API mostró `429` y
+`PENDING`, sin aumento equivalente del commit rate. Estos números son
+capacidad observada en este host y configuración, no garantías universales.
+La ejecución mostró además que `consumer_queue_depth` no está expuesta en el
+endpoint `/metrics`; su ausencia se dejó como gap de observabilidad, no como
+valor cero.

@@ -1,0 +1,6 @@
+# HELP ixmati_process_memory_rss_bytes Process resident set size in bytes
+# TYPE ixmati_process_memory_rss_bytes gauge
+ixmati_process_memory_rss_bytes{otel_scope_name="ixmati-api"} 6078464
+# HELP target_info Target metadata
+# TYPE target_info gauge
+target_info{service_name="unknown_service:ixmati-api",telemetry_sdk_language="rust",telemetry_sdk_name="opentelemetry",telemetry_sdk_version="0.32.1"} 1

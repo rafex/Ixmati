@@ -1,0 +1,59 @@
+# HELP ixmati_cache_hits_total Total cache hits
+# TYPE ixmati_cache_hits_total counter
+ixmati_cache_hits_total{namespace="cache",store="pedidos",otel_scope_name="ixmati-api"} 7350
+ixmati_cache_hits_total{namespace="projection",store="pedidos_con_usuario",otel_scope_name="ixmati-api"} 6350
+# HELP ixmati_outbox_size Unpublished events in outbox per store
+# TYPE ixmati_outbox_size gauge
+ixmati_outbox_size{store="pedidos",otel_scope_name="ixmati-api"} 0
+ixmati_outbox_size{store="usuarios",otel_scope_name="ixmati-api"} 0
+# HELP ixmati_process_cpu_user_seconds_total Process user CPU time in seconds
+# TYPE ixmati_process_cpu_user_seconds_total counter
+ixmati_process_cpu_user_seconds_total{otel_scope_name="ixmati-api"} 18.679999999999993
+# HELP ixmati_process_memory_rss_bytes Process resident set size in bytes
+# TYPE ixmati_process_memory_rss_bytes gauge
+ixmati_process_memory_rss_bytes{otel_scope_name="ixmati-api"} 13258752
+# HELP ixmati_queue_depth Current command queue depth per store
+# TYPE ixmati_queue_depth gauge
+ixmati_queue_depth{store="pedidos",otel_scope_name="ixmati-api"} 40
+ixmati_queue_depth{store="usuarios",otel_scope_name="ixmati-api"} 40
+# HELP ixmati_write_errors_total Total write errors
+# TYPE ixmati_write_errors_total counter
+ixmati_write_errors_total{error_type="queue_full",store="pedidos",otel_scope_name="ixmati-api"} 1992
+ixmati_write_errors_total{error_type="queue_full",store="usuarios",otel_scope_name="ixmati-api"} 192
+# HELP ixmati_write_latency_seconds Write request latency in seconds
+# TYPE ixmati_write_latency_seconds histogram
+ixmati_write_latency_seconds_bucket{store="pedidos",otel_scope_name="ixmati-api",le="0.001"} 1992
+ixmati_write_latency_seconds_bucket{store="pedidos",otel_scope_name="ixmati-api",le="0.005"} 1992
+ixmati_write_latency_seconds_bucket{store="pedidos",otel_scope_name="ixmati-api",le="0.01"} 1992
+ixmati_write_latency_seconds_bucket{store="pedidos",otel_scope_name="ixmati-api",le="0.025"} 1992
+ixmati_write_latency_seconds_bucket{store="pedidos",otel_scope_name="ixmati-api",le="0.05"} 2870
+ixmati_write_latency_seconds_bucket{store="pedidos",otel_scope_name="ixmati-api",le="0.1"} 8907
+ixmati_write_latency_seconds_bucket{store="pedidos",otel_scope_name="ixmati-api",le="0.25"} 11992
+ixmati_write_latency_seconds_bucket{store="pedidos",otel_scope_name="ixmati-api",le="0.5"} 11992
+ixmati_write_latency_seconds_bucket{store="pedidos",otel_scope_name="ixmati-api",le="1"} 11992
+ixmati_write_latency_seconds_bucket{store="pedidos",otel_scope_name="ixmati-api",le="2.5"} 11992
+ixmati_write_latency_seconds_bucket{store="pedidos",otel_scope_name="ixmati-api",le="5"} 11992
+ixmati_write_latency_seconds_bucket{store="pedidos",otel_scope_name="ixmati-api",le="+Inf"} 11992
+ixmati_write_latency_seconds_sum{store="pedidos",otel_scope_name="ixmati-api"} 901.3402535109996
+ixmati_write_latency_seconds_count{store="pedidos",otel_scope_name="ixmati-api"} 11992
+ixmati_write_latency_seconds_bucket{store="usuarios",otel_scope_name="ixmati-api",le="0.001"} 192
+ixmati_write_latency_seconds_bucket{store="usuarios",otel_scope_name="ixmati-api",le="0.005"} 192
+ixmati_write_latency_seconds_bucket{store="usuarios",otel_scope_name="ixmati-api",le="0.01"} 192
+ixmati_write_latency_seconds_bucket{store="usuarios",otel_scope_name="ixmati-api",le="0.025"} 192
+ixmati_write_latency_seconds_bucket{store="usuarios",otel_scope_name="ixmati-api",le="0.05"} 255
+ixmati_write_latency_seconds_bucket{store="usuarios",otel_scope_name="ixmati-api",le="0.1"} 1076
+ixmati_write_latency_seconds_bucket{store="usuarios",otel_scope_name="ixmati-api",le="0.25"} 1192
+ixmati_write_latency_seconds_bucket{store="usuarios",otel_scope_name="ixmati-api",le="0.5"} 1192
+ixmati_write_latency_seconds_bucket{store="usuarios",otel_scope_name="ixmati-api",le="1"} 1192
+ixmati_write_latency_seconds_bucket{store="usuarios",otel_scope_name="ixmati-api",le="2.5"} 1192
+ixmati_write_latency_seconds_bucket{store="usuarios",otel_scope_name="ixmati-api",le="5"} 1192
+ixmati_write_latency_seconds_bucket{store="usuarios",otel_scope_name="ixmati-api",le="+Inf"} 1192
+ixmati_write_latency_seconds_sum{store="usuarios",otel_scope_name="ixmati-api"} 71.99775389300011
+ixmati_write_latency_seconds_count{store="usuarios",otel_scope_name="ixmati-api"} 1192
+# HELP ixmati_write_requests_total Total write requests received
+# TYPE ixmati_write_requests_total counter
+ixmati_write_requests_total{entity="pedido",status="committed",store="pedidos",otel_scope_name="ixmati-api"} 10000
+ixmati_write_requests_total{entity="usuario",status="committed",store="usuarios",otel_scope_name="ixmati-api"} 1000
+# HELP target_info Target metadata
+# TYPE target_info gauge
+target_info{service_name="unknown_service:ixmati-api",telemetry_sdk_language="rust",telemetry_sdk_name="opentelemetry",telemetry_sdk_version="0.32.1"} 1

@@ -61,6 +61,20 @@ Los resultados medidos se mantienen separados de las referencias oficiales
 de PostgreSQL; el ejemplo de `pgbench` publicado por PostgreSQL no es una
 promesa de capacidad para este hardware.
 
+Resumen de la corrida Debian amd64 (1,000 usuarios, 10,000 pedidos):
+
+| Camino | Resultado sostenible observado | Latencia representativa | Lectura |
+|---|---:|---:|---|
+| SQLite directo | 200 escrituras/s; 1,000 lecturas/s | p99 1.01 ms / 0.26 ms | baseline de motor |
+| PostgreSQL 18 directo | 200 escrituras/s; 500 lecturas/s válidas | p99 7.19 ms / 4.17 ms | 1000/s saturó el cliente |
+| Ixmati completo | ~40 escrituras/s; 1000 lecturas/s | p99 ~2.0 s / 1.64 ms | incluye API, MQTT, commit, cache y proyección |
+
+El `~40/s` de Ixmati es el throughput durable confirmado por el writer, no la
+tasa ofrecida al API. Desde 40–60/s aparecen `429` y pendientes; por eso la
+tabla no presenta 100 o 200/s como capacidad productiva. Los números de
+SQLite/PostgreSQL no son equivalentes al pipeline completo: sirven para
+separar el costo del motor del costo de durabilidad, mensajería y proyección.
+
 ## Stack
 
 Rust (tokio, axum, tonic, rusqlite, rumqttc) · Mosquitto (persistence + QoS 1) · SQLite (WAL + synchronous=NORMAL) · FlashDB (cache) · Litestream (backup continuo).

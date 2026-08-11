@@ -1,0 +1,412 @@
+[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m Volume ixmati-multi_store_inventario  Removing
+ Volume ixmati-multi_cache_socket  Removing
+ Volume ixmati-multi_mosquitto_data  Removing
+ Volume ixmati-multi_store_pedidos  Removing
+ Volume ixmati-multi_cache_data  Removing
+ Volume ixmati-multi_store_usuarios  Removing
+ Volume ixmati-multi_store_inventario  Removed
+ Volume ixmati-multi_store_pedidos  Removed
+ Volume ixmati-multi_cache_data  Removed
+ Volume ixmati-multi_store_usuarios  Removed
+ Volume ixmati-multi_mosquitto_data  Removed
+ Volume ixmati-multi_cache_socket  Removed
+[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0mSending build context to Docker daemon     446B
+STEP 1/4: FROM docker.io/library/eclipse-mosquitto:2.0
+Sending build context to Docker daemon    539kBSTEP 2/4: COPY mosquitto.conf /mosquitto/config/mosquitto.conf
+Sending build context to Docker daemon  2.645MBSending build context to Docker daemon  4.748MB--> Using cache 24e172b65fec0e8745f28a8ff12f1b9e9b4727a3a1025a7d746bba2ac66501e1
+--> 24e172b65fec
+STEP 3/4: EXPOSE 30200 30201
+Sending build context to Docker daemon  5.797MB--> Using cache 185f2196d33f11a2398871e7f7f184b1ff380f7c3f1fc70584c5c28b42f2f60b
+--> 185f2196d33f
+STEP 4/4: LABEL "com.docker.compose.image.builder"="classic"
+--> Using cache 894d013b17eba2442ff0cb4c8015de10be00fa3cd882c169a9a256f623f2cac7
+COMMIT localhost/ixmati-mosquitto:local
+Sending build context to Docker daemon  6.846MB--> 894d013b17eb
+Successfully tagged localhost/ixmati-mosquitto:local
+894d013b17eba2442ff0cb4c8015de10be00fa3cd882c169a9a256f623f2cac7
+Successfully built 894d013b17eb
+Successfully tagged localhost/ixmati-mosquitto:local
+Sending build context to Docker daemon  7.895MBSending build context to Docker daemon  8.419MBSending build context to Docker daemon  8.944MBSending build context to Docker daemon  9.468MBSending build context to Docker daemon  9.992MBSending build context to Docker daemon  10.52MBSending build context to Docker daemon  11.04MBSending build context to Docker daemon  11.57MBSending build context to Docker daemon   12.2MB
+[1/2] STEP 1/1: FROM localhost/ixmati-builder:local AS build
+--> 717ab05d5ed8
+[2/2] STEP 1/8: FROM docker.io/library/debian:trixie-slim
+[2/2] STEP 2/8: RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates &&     rm -rf /var/lib/apt/lists/*
+--> Using cache 2a1f8515adabfa142edd5a3b87af116f6531e900950d017a7f2694d672e8bf8c
+--> 2a1f8515adab
+[2/2] STEP 3/8: COPY --from=build /usr/local/bin/ixmati-cache-server /usr/local/bin/ixmati-cache-server
+--> Using cache e0ae180c2af836cd1d6acf5f0f45c63089c33b788236e2c332809d28e540371d
+--> e0ae180c2af8
+[2/2] STEP 4/8: RUN mkdir -p /var/lib/ixmati/cache /var/run/ixmati     && chmod 777 /var/lib/ixmati/cache /var/run/ixmati
+--> Using cache 86f6720b9517d1049e7fa46b8dae03b2441a6ed7d17cea116b9235c2d2495f7a
+--> 86f6720b9517
+[2/2] STEP 5/8: USER 1000:1000
+--> Using cache bdfed22ec13df4674767486cf6521b70948d76cca70d2e6018e3b7cce0ae6813
+--> bdfed22ec13d
+[2/2] STEP 6/8: VOLUME ["/var/lib/ixmati/cache"]
+--> Using cache 65a4f5dd90c5d40d6dd7f788dff6b3b978944b862e88c72aafd0dd272452471b
+--> 65a4f5dd90c5
+[2/2] STEP 7/8: ENTRYPOINT ["ixmati-cache-server"]
+--> Using cache 4c7599d34c64c52acefa5d0921baa94fe8445af9c4e11fedc211752a5390ec02
+--> 4c7599d34c64
+[2/2] STEP 8/8: LABEL "com.docker.compose.image.builder"="classic"
+--> Using cache 9b80bb53d7ad86540ef46419eefdb7cb842d6030b3092f865cf976fa7f7f099b
+[2/2] COMMIT localhost/ixmati-cache-server:local
+--> 9b80bb53d7ad
+Successfully tagged localhost/ixmati-cache-server:local
+9b80bb53d7ad86540ef46419eefdb7cb842d6030b3092f865cf976fa7f7f099b
+Successfully built 9b80bb53d7ad
+Successfully tagged localhost/ixmati-cache-server:local
+Sending build context to Docker daemon    539kBSending build context to Docker daemon    539kBSending build context to Docker daemon    539kBSending build context to Docker daemon  2.645MBSending build context to Docker daemon  2.645MBSending build context to Docker daemon  2.645MBSending build context to Docker daemon  4.748MBSending build context to Docker daemon  4.748MBSending build context to Docker daemon  4.748MBSending build context to Docker daemon  5.273MBSending build context to Docker daemon  5.273MBSending build context to Docker daemon  5.273MBSending build context to Docker daemon  5.797MBSending build context to Docker daemon  5.797MBSending build context to Docker daemon  5.797MBSending build context to Docker daemon  6.846MBSending build context to Docker daemon  6.846MBSending build context to Docker daemon  6.846MBSending build context to Docker daemon  7.895MBSending build context to Docker daemon  7.895MBSending build context to Docker daemon  7.895MBSending build context to Docker daemon  8.419MBSending build context to Docker daemon  8.419MBSending build context to Docker daemon  8.419MBSending build context to Docker daemon  8.944MBSending build context to Docker daemon  8.944MBSending build context to Docker daemon  8.944MBSending build context to Docker daemon  9.468MBSending build context to Docker daemon  9.468MBSending build context to Docker daemon  9.468MBSending build context to Docker daemon  9.992MBSending build context to Docker daemon  9.992MBSending build context to Docker daemon  9.992MBSending build context to Docker daemon  10.52MBSending build context to Docker daemon  10.52MBSending build context to Docker daemon  10.52MBSending build context to Docker daemon  11.04MBSending build context to Docker daemon  11.04MBSending build context to Docker daemon  11.04MBSending build context to Docker daemon  11.57MBSending build context to Docker daemon  11.57MBSending build context to Docker daemon  11.57MBSending build context to Docker daemon   12.2MB
+Sending build context to Docker daemon   12.2MB
+Sending build context to Docker daemon   12.2MB
+[1/2] STEP 1/1: FROM localhost/ixmati-builder:local AS build
+[1/2] STEP 1/1: FROM localhost/ixmati-builder:local AS build
+[1/2] STEP 1/1: FROM localhost/ixmati-builder:local AS build
+--> 17bb9c896f63
+[2/2] STEP 1/6: FROM docker.io/library/debian:trixie-slim
+--> 67b95fca5380
+[2/2] STEP 1/9: FROM docker.io/library/debian:trixie-slim
+--> 27fff73fd602
+[2/2] STEP 1/7: FROM docker.io/library/debian:trixie-slim
+[2/2] STEP 2/6: RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates sqlite3 &&     rm -rf /var/lib/apt/lists/*
+[2/2] STEP 2/9: RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates &&     rm -rf /var/lib/apt/lists/*
+[2/2] STEP 2/7: RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates &&     rm -rf /var/lib/apt/lists/*
+--> Using cache 071bbe94f4d25e30942313d5b4358b3467259753150c74708cf701c14bb818b8
+--> 071bbe94f4d2
+[2/2] STEP 3/6: COPY --from=build /usr/local/bin/ixmati-writer /usr/local/bin/ixmati-writer
+--> Using cache 2a1f8515adabfa142edd5a3b87af116f6531e900950d017a7f2694d672e8bf8c
+--> 2a1f8515adab
+--> Using cache 2a1f8515adabfa142edd5a3b87af116f6531e900950d017a7f2694d672e8bf8c
+--> 2a1f8515adab
+[2/2] STEP 3/9: COPY --from=build /usr/local/bin/ixmati-projector /usr/local/bin/ixmati-projector
+[2/2] STEP 3/7: COPY --from=build /usr/local/bin/ixmati-api /usr/local/bin/ixmati-api
+--> Using cache 8209a0f4b76df08cbac3de7ea91cc4636a075cb313bb933e358c9744e7817589
+--> 8209a0f4b76d
+[2/2] STEP 4/6: USER 1000:1000
+--> Using cache 1ed2e7cadf95a64373ef20e3053c0802b9263ce0fdc558befd4d72f62fe9cd16
+--> 1ed2e7cadf95
+[2/2] STEP 4/9: COPY config/projections.toml /etc/ixmati/projections.toml
+--> Using cache 85d397593ebcb1b502e4ffe029d02f2aaa00b42467b9187c9127b24c2a18b2c7
+--> 85d397593ebc
+[2/2] STEP 4/7: EXPOSE 30000 30100
+--> Using cache b0b03cf1fa92c5e7ab1a73f17467e88b0f8b5fe6e8b84aedea58d755fd097f1b
+--> b0b03cf1fa92
+[2/2] STEP 5/6: ENTRYPOINT ["ixmati-writer"]
+--> Using cache 35b07633a21b6f488b37e5a75bc30b9f3353068265b6f1e72d6ea834ec0f0c13
+--> 35b07633a21b
+[2/2] STEP 5/7: USER 1000:1000
+--> Using cache 55174c3a69513cbad7125ab97a949095d50506a90eefd7956014c763453c77f2
+--> 55174c3a6951
+[2/2] STEP 6/6: LABEL "com.docker.compose.image.builder"="classic"
+--> Using cache e910ccb2259d4fecc3f67dab4ebc2b8d771ce4d021f73681e8bfadea0ef0d774
+--> e910ccb2259d
+[2/2] STEP 6/7: ENTRYPOINT ["ixmati-api"]
+--> Using cache 2f1a1d7ecb0d78ce0180e609e663a1c6ed2c9bbc3616ca5c2d3a2e30f92db02b
+--> 2f1a1d7ecb0d
+[2/2] STEP 5/9: ENV IXMATI_PROJECTIONS_PATH=/etc/ixmati/projections.toml
+--> Using cache 4137c3ac71b119374942aaa08bd653003e91890538ec0fefdd198ad5921ddf53
+[2/2] COMMIT localhost/ixmati-writer:local
+--> 4137c3ac71b1
+Successfully tagged localhost/ixmati-writer:local
+--> Using cache 793021c438edad16205d3fbd310c183af76a3d8edabb9e34cc6b7ab96eadaf51
+--> 793021c438ed
+4137c3ac71b119374942aaa08bd653003e91890538ec0fefdd198ad5921ddf53
+Successfully built 4137c3ac71b1
+Successfully tagged localhost/ixmati-writer:local
+[2/2] STEP 7/7: LABEL "com.docker.compose.image.builder"="classic"
+--> Using cache a821202fec8225d9b4178739433c803ff390a5d74bcb36a7b97aabc7ec588b3e
+--> a821202fec82
+[2/2] STEP 6/9: RUN mkdir -p /var/run/ixmati
+--> Using cache b50d709aaf5c6adce099316daf4263a6e862c8d23b4c79abc2bfe10bbdb34439
+[2/2] COMMIT localhost/ixmati-api:local
+--> b50d709aaf5c
+Successfully tagged localhost/ixmati-api:local
+--> Using cache cc277fcf905c192df1c252200002b4163e6f21447f9f3d20e9bc409e95601811
+--> cc277fcf905c
+b50d709aaf5c6adce099316daf4263a6e862c8d23b4c79abc2bfe10bbdb34439
+Successfully built b50d709aaf5c
+Successfully tagged localhost/ixmati-api:local
+[2/2] STEP 7/9: USER 1000:1000
+--> Using cache 3b0ea4a5078ac39dcaabd23e9cfaf3afd5b737f0f65a9115b5b777cb769bcfa0
+--> 3b0ea4a5078a
+[2/2] STEP 8/9: ENTRYPOINT ["ixmati-projector"]
+--> Using cache 0e07d3a40fc33ac11b392d610dc3ebb1ca8ab4655eec30ac6d01db3d04d1a541
+--> 0e07d3a40fc3
+[2/2] STEP 9/9: LABEL "com.docker.compose.image.builder"="classic"
+--> Using cache 3d74e29eebbc6b41b73d968b00431446b286d2ede60abffb9924e941cadd3131
+[2/2] COMMIT localhost/ixmati-projector:local
+--> 3d74e29eebbc
+Successfully tagged localhost/ixmati-projector:local
+3d74e29eebbc6b41b73d968b00431446b286d2ede60abffb9924e941cadd3131
+Successfully built 3d74e29eebbc
+Successfully tagged localhost/ixmati-projector:local
+ Network ixmati-multi_default  Creating
+ Network ixmati-multi_default  Created
+ Volume "ixmati-multi_store_inventario"  Creating
+ Volume "ixmati-multi_store_inventario"  Created
+ Volume "ixmati-multi_store_usuarios"  Creating
+ Volume "ixmati-multi_store_usuarios"  Created
+ Volume "ixmati-multi_store_pedidos"  Creating
+ Volume "ixmati-multi_store_pedidos"  Created
+ Volume "ixmati-multi_cache_socket"  Creating
+ Volume "ixmati-multi_cache_socket"  Created
+ Volume "ixmati-multi_cache_data"  Creating
+ Volume "ixmati-multi_cache_data"  Created
+ Volume "ixmati-multi_mosquitto_data"  Creating
+ Volume "ixmati-multi_mosquitto_data"  Created
+ Container ixmati-multi-cache-server-1  Creating
+ Container ixmati-multi-mosquitto-1  Creating
+ Container ixmati-multi-mosquitto-1  Created
+ Container ixmati-multi-cache-server-1  Created
+ Container ixmati-multi-projector-1  Creating
+ Container ixmati-multi-writer-usuarios-1  Creating
+ Container ixmati-multi-writer-inventario-1  Creating
+ Container ixmati-multi-api-1  Creating
+ Container ixmati-multi-writer-pedidos-1  Creating
+ Container ixmati-multi-writer-usuarios-1  Created
+ Container ixmati-multi-writer-inventario-1  Created
+ Container ixmati-multi-writer-pedidos-1  Created
+ Container ixmati-multi-api-1  Created
+ Container ixmati-multi-projector-1  Created
+ Container ixmati-multi-cache-server-1  Starting
+ Container ixmati-multi-mosquitto-1  Starting
+ Container ixmati-multi-mosquitto-1  Started
+ Container ixmati-multi-cache-server-1  Started
+ Container ixmati-multi-mosquitto-1  Waiting
+ Container ixmati-multi-cache-server-1  Waiting
+ Container ixmati-multi-cache-server-1  Waiting
+ Container ixmati-multi-mosquitto-1  Waiting
+ Container ixmati-multi-mosquitto-1  Waiting
+ Container ixmati-multi-cache-server-1  Waiting
+ Container ixmati-multi-mosquitto-1  Waiting
+ Container ixmati-multi-cache-server-1  Waiting
+ Container ixmati-multi-mosquitto-1  Waiting
+ Container ixmati-multi-cache-server-1  Waiting
+ Container ixmati-multi-cache-server-1  Healthy
+ Container ixmati-multi-mosquitto-1  Healthy
+ Container ixmati-multi-cache-server-1  Healthy
+ Container ixmati-multi-mosquitto-1  Healthy
+ Container ixmati-multi-writer-usuarios-1  Starting
+ Container ixmati-multi-mosquitto-1  Healthy
+ Container ixmati-multi-cache-server-1  Healthy
+ Container ixmati-multi-writer-pedidos-1  Starting
+ Container ixmati-multi-mosquitto-1  Healthy
+ Container ixmati-multi-api-1  Starting
+ Container ixmati-multi-cache-server-1  Healthy
+ Container ixmati-multi-cache-server-1  Healthy
+ Container ixmati-multi-projector-1  Starting
+ Container ixmati-multi-writer-pedidos-1  Started
+ Container ixmati-multi-mosquitto-1  Healthy
+ Container ixmati-multi-writer-inventario-1  Starting
+ Container ixmati-multi-writer-usuarios-1  Started
+ Container ixmati-multi-projector-1  Started
+ Container ixmati-multi-writer-inventario-1  Started
+ Container ixmati-multi-api-1  Started
+{"components":[{"detail":"running","name":"api","status":"OK"},{"detail":"connected to /data/usuarios/usuarios.db","name":"sqlite","status":"OK"},{"detail":"tcp://mosquitto:30200 reachable","name":"mosquitto","status":"OK"}],"overall":"OK","store":null}[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m{"elapsed_seconds": 427.851360032917, "orders": 10000, "status_codes": {"200": 11000}, "users": 1000}
+[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m[4m>>>> Executing external compose provider "/usr/libexec/docker/cli-plugins/docker-compose". Please see podman-compose(1) for how to disable this message. <<<<
+
+[0m Container ixmati-multi-writer-inventario-1  Stopping
+ Container ixmati-multi-projector-1  Stopping
+ Container ixmati-multi-writer-usuarios-1  Stopping
+ Container ixmati-multi-api-1  Stopping
+ Container ixmati-multi-writer-pedidos-1  Stopping
+ Container ixmati-multi-writer-inventario-1  Stopped
+ Container ixmati-multi-writer-inventario-1  Removing
+ Container ixmati-multi-projector-1  Stopped
+ Container ixmati-multi-projector-1  Removing
+ Container ixmati-multi-writer-inventario-1  Removed
+ Container ixmati-multi-projector-1  Removed
+ Container ixmati-multi-api-1  Stopped
+ Container ixmati-multi-api-1  Removing
+ Container ixmati-multi-api-1  Removed
+ Container ixmati-multi-writer-pedidos-1  Stopped
+ Container ixmati-multi-writer-pedidos-1  Removing
+ Container ixmati-multi-writer-pedidos-1  Removed
+ Container ixmati-multi-writer-usuarios-1  Stopped
+ Container ixmati-multi-writer-usuarios-1  Removing
+ Container ixmati-multi-writer-usuarios-1  Removed
+ Container ixmati-multi-cache-server-1  Stopping
+ Container ixmati-multi-mosquitto-1  Stopping
+ Container ixmati-multi-mosquitto-1  Stopped
+ Container ixmati-multi-mosquitto-1  Removing
+ Container ixmati-multi-mosquitto-1  Removed
+ Container ixmati-multi-cache-server-1  Stopped
+ Container ixmati-multi-cache-server-1  Removing
+ Container ixmati-multi-cache-server-1  Removed
+ Volume ixmati-multi_store_inventario  Removing
+ Volume ixmati-multi_store_pedidos  Removing
+ Volume ixmati-multi_cache_socket  Removing
+ Volume ixmati-multi_mosquitto_data  Removing
+ Volume ixmati-multi_cache_data  Removing
+ Volume ixmati-multi_store_usuarios  Removing
+ Volume ixmati-multi_store_inventario  Removed
+ Network ixmati-multi_default  Removing
+ Volume ixmati-multi_cache_socket  Removed
+ Volume ixmati-multi_mosquitto_data  Removed
+ Network ixmati-multi_default  Removed
+ Volume ixmati-multi_store_pedidos  Removed
+ Volume ixmati-multi_store_usuarios  Removed
+ Volume ixmati-multi_cache_data  Removed
+results=/tmp/ixmati-bench-ixmati-370ec09

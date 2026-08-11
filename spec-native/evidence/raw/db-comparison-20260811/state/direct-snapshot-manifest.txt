@@ -1,0 +1,18 @@
+sha=87c7e1405e547636fac432e166807e054e632227
+date=2026-08-11T17:12:17Z
+host=bastion-alqrab
+Linux bastion-alqrab 6.12.100+deb13-amd64 #1 SMP PREEMPT_DYNAMIC Debian 6.12.100-1 (2026-07-30) x86_64 GNU/Linux
+8
+               total        used        free      shared  buff/cache   available
+Mem:            15Gi       1.7Gi       1.7Gi        61Mi        12Gi        13Gi
+Swap:           15Gi       4.7Mi        15Gi
+Filesystem     Type  1K-blocks  Used Available Use% Mounted on
+tmpfs          tmpfs   8143308 58068   8085240   1% /tmp
+Client:        Podman Engine
+Version:       5.4.2
+API Version:   5.4.2
+Go Version:    go1.24.4
+Built:         Sun Dec 21 10:42:01 2025
+Build Origin:  Debian
+OS/Arch:       linux/amd64
+postgres_image=4b87d5343a0e499eea33b6c19ec152a3ed4a0d1a453eadd26ff415a406821a6e

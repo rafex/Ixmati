@@ -5,7 +5,7 @@ agent = "codex"
 initiative = "validation-durability-hardening"
 task = "TASK-VAL-0037"
 intent = "Ejecutar comparativa reproducible SQLite directo, Ixmati y PostgreSQL"
-last_updated = "2026-08-11T06:40:00Z"
+last_updated = "2026-08-11T17:11:42Z"
 +++
 
 # Active Session
@@ -21,17 +21,20 @@ referencias existentes cuando cambia el store relacionado; queda como
 TASK-VAL-0036. El build/check de mdBook sigue pendiente porque `mdbook` no está
 instalado en el entorno local.
 
-La suite de comparativa de capacidad está implementada en `benchmarks/` y
-pendiente de ejecución completa en Debian. Separará SQLite directo, PostgreSQL
-18 e Ixmati, conservará tres repeticiones por escenario y distinguirá las
-referencias oficiales de PostgreSQL de los resultados medidos.
+La suite de comparativa de capacidad está implementada y ejecutada en Debian
+amd64. Usó 1,000 usuarios y 10,000 pedidos comunes, tres repeticiones,
+SQLite directo, PostgreSQL 18 e Ixmati completo. La evidencia quedó en
+`spec-native/evidence/DB-COMPARISON-20260811.md` y en sus JSON/snapshots crudos.
 
 ## Next steps
 
-La lectura cacheada se validó a 100–500/s sin errores; a 1000/s no hubo errores
-pero apareció saturación del generador y p99≈710ms en cache-aside. Después deben
-priorizarse Pattern R mutable, el crash determinista entre PUBACK y
-`published_at`, las alertas operativas y el atasco MQTT bajo sobrecarga extrema.
+La lectura cacheada y la vista materializada se validaron a 100–1000/s sin
+errores en esta ejecución. El writer confirmó aproximadamente 40 escrituras
+durables/s; desde 40–60/s aparecen `429`/pendientes y no crece el commit rate.
+La suite también confirmó que `consumer_queue_depth` no aparece en `/metrics`.
+Después deben priorizarse Pattern R mutable, el crash determinista entre
+PUBACK y `published_at`, las alertas operativas y el atasco MQTT bajo
+sobrecarga extrema.
 
 ## Context for next agent
 

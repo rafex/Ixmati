@@ -1,0 +1,8 @@
+NAME                               IMAGE                                 COMMAND                  SERVICE             CREATED         STATUS         PORTS
+ixmati-multi-api-1                 localhost/ixmati-api:local            ""                       api                 2 seconds ago   Up 1 second    30000/tcp, 30100/tcp
+ixmati-multi-cache-server-1        localhost/ixmati-cache-server:local   ""                       cache-server        3 seconds ago   Up 1 second
+ixmati-multi-mosquitto-1           localhost/ixmati-mosquitto:local      "/usr/sbin/mosquitto…"   mosquitto           3 seconds ago   Up 2 seconds   30200/tcp
+ixmati-multi-projector-1           localhost/ixmati-projector:local      ""                       projector           2 seconds ago   Up 1 second
+ixmati-multi-writer-inventario-1   localhost/ixmati-writer:local         ""                       writer-inventario   2 seconds ago   Up 1 second
+ixmati-multi-writer-pedidos-1      localhost/ixmati-writer:local         ""                       writer-pedidos      2 seconds ago   Up 1 second
+ixmati-multi-writer-usuarios-1     localhost/ixmati-writer:local         ""                       writer-usuarios     2 seconds ago   Up 1 second
