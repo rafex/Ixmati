@@ -73,7 +73,24 @@ impl MqttConsumer {
                             match serde_json::from_slice::<WriteEnvelope>(&publish.payload) {
                                 Ok(envelope) => match tx_clone.try_send(envelope) {
                                     Ok(()) => {
-                                        if let Err(e) = client.ack(&publish) {
+                                        // DEC-0055/DEC-0056 P1: `client.ack()`
+                                        // es bloqueante (`flume::Sender::
+                                        // send()` sobre el canal interno de
+                                        // rumqttc, compartido con este mismo
+                                        // hilo, que también debe drenarlo vía
+                                        // `connection.iter()`) — bajo presión
+                                        // sostenida eso puede contender consigo
+                                        // mismo y dejar la sesión atascada
+                                        // (confirmado con evidencia real en
+                                        // DEC-0056: el atasco reapareció tras
+                                        // el fix de sesión persistente).
+                                        // `try_ack()` nunca bloquea; si el
+                                        // canal interno está lleno, el mensaje
+                                        // ya está a salvo en nuestro propio
+                                        // canal acotado — el broker lo
+                                        // reentrega más tarde (QoS1 + dedup
+                                        // por idempotencia lo hacen inocuo).
+                                        if let Err(e) = client.try_ack(&publish) {
                                             tracing::warn!(error = %e, "failed to ack MQTT publish");
                                             crate::metrics::MQTT_ACK_FAILURES.add(1, &[]);
                                         }
@@ -104,7 +121,7 @@ impl MqttConsumer {
                                     // Mensaje envenenado: reintentar no lo va
                                     // a arreglar. Ackear para no
                                     // redistribuirlo por siempre.
-                                    if let Err(e) = client.ack(&publish) {
+                                    if let Err(e) = client.try_ack(&publish) {
                                         tracing::warn!(error = %e, "failed to ack malformed publish");
                                         crate::metrics::MQTT_ACK_FAILURES.add(1, &[]);
                                     }

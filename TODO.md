@@ -565,7 +565,7 @@ Tablero de tareas activo. Persiste entre sesiones.
       del `cache_sync` secuencial REFUTADA, solo 10.3% del ciclo), y
       primera latencia end-to-end honesta con `ack_mode: committed`
       (p50=14.55ms, p90=121.67ms, p99=185.20ms). Ver DEC-0055.
-- [x] `TASK-VAL-0024` (P0, **parcial — ver P1**) — `client_id` estable
+- [x] `TASK-VAL-0024` P0 — `client_id` estable
       (`ixmati-writer-{store}`, antes UUID aleatorio) +
       `set_clean_session(false)` en `consumer.rs`/`event_publisher.rs` +
       `persistent_client_expiration 7d` en `mosquitto.conf` +
@@ -577,8 +577,20 @@ Tablero de tareas activo. Persiste entre sesiones.
       atasco volvió a ocurrir a mitad del drenado** (0% CPU real
       confirmado, cola de Mosquitto sin bajar en 2 muestras separadas 3s)
       — el fix reduce el blast radius de un reinicio, no corrige la causa
-      de que la sesión se atasque. `P1` (a continuación) ataca eso. Ver
-      DEC-0056.
+      de que la sesión se atasque. Ver DEC-0056.
+- [x] `TASK-VAL-0024` P1 (**hipótesis de causa raíz REFUTADA — atasco
+      persiste**) — `client.ack()` → `client.try_ack()` (no bloqueante) en
+      `consumer.rs` + `max_inflight_messages` 20→200 en `mosquitto.conf`.
+      **Validado con el mismo escenario, esta vez SIN reiniciar el writer,
+      observando 2 minutos completos**: el atasco ocurrió de todos modos
+      (51 batches, luego 0% CPU real y Mosquitto congelado en 100,453
+      mensajes durante 8 muestras consecutivas a lo largo de 120s). La
+      hipótesis de que `client.ack()` bloqueante + `max_inflight_messages`
+      bajo explicaban el atasco queda refutada por evidencia directa — la
+      causa raíz real sigue sin identificarse. El fix se mantiene igual
+      (es una mejora de robustez legítima por sí sola), pero no cierra el
+      hallazgo. Siguiente paso: `strace`/`gdb` reales o logs de Mosquitto
+      en nivel `debug` — no disponibles en esta sesión. Ver DEC-0057.
 - [ ] `TASK-VAL-0025` — El 61.3% del ciclo por batch sin explicar
       (DEC-0055, empeora el 41% de DEC-0050) sigue abierto. Candidato no
       probado: `tracing::info!` con formato JSON hace I/O de escritura

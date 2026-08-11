@@ -996,3 +996,47 @@ Al ejecutar la Parte 3 justo después de la Parte 1 (que dejó a Mosquitto con ~
 
 - Consecuencias: (+) el fix cumple lo que promete — reduce drásticamente el blast radius de un reinicio bajo sobrecarga (de "pierde todo" a "recupera lo que puede hasta que se vuelve a atascar"), con evidencia real, no solo teórica. (+) confirma indirectamente que el mecanismo de sesión persistente de Mosquitto funciona como se esperaba con esta combinación de `client_id` estable + `clean_session=false`. (-) **no cierra el problema de raíz** — la causa de que la sesión se atasque en primer lugar (hipótesis de DEC-0055: `client.ack()` bloqueante compitiendo con el mismo hilo que debe drenar el canal interno de `rumqttc`, más `max_inflight_messages` de Mosquitto en su default de 20) sigue sin corregirse. Sin `P1`, un writer bajo sobrecarga sostenida puede seguir quedando indefinidamente atascado — ya no pierde lo ya atascado en el próximo reinicio, pero tampoco avanza solo. `P1` es indispensable, no opcional, y se implementa a continuación en esta misma sesión.
 - Reemplaza: none (implementa P0 del plan de priorización de DEC-0055; el hallazgo de "atasco recurrente" motiva directamente P1)
+
+### DEC-0057 — P1: `try_ack()` no bloqueante + `max_inflight_messages=200` — NO resolvió el atasco de sesión
+
+- Fecha: 2026-08-10
+- Estado: `accepted` (fix aplicado por ser de bajo riesgo y bien fundamentado, pero **no resuelve el problema que motivó esta decisión** — hipótesis de causa raíz de DEC-0055/0056 refutada)
+- Relacionado con specs: `SPEC-VAL-0001`
+- Contexto: P1 del plan de priorización de DEC-0055 — cerrar la causa de que la sesión MQTT del writer se atasque bajo sobrecarga (P0/DEC-0056 mitigó la pérdida de datos, pero el atasco reapareció a mitad de un drenado, confirmando que la causa de fondo seguía sin tocarse).
+
+**Cambios de código**:
+- `crates/ixmati-writer/src/consumer.rs` — `client.ack(&publish)`
+  (bloqueante) → `client.try_ack(&publish)` (no bloqueante, `rumqttc`
+  0.25.1 `client.rs:330`) en los 2 sitios donde se confirma un mensaje. Si
+  el canal interno de `rumqttc` está lleno, el mensaje ya está a salvo en
+  el canal acotado propio del writer — el broker lo reentrega más tarde,
+  inocuo por QoS1 + dedup de idempotencia.
+- `config/mosquitto/mosquitto.conf` — `max_inflight_messages 200` (default
+  de Mosquitto era 20, nunca fijado explícitamente).
+
+**Verificación — mismo contenedor Debian real, mismo escenario de sobrecarga que DEC-0055/0056** (throttle deshabilitado, `wrk` 90s, Mosquitto hasta su tope de cola), esta vez **sin reiniciar el writer**, observando 2 minutos completos con el mismo protocolo de diagnóstico:
+- `cargo test --workspace --lib`: 8/8 crates en verde.
+- Sobrecarga reproducida: 197,192 requests aceptadas, Mosquitto llegó a
+  100,453 mensajes almacenados.
+- **El atasco ocurrió de todos modos, sin necesidad de reiniciar**: tras
+  51 batches procesados, el writer quedó en 0% CPU real (2 muestras de
+  `/proc/<pid>/stat` separadas 3s: `ticks_delta=2` sobre 3s, ~0.67%) y
+  Mosquitto se mantuvo exactamente en 100,453 mensajes almacenados
+  durante **8 muestras consecutivas a lo largo de 2 minutos completos**
+  (15s, 30s, 45s, 60s, 75s, 90s, 105s, 120s — todas idénticas). Todos los
+  hilos del proceso en estado `S` (durmiendo), 0 errores/panics en el
+  journal.
+
+**Esto refuta la hipótesis de causa raíz de DEC-0055/0056**: si
+`client.ack()` bloqueante y `max_inflight_messages=20` fueran la causa
+principal, corregir ambos debería haber evitado o al menos retrasado
+significativamente el atasco — no ocurrió así, se atascó en
+aproximadamente el mismo punto (51 batches acá vs. 63-72 en DEC-0056, del
+mismo orden de magnitud). La causa raíz real sigue sin identificarse. No
+se investigó más a fondo en esta sesión — herramientas más profundas
+(`strace`/`gdb` con acceso real, o logs de Mosquitto en nivel `debug`, que
+no se activaron en este contenedor) serían el siguiente paso, no
+disponibles en el tiempo de esta sesión.
+
+- Consecuencias: (+) el cambio a `try_ack()` sigue siendo correcto en sí mismo (evita que el hilo que conduce el eventloop pueda bloquearse a sí mismo esperando espacio que solo el mismo hilo puede liberar) y se mantiene aunque no haya resuelto el atasco — es una mejora de robustez real, no un desperdicio. (+) `max_inflight_messages=200` tampoco se revierte — más margen no hace daño y sigue siendo una mitigación razonable para otros escenarios. (+) se evitó reportar un falso positivo — la tentación de declarar "P1 resuelto" tras ver el fix compilar y desplegarse fue descartada con la misma evidencia empírica exigida en toda esta investigación. (-) el atasco de sesión sigue sin causa raíz confirmada — con P0 en producción, un writer bajo sobrecarga sostenida sigue pudiendo quedar indefinidamente detenido hasta que un operador lo note y lo reinicie manualmente (P0 asegura que ese reinicio ya no pierde el backlog, pero no hay nada que dispare el reinicio automáticamente todavía — eso es tarea de `P3`, observabilidad). (-) esta sobrecarga es deliberadamente extrema (throttle desactivado a propósito, ~20-25x la capacidad real del writer) — no está confirmado si este escenario específico es realista en producción con el rate-limiter de DEC-0054 activo (40/s), donde la entrada nunca debería acumular un backlog de esta magnitud en primer lugar.
+- Reemplaza: none (cierra la implementación de P1 del plan; dejar constancia de que la hipótesis de causa raíz no se confirmó, en vez de asumir que sí)
