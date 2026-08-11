@@ -110,6 +110,11 @@ done
 fi
 
 if [[ "$RUN_IXMATI" == 1 ]]; then
+  capture_ixmati_snapshot() {
+    local label="$1"
+    curl -fsS "$IXMATI_URL/metrics" > "$OUT_DIR/ixmati-metrics-${label}.prom" || true
+    podman compose -f "$ROOT/containers/compose/multi-store.yaml" ps > "$OUT_DIR/ixmati-services-${label}.txt" || true
+  }
   if [[ "$START_IXMATI" == 1 ]]; then
     podman compose -f "$ROOT/containers/compose/multi-store.yaml" down -v || true
     if [[ "${IXMATI_BUILD:-0}" == 1 ]]; then
@@ -122,6 +127,7 @@ if [[ "$RUN_IXMATI" == 1 ]]; then
       sleep 1
     done
     curl -fsS "$IXMATI_URL/health"
+    capture_ixmati_snapshot pre-load
   fi
   "${UV_ARGS[@]}" "$ROOT/benchmarks/seed_ixmati.py" "$IXMATI_URL" \
     --users "$BENCH_USERS_VALUE" --orders "$BENCH_ORDERS_VALUE" \
@@ -137,6 +143,7 @@ if [[ "$RUN_IXMATI" == 1 ]]; then
             --rate "$rate" --duration "${BENCH_DURATION:-30}" \
             --warmup "$warmup" --cache-state "$cache_state" --concurrency 64 \
             > "$OUT_DIR/ixmati-${operation}-${rate}-${cache_state}-r${repeat}.json" || true
+          capture_ixmati_snapshot "${operation}-${rate}-${cache_state}-r${repeat}"
         done
       done
     done
@@ -148,6 +155,17 @@ if [[ "$RUN_IXMATI" == 1 ]]; then
         --rate "$rate" --duration "${BENCH_DURATION:-30}" \
         --warmup "${BENCH_WARMUP:-15}" --concurrency 200 \
         > "$OUT_DIR/ixmati-write-${rate}-r${repeat}.json" || true
+      capture_ixmati_snapshot "write-${rate}-r${repeat}"
+    done
+  done
+  for operation in update idempotency mixed; do
+    for repeat in $(seq 1 "$REPETITIONS"); do
+      "${UV_ARGS[@]}" "$ROOT/benchmarks/runner.py" load \
+        --engine http --target "$IXMATI_URL" --operation "$operation" \
+        --rate 100 --duration "${BENCH_DURATION:-30}" \
+        --warmup "${BENCH_WARMUP:-15}" --cache-state warm --concurrency 64 \
+        > "$OUT_DIR/ixmati-${operation}-100-r${repeat}.json" || true
+      capture_ixmati_snapshot "${operation}-100-r${repeat}"
     done
   done
   if [[ "$START_IXMATI" == 1 ]]; then

@@ -226,6 +226,9 @@ def http_operation(url: str, operation: str, key_index: int, sequence: int, api_
     elif operation == "read_join":
         query = urllib.parse.urlencode({"projection": "pedidos_con_usuario", "key": f"ped_{key_index % 10000:06d}"})
         request = urllib.request.Request(f"{url}/read?{query}", headers=headers)
+    elif operation == "idempotency":
+        idem = urllib.parse.quote("benchmark-seed-pedidos-ped_000001", safe="")
+        request = urllib.request.Request(f"{url}/writes/pedidos/{idem}", headers=headers)
     elif operation in {"write", "update"}:
         key = f"bench_{sequence:012d}" if operation == "write" else f"ped_{key_index % 10000:06d}"
         payload = {
