@@ -71,7 +71,9 @@ Litestream replica el WAL de cada store a destinos remotos. El sistema es tolera
    sólo devuelve `200` después de que `_idempotency` confirme el commit
    SQLite. Si aún no puede confirmarlo devuelve `202 PENDING` con la
    `idempotency_key`; en multi-store la consulta usa `SQLITE_PATHS`.
-5. Si `ack_mode=committed`: la API espera la confirmación en el topic de ack.
+5. Si `ack_mode=committed`: la API consulta `_idempotency` hasta confirmar el
+   commit o agotar `WRITE_COMMITTED_TIMEOUT_MS`; un timeout devuelve
+   `202 PENDING` y deja la consulta disponible en `GET /writes/...`.
 6. El writer del store consume el comando, lo acumula en un batch.
 7. Al cumplirse `MAX_BATCH_SIZE` o `MAX_BATCH_INTERVAL_MS`, ejecuta `BEGIN IMMEDIATE`:
    - Aplica el comando a la tabla de la entidad.
@@ -79,7 +81,9 @@ Litestream replica el WAL de cada store a destinos remotos. El sistema es tolera
    - Inserta el evento en `_outbox` (misma transacción).
    - `COMMIT`.
 8. El publicador (task interna del writer) lee `_outbox WHERE published_at IS NULL`, publica en `ixmati/evt/<store>/<entity>/<id>`, y marca `published_at`.
-9. Si `ack_mode=committed`, el writer publica la confirmación en el topic de ack.
+9. El writer confirma el consumo MQTT después del commit SQLite. El publicador
+   marca `_outbox.published_at` sólo después de recibir `PUBACK`; la entrega de
+   eventos es at-least-once.
 10. Los proyectores reciben el evento y actualizan sus read models en FlashDB de forma idempotente.
 
 ## Flujo de lectura

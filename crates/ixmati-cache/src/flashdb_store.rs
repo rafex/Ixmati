@@ -2,14 +2,19 @@ use crate::backend::CacheBackend;
 
 #[cfg(feature = "flashdb")]
 mod ffi {
-    #![allow(non_camel_case_types, non_snake_case, unused_imports)]
+    #![allow(
+        non_camel_case_types,
+        non_snake_case,
+        non_upper_case_globals,
+        clippy::upper_case_acronyms,
+        unused_imports,
+        dead_code
+    )]
     include!(concat!(env!("OUT_DIR"), "/flashdb_bindings.rs"));
 }
 
 #[cfg(feature = "flashdb")]
 use std::ffi::CString;
-#[cfg(feature = "flashdb")]
-use std::os::raw::c_char;
 #[cfg(feature = "flashdb")]
 use std::path::Path;
 #[cfg(feature = "flashdb")]

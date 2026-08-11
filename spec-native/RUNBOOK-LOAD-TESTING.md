@@ -5,6 +5,12 @@ construir binarios, levantar un contenedor Debian real, cargarlo, y
 diagnosticarlo. No es un tutorial genérico de Podman — es exactamente lo
 que se repitió sesión tras sesión en este proyecto.
 
+Este runbook aplica al contrato actual: `ack_mode=accepted` es un alias
+compatible de `committed`, ambos esperan confirmación durable en SQLite, y
+`200` sólo significa que `_idempotency` ya hizo commit. Si el commit no se
+confirma dentro de `WRITE_COMMITTED_TIMEOUT_MS`, la respuesta correcta es
+`202 PENDING`; el estado se consulta en `GET /writes/{store}/{key}`.
+
 ## 1. Antes de empezar — el malentendido de la IP
 
 **`podman` es un comando que se escribe en el Mac, pero puede ejecutar en
@@ -32,6 +38,24 @@ Si la conexión por defecto no es la esperada:
 podman system connection default debian-server
 ```
 
+Preflight obligatorio antes de construir o publicar puertos:
+
+```bash
+set -euo pipefail
+TEST_HOST="${TEST_HOST:-192.168.3.175}"
+EXPECTED_SHA="$(git rev-parse HEAD)"
+test "$(git branch --show-current)" = "main"
+test "$(git status --porcelain --untracked-files=no)" = ""
+test "$(podman system connection list --format '{{.Name}} {{.Default}}' | awk '$2==\"true\"{print $1}')" = "debian-server"
+podman version
+curl -fsS "http://${TEST_HOST}:30300/health" || true
+echo "testing_sha=${EXPECTED_SHA} host=${TEST_HOST}"
+```
+
+El `curl` puede fallar si todavía no existe el contenedor; en ese caso se
+continúa con la instalación y se repite después de arrancar los servicios.
+El SHA se conserva en todos los artefactos y debe coincidir con `origin/main`.
+
 ## 2. Rango de puertos: `30300-30399`
 
 Esta es la convención acordada para publicar puertos de contenedores de
@@ -56,14 +80,14 @@ cambia `config/mosquitto/mosquitto.conf` o una unidad `systemd/*.service`
 (esos se empaquetan tal cual desde el repo, no se compilan).
 
 ```bash
-make containers-builder    # compila el builder image en el host remoto
-make containers-compile    # extrae los binarios linux/amd64 a target/release/
-make dist                  # empaqueta dist/ixmati-<VERSION>-linux-amd64.tar.gz
-make dist-checksums
+make ci-main               # gates Rust + build linux/amd64 + dist + checksums + validación
 ```
 
 `containers-builder` corre en el host remoto (misma lógica de la sección
 1) — puede tardar 1-3 minutos según cuánto haya cambiado.
+Si se necesita separar los pasos para diagnosticar un fallo, se pueden usar
+`make containers-builder`, `make containers-compile`, `make dist`,
+`make dist-checksums` y `make dist-validate` en ese orden.
 
 ## 4. Levantar el contenedor de prueba
 
@@ -140,35 +164,51 @@ systemctl restart ixmati-writer@default"
 Quitar cualquier override (volver al default de producción):
 
 ```bash
-podman exec ixmati-load-test bash -c "rm -f /etc/systemd/system/ixmati-api.service.d/override.conf && systemctl daemon-reload && systemctl restart ixmati-api"
+podman exec ixmati-load-test bash -c "rm -f /etc/systemd/system/ixmati-api.service.d/override.conf /etc/systemd/system/ixmati-writer@.service.d/override.conf && systemctl daemon-reload && systemctl restart ixmati-api ixmati-writer@default"
 ```
 
 ## 6. Las 3 herramientas de carga del repo
 
 | Script | `ack_mode` | Mide | Cuándo usarlo |
 |---|---|---|---|
-| `helpers/wrk/write.lua` | `accepted` | Solo aceptación por la API, no persistencia | Generar backlog/sobrecarga a propósito (ver DEC-0055/0056/0057) |
-| `helpers/wrk/write_committed.lua` | `committed` | Latencia end-to-end real (hasta commit confirmado) | Medir SLOs reales, nunca usar `write.lua` para esto |
-| `helpers/wrk/staircase.sh` | `committed` | Latencia bajo una escalera de tasas de entrada controladas | Encontrar el throughput sostenible, no un número de commits/s aislado |
+| `helpers/wrk/write.lua` | `committed` | Latencia end-to-end real; generador de stress de alta concurrencia | Sobrecarga controlada o pruebas de techo; cada `200` implica commit |
+| `helpers/wrk/write_committed.lua` | `committed` | Latencia end-to-end real con concurrencia baja | Medir SLOs sin que el generador sea el cuello de botella |
+| `helpers/wrk/staircase.sh` | `committed` | Latencia, estados HTTP y métricas por escalón | Capacidad sostenible; requiere `wrk2` para conclusiones de tasa |
 
 Ejemplos (con el rango de puertos de la sección 2):
 
 ```bash
-# Saturar a propósito (accepted, sin límite de tasa)
+# Stress de alta concurrencia (committed; no confundir con una tasa exacta)
 wrk -t4 -c50 -d90s -s helpers/wrk/write.lua http://192.168.3.175:30300/write
 
 # Latencia real (committed) — usar con el throttle en su valor de producción
 wrk -t2 -c10 -d30s --timeout 5s -s helpers/wrk/write_committed.lua http://192.168.3.175:30300/write
 
-# Escalera automática — usa wrk2 (-R, tasa fija real) si está instalado,
-# si no cae a wrk con concurrencia fija (menos preciso en escalones altos,
-# ver DEC-0058)
+# Escalera automática — exige preferentemente wrk2 (-R, tasa fija real).
+# Si sólo existe wrk, los escalones altos quedan inconclusos.
 helpers/wrk/staircase.sh 192.168.3.175 30300 30301
 ```
 
 `staircase.sh` necesita el contenedor ya instalado y `METRICS_PORT` activo
-en el writer (sección 5) — hace los overrides de `MAX_WRITES_PER_WINDOW`
-por escalón automáticamente, no hace falta repetir la sección 5 para eso.
+en el writer (sección 5). Hace los overrides de `MAX_WRITES_PER_WINDOW`
+por escalón automáticamente y registra si el generador fue `wrk2` o `wrk`.
+Cada corrida debe conservar la salida completa, incluyendo p50/p90/p99,
+conteos HTTP `200`/`202`/`429`, `outbox_size`, `consumer_queue_depth`,
+`last_batch_commit_unix_seconds`, errores de cache y mensajes del broker.
+
+Para verificar durabilidad durante un crash:
+
+```bash
+CONTAINER_NAME=ixmati-load-test TEST_HOST=192.168.3.175 \
+  OUT="/tmp/ixmati-kill9-$(date +%Y%m%dT%H%M%S).tsv" \
+  helpers/shell/kill9_writer.sh default 100
+```
+
+El script publica claves de idempotencia conocidas, fuerza `SIGKILL`,
+reinicia `ixmati-writer@default` con systemd, consulta cada clave en la API
+y SQLite, y compara los `event_id` del outbox con un suscriptor MQTT. Los
+duplicados son evidencia de at-least-once, no una pérdida; cualquier clave o
+evento ausente es fallo.
 
 ## 7. Protocolo de diagnóstico (atascos silenciosos)
 
@@ -222,5 +262,13 @@ Siempre al terminar — un contenedor de prueba olvidado sigue corriendo en
 la máquina remota compartida, no en el Mac:
 
 ```bash
+podman exec ixmati-load-test bash -c "rm -f /etc/systemd/system/ixmati-api.service.d/override.conf /etc/systemd/system/ixmati-writer@.service.d/override.conf && systemctl daemon-reload && systemctl restart ixmati-api ixmati-writer@default"
 podman rm -f ixmati-load-test
 ```
+
+Antes de terminar, guardar como evidencia el SHA probado, `podman version`,
+la conexión activa, configuración de puertos, salida de la escalera, logs de
+systemd, snapshots de `/metrics`, manifiestos de crash y consultas SQLite.
+Los resultados deben quedar bajo una carpeta identificada por timestamp y
+SHA, por ejemplo `dist/load-results/20260810T230000Z-<sha>/`; no se deben
+reportar números de una corrida anterior como si fueran del SHA actual.

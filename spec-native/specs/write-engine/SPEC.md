@@ -141,7 +141,7 @@ Los backends envían comandos de escritura sin preocuparse por concurrencia, blo
 - **CA-6 — Compatibilidad de ack**: comando `ack_mode=accepted` se acepta como
   alias durable; `200` sólo se entrega después del commit SQLite. Si vence la
   espera, responde `202 PENDING` y el estado sigue siendo consultable.
-- **CA-7 — Modo sync con read-your-writes`: comando `ack_mode=committed` exitoso → lectura inmediata devuelve datos actualizados.
+- **CA-7 — Modo sync con read-your-writes**: comando `ack_mode=committed` exitoso → lectura inmediata devuelve datos actualizados.
 - **CA-8 — Cache miss con fallback**: cache sin el registro → lectura de SQLite → cache repoblada → dato correcto.
 - **CA-9 — Invalidación de cache tras escritura**: comando aplicado → siguiente lectura por cache devuelve valor actualizado.
 - **CA-10 — Outbox transaccional**: `kill -9` entre commit y publish → tras reinicio, 0 eventos perdidos (todos los del outbox se publican).

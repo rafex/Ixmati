@@ -26,9 +26,12 @@ CONTAINER="${CONTAINER_NAME:-ixmati-load-test}"
 DURATION="${DURATION:-30s}"
 RATES=(20 40 60 80 100 150 200)
 CONCURRENCY="${CONCURRENCY:-200}"
+RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)-$(git -C "$(dirname "${BASH_SOURCE[0]}")/../.." rev-parse --short HEAD 2>/dev/null || echo unknown)"
+RESULT_DIR="${RESULT_DIR:-/tmp/ixmati-staircase-${RUN_ID}}"
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-OUT="${OUT:-/tmp/staircase-results.txt}"
+mkdir -p "$RESULT_DIR"
+OUT="${OUT:-${RESULT_DIR}/results.txt}"
 : > "$OUT"
 
 scrape_gauge() {
@@ -43,14 +46,17 @@ scrape_gauge() {
 
 if command -v wrk2 >/dev/null 2>&1; then
   LOAD_GENERATOR="wrk2"
+  RATE_CONTROLLED=true
 elif command -v wrk >/dev/null 2>&1; then
   LOAD_GENERATOR="wrk"
+  RATE_CONTROLLED=false
 else
   echo "ERROR: se requiere wrk2 o wrk" >&2
   exit 1
 fi
 
-echo "generator=$LOAD_GENERATOR concurrency=$CONCURRENCY duration=$DURATION" | tee -a "$OUT"
+echo "generator=$LOAD_GENERATOR rate_controlled=$RATE_CONTROLLED concurrency=$CONCURRENCY duration=$DURATION" | tee -a "$OUT"
+echo "result_dir=$RESULT_DIR" | tee -a "$OUT"
 
 for rate in "${RATES[@]}"; do
   echo "=== escalon: ${rate}/s ===" | tee -a "$OUT"
@@ -66,6 +72,8 @@ systemctl restart ixmati-api"
 
   outbox_before=$(scrape_gauge "http://${HOST}:${API_PORT}" "ixmati_outbox_size")
   qdepth_before=$(scrape_gauge "http://${HOST}:${METRICS_PORT}" "ixmati_consumer_queue_depth")
+  curl -fsS "http://${HOST}:${API_PORT}/metrics" > "${RESULT_DIR}/${rate}-api-before.prom" || true
+  curl -fsS "http://${HOST}:${METRICS_PORT}/metrics" > "${RESULT_DIR}/${rate}-writer-before.prom" || true
 
   if [[ "$LOAD_GENERATOR" == "wrk2" ]]; then
     result=$(wrk2 -t4 -c"$CONCURRENCY" -R"$rate" -d"$DURATION" --timeout 5s -s "$REPO/helpers/wrk/write_committed.lua" "http://${HOST}:${API_PORT}/write" 2>&1)
@@ -73,13 +81,17 @@ systemctl restart ixmati-api"
     result=$(wrk -t4 -c"$CONCURRENCY" -d"$DURATION" --timeout 5s -s "$REPO/helpers/wrk/write_committed.lua" "http://${HOST}:${API_PORT}/write" 2>&1)
   fi
   echo "$result" | tee -a "$OUT"
+  printf '%s\n' "$result" > "${RESULT_DIR}/${rate}-${LOAD_GENERATOR}.txt"
 
   sleep 2
   outbox_after=$(scrape_gauge "http://${HOST}:${API_PORT}" "ixmati_outbox_size")
   qdepth_after=$(scrape_gauge "http://${HOST}:${METRICS_PORT}" "ixmati_consumer_queue_depth")
+  curl -fsS "http://${HOST}:${API_PORT}/metrics" > "${RESULT_DIR}/${rate}-api-after.prom" || true
+  curl -fsS "http://${HOST}:${METRICS_PORT}/metrics" > "${RESULT_DIR}/${rate}-writer-after.prom" || true
 
-  echo "outbox_size before=$outbox_before after=$outbox_after | consumer_queue_depth before=$qdepth_before after=$qdepth_after" | tee -a "$OUT"
+  echo "outbox_size before=$outbox_before after=$outbox_after | consumer_queue_depth before=$qdepth_before after=$qdepth_after | last_batch_commit=$(scrape_gauge "http://${HOST}:${METRICS_PORT}" "ixmati_last_batch_commit_unix_seconds")" | tee -a "$OUT"
   echo "" | tee -a "$OUT"
 done
 
-echo "=== listo, resultados en $OUT ==="
+echo "classification=$([[ "$RATE_CONTROLLED" == true ]] && echo valid-rate-controlled || echo fallback-concurrency-inconclusive-for-high-rates)" | tee -a "$OUT"
+echo "=== listo, resultados en $OUT (snapshots en $RESULT_DIR) ==="
