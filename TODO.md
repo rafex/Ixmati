@@ -616,6 +616,19 @@ Tablero de tareas activo. Persiste entre sesiones.
       Instrumentar el propio loop de `main.rs` con mediciones más finas
       (tiempo entre que `process_batch()` retorna y el próximo
       `fill_started` se resetea) para aislarlo.
+- [x] `TASK-VAL-0027` (P0) — ACK MQTT del consumidor sólo después del commit
+      SQLite: `PendingCommand` conserva el token de ACK hasta `process_batch`
+      exitoso; la cola acotada deja de ser una falsa frontera de durabilidad.
+      La API convierte `accepted` en alias durable y sólo devuelve `200` tras
+      confirmar `_idempotency`; ver DEC-0059.
+- [x] `TASK-VAL-0028` (P0) — Outbox sólo se marca publicado después de PUBACK:
+      `EventPublisher` correlaciona `Outgoing::Publish(pkid)` con el id de
+      fila y espera `Incoming::PubAck` antes de `mark_published_batch`. La
+      semántica resultante es at-least-once, sin pérdida en un crash.
+- [x] `TASK-VAL-0029` (P1) — Observabilidad y metodología de carga: profundidad
+      de cola, comandos encolados/deferidos/confirmados, último commit y
+      errores de cache instrumentados; `staircase.sh` reporta `NA` para series
+      ausentes y usa wrk2 rate-controlled cuando está disponible.
 
 ## Cancelled / Replaced
 

@@ -9,7 +9,7 @@
 | `version` | u64 | Sí | Monotónico. Se rechaza <= stored |
 | `ts` | ISO 8601 | Sí | Timestamp origen |
 | `idempotency_key` | UUID | Sí | Scope: (store, key) |
-| `ack_mode` | string | Sí | accepted o committed |
+| `ack_mode` | string | Sí | accepted (alias durable) o committed |
 | `payload` | object | Sí | Datos de la entidad |
 
 ### Envelope de Evento

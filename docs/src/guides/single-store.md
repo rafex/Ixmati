@@ -24,7 +24,7 @@ cargo run -p ixmati-supervisor -- --config config/stores.toml
 ```bash
 curl -X POST http://localhost:8080/write \
   -H "Content-Type: application/json" \
-  -d '{"op":"upsert","store":"pedidos","entity":"pedido","key":"p1","version":1,"idempotency_key":"...","ack_mode":"accepted","payload":{}}'
+  -d '{"op":"upsert","store":"pedidos","entity":"pedido","key":"p1","version":1,"idempotency_key":"...","ack_mode":"committed","payload":{}}'
 ```
 
 Con `stores=1`, el sistema no activa bus de eventos ni outbox. La cache-aside funciona con fallback a SQLite. Sin proyecciones declaradas, no se ejecuta ningún proyector.

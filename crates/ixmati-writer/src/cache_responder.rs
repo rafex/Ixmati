@@ -49,14 +49,13 @@ impl CacheResponder {
             loop {
                 match eventloop.poll().await {
                     Ok(Event::Incoming(Packet::Publish(publish))) => {
-                        let query: CacheQuery =
-                            match serde_json::from_slice(&publish.payload) {
-                                Ok(q) => q,
-                                Err(e) => {
-                                    tracing::warn!(error=%e, "CacheResponder: bad payload");
-                                    continue;
-                                }
-                            };
+                        let query: CacheQuery = match serde_json::from_slice(&publish.payload) {
+                            Ok(q) => q,
+                            Err(e) => {
+                                tracing::warn!(error=%e, "CacheResponder: bad payload");
+                                continue;
+                            }
+                        };
 
                         tracing::info!(
                             correlation_id=%query.correlation_id,
@@ -64,10 +63,7 @@ impl CacheResponder {
                             "CacheResponder: received query"
                         );
 
-                        let cache_key = format!(
-                            "c:{}:{}:{}",
-                            query.store, query.entity, query.key
-                        );
+                        let cache_key = format!("c:{}:{}:{}", query.store, query.entity, query.key);
                         let found = cache_clone.get("cache", &cache_key, "");
 
                         let resp = CacheResponse {

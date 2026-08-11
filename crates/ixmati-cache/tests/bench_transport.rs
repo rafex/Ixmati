@@ -3,13 +3,11 @@
 // Ejecutar con:
 //   cargo test -p ixmati-cache --test bench_transport -- --nocapture
 
-use ixmati_cache::{CacheBackend, SqliteCacheBackend, NoOpBackend};
-use std::path::PathBuf;
-use std::sync::Arc;
+use ixmati_cache::{CacheBackend, NoOpBackend, SqliteCacheBackend};
 use std::time::Instant;
 
 fn tmp_path(name: &str) -> String {
-    let mut p = PathBuf::from(std::env::temp_dir());
+    let mut p = std::env::temp_dir();
     p.push(format!("ixmati-transport-{}", name));
     let _ = std::fs::remove_file(&p);
     let _ = std::fs::remove_dir_all(&p);
@@ -64,7 +62,7 @@ fn bench_socket_base_latency() {
 
     println!("\n=== Base Overhead (NoOp) ===");
     println!("  p50: {:.2} µs ({} ns)", base_us, base_ns);
-    println!("");
+    println!();
     println!("  Latencia de socket esperada: base + syscall + serializacion");
     println!("  ~50-100µs en localhost");
 }

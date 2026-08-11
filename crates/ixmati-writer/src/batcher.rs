@@ -1,7 +1,7 @@
-use ixmati_core::WriteEnvelope;
 use std::time::{Duration, Instant};
 
 use crate::Batch;
+use crate::consumer::PendingCommand;
 
 pub struct Batcher {
     batch_size: usize,
@@ -20,7 +20,7 @@ impl Batcher {
         }
     }
 
-    pub fn push(&mut self, cmd: WriteEnvelope) -> Option<Batch> {
+    pub fn push(&mut self, cmd: PendingCommand) -> Option<Batch> {
         self.current.push(cmd);
 
         if self.current.len() >= self.batch_size {
@@ -49,6 +49,7 @@ impl Batcher {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ixmati_core::WriteEnvelope;
     use std::time::Duration;
 
     fn make_cmd(id: &str) -> WriteEnvelope {
@@ -68,24 +69,24 @@ mod tests {
     #[test]
     fn flushes_when_batch_full() {
         let mut batcher = Batcher::new(2, 5000);
-        assert!(batcher.push(make_cmd("a")).is_none());
-        assert!(batcher.push(make_cmd("b")).is_some());
+        assert!(batcher.push(make_pending("a")).is_none());
+        assert!(batcher.push(make_pending("b")).is_some());
         assert!(batcher.is_empty());
     }
 
     #[test]
     fn respects_batch_size_boundary() {
         let mut batcher = Batcher::new(3, 5000);
-        assert!(batcher.push(make_cmd("a")).is_none());
-        assert!(batcher.push(make_cmd("b")).is_none());
-        let flushed = batcher.push(make_cmd("c")).unwrap();
+        assert!(batcher.push(make_pending("a")).is_none());
+        assert!(batcher.push(make_pending("b")).is_none());
+        let flushed = batcher.push(make_pending("c")).unwrap();
         assert_eq!(flushed.len(), 3);
     }
 
     #[test]
     fn should_flush_after_interval() {
         let mut batcher = Batcher::new(100, 10);
-        batcher.push(make_cmd("a"));
+        batcher.push(make_pending("a"));
         assert!(!batcher.should_flush());
 
         std::thread::sleep(Duration::from_millis(15));
@@ -94,5 +95,23 @@ mod tests {
         let batch = batcher.flush();
         assert_eq!(batch.len(), 1);
         assert!(!batcher.should_flush());
+    }
+
+    fn make_pending(id: &str) -> PendingCommand {
+        let (client, _connection) = rumqttc::Client::new(
+            rumqttc::MqttOptions::new("ixmati-batcher-test", "localhost", 1883),
+            10,
+        );
+        PendingCommand {
+            envelope: make_cmd(id),
+            ack: crate::consumer::MqttAck {
+                client,
+                publish: rumqttc::Publish::new(
+                    "ixmati/test",
+                    rumqttc::QoS::AtLeastOnce,
+                    Vec::new(),
+                ),
+            },
+        }
     }
 }

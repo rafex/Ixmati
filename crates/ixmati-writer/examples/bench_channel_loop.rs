@@ -11,10 +11,12 @@
 
 use ixmati_core::WriteEnvelope;
 use ixmati_writer::batcher::Batcher;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use ixmati_writer::consumer::{MqttAck, PendingCommand};
+use rumqttc::{Client, MqttOptions, Publish, QoS};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{Mutex, mpsc};
 
 const DURATION_SECS: u64 = 10;
 const CHANNEL_CAPACITY: usize = 5000;
@@ -23,7 +25,11 @@ const BATCH_INTERVAL_MS: u64 = 50;
 
 fn tmp_db_path(name: &str) -> String {
     let mut p = std::env::temp_dir();
-    p.push(format!("ixmati-bench-loop-{}-{}.db", name, uuid::Uuid::new_v4()));
+    p.push(format!(
+        "ixmati-bench-loop-{}-{}.db",
+        name,
+        uuid::Uuid::new_v4()
+    ));
     p.to_str().unwrap().to_string()
 }
 
@@ -43,7 +49,11 @@ async fn main() {
         ixmati_writer::write_engine::WriteEngine::ensure_schema(&conn, "bench").unwrap();
     }
 
-    let (tx, mut rx) = mpsc::channel::<WriteEnvelope>(CHANNEL_CAPACITY);
+    let (ack_client, _ack_connection) = Client::new(
+        MqttOptions::new("ixmati-bench-channel-loop", "localhost", 1883),
+        10,
+    );
+    let (tx, mut rx) = mpsc::channel::<PendingCommand>(CHANNEL_CAPACITY);
 
     // Productor: empuja comandos tan rápido como puede, simulando el
     // eventloop de MQTT a máxima velocidad (sin límite de red real).
@@ -66,7 +76,14 @@ async fn main() {
                 idempotency_key: format!("idem_{seq}"),
                 ack_mode: "accepted".into(),
             };
-            if tx.send(cmd).await.is_err() {
+            let pending = PendingCommand::new(
+                cmd,
+                MqttAck::new(
+                    ack_client.clone(),
+                    Publish::new("ixmati/bench", QoS::AtLeastOnce, Vec::new()),
+                ),
+            );
+            if tx.send(pending).await.is_err() {
                 break;
             }
         }
@@ -130,7 +147,11 @@ async fn process_batch(
     batches: &Arc<AtomicUsize>,
 ) {
     let conn = Arc::clone(conn);
-    let cmds = batch.commands.clone();
+    let cmds = batch
+        .commands
+        .iter()
+        .map(|pending| pending.envelope.clone())
+        .collect::<Vec<_>>();
     let result = tokio::task::spawn_blocking(move || {
         let mut guard = conn.blocking_lock();
         ixmati_writer::write_engine::WriteEngine::process_batch(&mut guard, &cmds)

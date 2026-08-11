@@ -3,24 +3,13 @@ use ixmati_core::ProjectionRegistry;
 use rusqlite::Connection;
 use std::collections::HashMap;
 
+#[derive(Default)]
 pub struct ReconcilerReport {
     pub total_projections: usize,
     pub reprojected: usize,
     pub entities_scanned: usize,
     pub dry_run_skipped: usize,
     pub errors: Vec<String>,
-}
-
-impl Default for ReconcilerReport {
-    fn default() -> Self {
-        Self {
-            total_projections: 0,
-            reprojected: 0,
-            entities_scanned: 0,
-            dry_run_skipped: 0,
-            errors: Vec::new(),
-        }
-    }
 }
 
 pub struct ReconcilerConfig {
@@ -112,8 +101,7 @@ impl Reconciler {
                 .get(store_name)
                 .ok_or_else(|| format!("no db_path for store '{}'", store_name))?;
 
-            let conn = Connection::open(db_path)
-                .map_err(|e| format!("open {}: {}", db_path, e))?;
+            let conn = Connection::open(db_path).map_err(|e| format!("open {}: {}", db_path, e))?;
 
             let table = format!("payload_{}", store_name);
             let sql = format!("SELECT entity, key, payload FROM {}", table);
@@ -156,18 +144,14 @@ impl Reconciler {
 
             for other_store in proj.source_stores.iter().skip(1) {
                 if let Some(other_data) = store_data.get(other_store) {
-                    let lookup_key = event_key_from_value(
-                        &payload,
-                        &proj.target_key,
-                        key,
-                    );
+                    let lookup_key = event_key_from_value(payload, &proj.target_key, key);
                     if let Some(other_payload) = other_data.get(&lookup_key) {
                         projection_payload.insert(other_store.clone(), other_payload.clone());
                     }
                 }
             }
 
-            let projection_key = event_key_from_value(&payload, &proj.target_key, key);
+            let projection_key = event_key_from_value(payload, &proj.target_key, key);
             let merged = serde_json::Value::Object(projection_payload);
             let merged_bytes = serde_json::to_vec(&merged).unwrap_or_default();
 
@@ -197,12 +181,9 @@ impl Reconciler {
             let db_path = config
                 .store_paths
                 .get(&field_def.source_store)
-                .ok_or_else(|| {
-                    format!("no db_path for store '{}'", field_def.source_store)
-                })?;
+                .ok_or_else(|| format!("no db_path for store '{}'", field_def.source_store))?;
 
-            let conn = Connection::open(db_path)
-                .map_err(|e| format!("open {}: {}", db_path, e))?;
+            let conn = Connection::open(db_path).map_err(|e| format!("open {}: {}", db_path, e))?;
 
             let table = format!("payload_{}", field_def.source_store);
             let sql = format!(

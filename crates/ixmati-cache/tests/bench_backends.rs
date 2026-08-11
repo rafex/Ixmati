@@ -5,15 +5,14 @@
 //   # Para FlashDB:
 //   cargo test -p ixmati-cache --test bench_backends --features ixmati-cache/flashdb,ixmati-cache/flashdb -- --nocapture
 
-use ixmati_cache::{CacheBackend, NoOpBackend, SqliteCacheBackend, RedbCacheBackend};
 #[cfg(feature = "flashdb")]
 use ixmati_cache::FlashDb;
+use ixmati_cache::{CacheBackend, NoOpBackend, RedbCacheBackend, SqliteCacheBackend};
 
 use std::time::Instant;
-use std::path::PathBuf;
 
 fn tmp_path(name: &str) -> String {
-    let mut p = PathBuf::from(std::env::temp_dir());
+    let mut p = std::env::temp_dir();
     p.push(format!("ixmati-bench-{}", name));
     let _ = std::fs::remove_file(&p);
     let _ = std::fs::remove_dir_all(&p);
@@ -97,12 +96,24 @@ fn dir_size(path: &str) -> u64 {
 fn print_result(r: &BenchResult) {
     println!("\n=== {} ===", r.name);
     println!("  Init:         {} ms", r.init_ms);
-    println!("  SET 1000:     {} ms  ({:.0} writes/s)", r.set_1000_ms, 1000.0 / (r.set_1000_ms as f64 / 1000.0));
-    println!("  GET 1000:     {} ms  ({:.0} reads/s)", r.get_1000_ms, 1000.0 / (r.get_1000_ms as f64 / 1000.0));
+    println!(
+        "  SET 1000:     {} ms  ({:.0} writes/s)",
+        r.set_1000_ms,
+        1000.0 / (r.set_1000_ms as f64 / 1000.0)
+    );
+    println!(
+        "  GET 1000:     {} ms  ({:.0} reads/s)",
+        r.get_1000_ms,
+        1000.0 / (r.get_1000_ms as f64 / 1000.0)
+    );
     println!("  GET p50:      {} µs", r.get_p50_us);
     println!("  GET p99:      {} µs", r.get_p99_us);
     println!("  DEL 500:      {} ms", r.del_500_ms);
-    println!("  Size on disk: {} bytes ({:.1} KB)", r.size_bytes, r.size_bytes as f64 / 1024.0);
+    println!(
+        "  Size on disk: {} bytes ({:.1} KB)",
+        r.size_bytes,
+        r.size_bytes as f64 / 1024.0
+    );
 }
 
 #[test]

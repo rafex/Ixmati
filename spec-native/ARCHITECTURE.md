@@ -67,7 +67,10 @@ Litestream replica el WAL de cada store a destinos remotos. El sistema es tolera
 1. El backend envía un comando a la API (`POST /write` o gRPC `Write`).
 2. La API valida el envelope (store obligatorio, `idempotency_key`, `version`, `ack_mode`).
 3. La API publica el comando en `ixmati/cmd/<store>/<entity>/<id>` (Mosquitto, QoS 1).
-4. Si `ack_mode=accepted`: la API devuelve ack inmediato con `write_id`. Fin del flujo para el backend.
+4. `ack_mode=accepted` se conserva como alias de compatibilidad, pero la API
+   sólo devuelve `200` después de que `_idempotency` confirme el commit
+   SQLite. Si aún no puede confirmarlo devuelve `202 PENDING` con la
+   `idempotency_key`; en multi-store la consulta usa `SQLITE_PATHS`.
 5. Si `ack_mode=committed`: la API espera la confirmación en el topic de ack.
 6. El writer del store consume el comando, lo acumula en un batch.
 7. Al cumplirse `MAX_BATCH_SIZE` o `MAX_BATCH_INTERVAL_MS`, ejecuta `BEGIN IMMEDIATE`:

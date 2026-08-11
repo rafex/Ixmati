@@ -7,8 +7,8 @@
 //! "publicador" compite por el lock de escritura en paralelo.
 
 use ixmati_core::WriteEnvelope;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 const DURATION_SECS: u64 = 10;
@@ -75,7 +75,9 @@ async fn bench_writer_alone() {
                     }
                 })
                 .collect();
-            if let Ok(result) = ixmati_writer::write_engine::WriteEngine::process_batch(&mut conn, &cmds) {
+            if let Ok(result) =
+                ixmati_writer::write_engine::WriteEngine::process_batch(&mut conn, &cmds)
+            {
                 committed_clone.fetch_add(result.committed, Ordering::Relaxed);
             }
             batches_clone.fetch_add(1, Ordering::Relaxed);
@@ -122,10 +124,7 @@ async fn bench_writer_with_contending_publisher() {
         while Instant::now() < deadline {
             std::thread::sleep(Duration::from_millis(200));
             if let Ok(conn) = ixmati_writer::db::open_with_pragmas(&path_pub) {
-                let _ = conn.execute(
-                    "INSERT INTO dummy_outbox (marked) VALUES (1)",
-                    [],
-                );
+                let _ = conn.execute("INSERT INTO dummy_outbox (marked) VALUES (1)", []);
                 publisher_writes_clone.fetch_add(1, Ordering::Relaxed);
             }
         }
@@ -154,7 +153,9 @@ async fn bench_writer_with_contending_publisher() {
                     }
                 })
                 .collect();
-            if let Ok(result) = ixmati_writer::write_engine::WriteEngine::process_batch(&mut conn, &cmds) {
+            if let Ok(result) =
+                ixmati_writer::write_engine::WriteEngine::process_batch(&mut conn, &cmds)
+            {
                 committed_clone.fetch_add(result.committed, Ordering::Relaxed);
             }
             batches_clone.fetch_add(1, Ordering::Relaxed);

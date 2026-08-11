@@ -130,9 +130,7 @@ impl CacheBackend for FlashDb {
             )
         };
 
-        let result = unsafe {
-            ffi::fdb_kv_set_blob(self.kvdb, c_key.as_ptr(), blob_ptr)
-        };
+        let result = unsafe { ffi::fdb_kv_set_blob(self.kvdb, c_key.as_ptr(), blob_ptr) };
         if result != ffi::fdb_err_t_FDB_NO_ERR {
             tracing::error!(key = %std::str::from_utf8(unsafe { std::ffi::CStr::from_ptr(c_key.as_ptr()) }.to_bytes()).unwrap_or("?"), len = value.len(), err = result, "FlashDB set_blob failed");
         }

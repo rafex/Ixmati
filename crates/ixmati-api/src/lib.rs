@@ -11,6 +11,7 @@ pub mod throttle;
 
 use axum::Router;
 use ixmati_cache::CacheBackend;
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -19,6 +20,7 @@ pub struct ApiConfig {
     pub port: u16,
     pub mqtt_broker: String,
     pub db_path: Option<String>,
+    pub db_paths: HashMap<String, String>,
     pub cache_dir: Option<String>,
 }
 
@@ -29,6 +31,7 @@ impl Default for ApiConfig {
             port: 8080,
             mqtt_broker: "tcp://localhost:1883".into(),
             db_path: None,
+            db_paths: HashMap::new(),
             cache_dir: None,
         }
     }
@@ -100,13 +103,17 @@ pub async fn serve(config: ApiConfig) -> std::io::Result<()> {
         (None, None)
     };
 
-    let cache_socket: Option<Arc<crate::cache_client::CacheClient>> = if cache_read_mode == "socket" {
+    let cache_socket: Option<Arc<crate::cache_client::CacheClient>> = if cache_read_mode == "socket"
+    {
         let socket_path = std::env::var("CACHE_SOCKET_PATH")
             .unwrap_or_else(|_| "/var/run/ixmati/cache.sock".into());
         let mut client = None;
         for _ in 0..30 {
             match crate::cache_client::CacheClient::connect(&socket_path).await {
-                Ok(c) => { client = Some(Arc::new(c)); break; }
+                Ok(c) => {
+                    client = Some(Arc::new(c));
+                    break;
+                }
                 Err(_) => tokio::time::sleep(std::time::Duration::from_millis(200)).await,
             }
         }
@@ -150,6 +157,8 @@ pub async fn serve(config: ApiConfig) -> std::io::Result<()> {
             cm,
             Arc::new(tokio::sync::Mutex::new(proxy_client_for_with_db)),
         );
+    } else if !config.db_paths.is_empty() {
+        state = state.with_db_paths(config.db_paths.clone());
     }
 
     let auth_config = crate::auth::AuthConfig::new(
@@ -165,7 +174,11 @@ pub async fn serve(config: ApiConfig) -> std::io::Result<()> {
             .collect(),
     );
 
-    self_monitor::spawn(config.db_path.clone(), state.outbox_backlog());
+    self_monitor::spawn(
+        config.db_path.clone(),
+        config.db_paths.clone(),
+        state.outbox_backlog(),
+    );
 
     let app = Router::new().merge(rest::routes(state, auth_config));
 

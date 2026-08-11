@@ -129,7 +129,7 @@ test_idempotency() {
         if ! curl -sS -f -X POST "${API_URL}/write" \
             -H "Authorization: ApiKey ${API_KEY}" \
             -H "Content-Type: application/json" \
-            -d "{\"op\":\"upsert\",\"store\":\"default\",\"entity\":\"test\",\"key\":\"idempotent\",\"version\":1,\"ts\":\"2026-01-01T00:00:00Z\",\"idempotency_key\":\"${idem_key}\",\"ack_mode\":\"accepted\",\"payload\":{\"iteration\":${i}}}" >/dev/null 2>&1; then
+            -d "{\"op\":\"upsert\",\"store\":\"default\",\"entity\":\"test\",\"key\":\"idempotent\",\"version\":1,\"ts\":\"2026-01-01T00:00:00Z\",\"idempotency_key\":\"${idem_key}\",\"ack_mode\":\"committed\",\"payload\":{\"iteration\":${i}}}" >/dev/null 2>&1; then
             failures=$((failures + 1))
         fi
     done
@@ -168,7 +168,7 @@ load_worker() {
         status=$(curl -sS --max-time 5 -o /dev/null -w '%{http_code}' -X POST "${API_URL}/write" \
             -H "Authorization: ApiKey ${API_KEY}" \
             -H "Content-Type: application/json" \
-            -d "{\"op\":\"upsert\",\"store\":\"default\",\"entity\":\"load\",\"key\":\"k${worker_id}-${seq}\",\"version\":1,\"ts\":\"2026-01-01T00:00:00Z\",\"idempotency_key\":\"load-${worker_id}-${seq}\",\"ack_mode\":\"accepted\",\"payload\":{\"seq\":${seq}}}" 2>/dev/null || echo "000")
+            -d "{\"op\":\"upsert\",\"store\":\"default\",\"entity\":\"load\",\"key\":\"k${worker_id}-${seq}\",\"version\":1,\"ts\":\"2026-01-01T00:00:00Z\",\"idempotency_key\":\"load-${worker_id}-${seq}\",\"ack_mode\":\"committed\",\"payload\":{\"seq\":${seq}}}" 2>/dev/null || echo "000")
         req_end=$(date +%s%N)
         latency_ms=$(( (req_end - req_start) / 1000000 ))
 

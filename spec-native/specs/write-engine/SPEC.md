@@ -73,7 +73,9 @@ Los backends envían comandos de escritura sin preocuparse por concurrencia, blo
 - Proyectores idempotentes que actualizan read models en FlashDB desde eventos.
 - Proyecciones opt-in declaradas en config (patrón R y M con regla de decisión explícita).
 - Cache-aside (`c:*`) coexistente con proyecciones (`p:*`) en FlashDB.
-- Dos modos de confirmación: `ack=accepted` (async) y `ack=committed` (sync, acotado a 1 store).
+- `ack=accepted` se mantiene como alias compatible de `ack=committed`; ambos
+  esperan confirmación durable. Un `200` implica commit SQLite y un timeout
+  produce `202 PENDING`.
 - Endpoint `GET /writes/{store}/{idempotency_key}`.
 - Reconciler offline: reproyección fan-in sobre N stores.
 - Litestream por store hacia ≥2 destinos con RPO < 5s y RTO < 60s.
@@ -96,7 +98,9 @@ Los backends envían comandos de escritura sin preocuparse por concurrencia, blo
 - **RF-3**: el writer soporta operaciones `upsert`, `delete`, y `patch`.
 - **RF-4**: el writer rechaza comandos duplicados (`idempotency_key` ya procesada en ese store) con `DUPLICATE`.
 - **RF-5**: el writer rechaza comandos con versión obsoleta (`version <= stored_version`) con `VERSION_CONFLICT`.
-- **RF-6**: el modo `ack=accepted` devuelve ack inmediato al publicar el comando en Mosquitto.
+- **RF-6**: el modo `ack=accepted` devuelve `200` sólo después de que el
+  writer confirma el commit SQLite; si aún no puede confirmarlo devuelve
+  `202 PENDING` con estado consultable.
 - **RF-7**: el modo `ack=committed` devuelve ack solo tras commit exitoso en SQLite del store correspondiente.
 - **RF-8**: existe un endpoint `GET /writes/{store}/{idempotency_key}` que devuelve el estado de un comando async.
 - **RF-9**: las lecturas por `store/entity/key` se sirven desde cache-aside (`c:<store>:<entity>:<key>` en FlashDB). Si hay miss, se consulta SQLite del store y se repuebla la cache.
@@ -134,7 +138,9 @@ Los backends envían comandos de escritura sin preocuparse por concurrencia, blo
 - **CA-3 — Orden preservado**: 2 backends escribiendo sobre el mismo `(store, entity, id)` con versiones 1,2,3 → versión final correcta sin regresiones.
 - **CA-4 — Idempotencia de comandos**: mismo `idempotency_key` 3 veces → 1 aplicación, 2 `DUPLICATE`.
 - **CA-5 — Rechazo de versión obsoleta**: `version=3` sobre registro con `version=5` → `VERSION_CONFLICT`.
-- **CA-6 — Modo async**: comando `ack_mode=accepted` → ack < 50ms p99, estado consultable.
+- **CA-6 — Compatibilidad de ack**: comando `ack_mode=accepted` se acepta como
+  alias durable; `200` sólo se entrega después del commit SQLite. Si vence la
+  espera, responde `202 PENDING` y el estado sigue siendo consultable.
 - **CA-7 — Modo sync con read-your-writes`: comando `ack_mode=committed` exitoso → lectura inmediata devuelve datos actualizados.
 - **CA-8 — Cache miss con fallback**: cache sin el registro → lectura de SQLite → cache repoblada → dato correcto.
 - **CA-9 — Invalidación de cache tras escritura**: comando aplicado → siguiente lectura por cache devuelve valor actualizado.

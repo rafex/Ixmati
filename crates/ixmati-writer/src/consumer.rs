@@ -1,5 +1,7 @@
 use ixmati_core::WriteEnvelope;
-use rumqttc::{Client, Event, MqttOptions, Packet, QoS};
+use rumqttc::{Client, Event, MqttOptions, Packet, Publish, QoS};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
 
 /// Antes: `mpsc::unbounded_channel()` de tokio entre el eventloop de MQTT y
@@ -11,20 +13,54 @@ use std::sync::mpsc;
 ///
 /// Ahora (DEC-0052): sin tokio en el proceso. El canal es
 /// `std::sync::mpsc::sync_channel` (acotado, bloqueante) y el cliente MQTT
-/// usa `manual_acks`: solo se confirma al broker (`client.ack`) lo que
-/// efectivamente entró en el canal. Si el canal está lleno, el mensaje
-/// queda sin confirmar — se redistribuye según la semántica QoS1 normal, y
-/// la backpressure recae en el propio broker (que ya tiene su límite
-/// conocido, `max_queued_messages` en `mosquitto.conf`) en vez de
-/// acumularse sin límite en RAM del writer.
+/// usa `manual_acks`. Un comando solo se confirma después de que el hilo de
+/// escritura termina con éxito su transacción SQLite; colocar un comando en
+/// este canal sigue siendo únicamente una operación en memoria.
 const DEFAULT_CHANNEL_CAPACITY: usize = 5000;
 
+/// Handle para confirmar un Publish desde el hilo que confirmó la
+/// transacción SQLite. `rumqttc::Client` es clonable y thread-safe; el
+/// `Connection` continúa siendo conducido exclusivamente por el hilo MQTT.
+#[derive(Clone)]
+pub struct MqttAck {
+    pub(crate) client: Client,
+    pub(crate) publish: Publish,
+}
+
+impl MqttAck {
+    pub fn new(client: Client, publish: Publish) -> Self {
+        Self { client, publish }
+    }
+
+    pub fn ack(&self) -> Result<(), rumqttc::ClientError> {
+        self.client.ack(&self.publish)
+    }
+}
+
+/// Comando recibido pero todavía no confirmado al broker.
+#[derive(Clone)]
+pub struct PendingCommand {
+    pub envelope: WriteEnvelope,
+    pub ack: MqttAck,
+}
+
+impl PendingCommand {
+    pub fn new(envelope: WriteEnvelope, ack: MqttAck) -> Self {
+        Self { envelope, ack }
+    }
+}
+
 pub struct MqttConsumer {
-    rx: mpsc::Receiver<WriteEnvelope>,
+    rx: mpsc::Receiver<PendingCommand>,
+    queue_depth: Arc<AtomicU64>,
 }
 
 impl MqttConsumer {
-    pub fn new(broker: &str, client_id: &str, topic: &str) -> (Self, mpsc::SyncSender<WriteEnvelope>) {
+    pub fn new(
+        broker: &str,
+        client_id: &str,
+        topic: &str,
+    ) -> (Self, mpsc::SyncSender<PendingCommand>) {
         Self::with_capacity(broker, client_id, topic, DEFAULT_CHANNEL_CAPACITY)
     }
 
@@ -38,8 +74,32 @@ impl MqttConsumer {
         client_id: &str,
         topic: &str,
         capacity: usize,
-    ) -> (Self, mpsc::SyncSender<WriteEnvelope>) {
+    ) -> (Self, mpsc::SyncSender<PendingCommand>) {
+        Self::with_capacity_impl(broker, client_id, topic, capacity, None)
+    }
+
+    pub fn with_capacity_for_store(
+        broker: &str,
+        client_id: &str,
+        topic: &str,
+        capacity: usize,
+        store: &str,
+    ) -> (Self, mpsc::SyncSender<PendingCommand>) {
+        Self::with_capacity_impl(broker, client_id, topic, capacity, Some(store.to_string()))
+    }
+
+    fn with_capacity_impl(
+        broker: &str,
+        client_id: &str,
+        topic: &str,
+        capacity: usize,
+        store_label: Option<String>,
+    ) -> (Self, mpsc::SyncSender<PendingCommand>) {
         let (tx, rx) = mpsc::sync_channel(capacity);
+        let queue_depth = Arc::new(AtomicU64::new(0));
+        let queue_depth_thread = Arc::clone(&queue_depth);
+        let store_label_thread = store_label.clone();
+        record_queue_depth(0, store_label.as_deref());
 
         let (host, port) = ixmati_core::mqtt::parse_mqtt_broker(broker);
         let mut mqtt_options = MqttOptions::new(client_id, &host, port);
@@ -71,47 +131,50 @@ impl MqttConsumer {
                     match notification {
                         Ok(Event::Incoming(Packet::Publish(publish))) => {
                             match serde_json::from_slice::<WriteEnvelope>(&publish.payload) {
-                                Ok(envelope) => match tx_clone.try_send(envelope) {
-                                    Ok(()) => {
-                                        // DEC-0055/DEC-0056 P1: `client.ack()`
-                                        // es bloqueante (`flume::Sender::
-                                        // send()` sobre el canal interno de
-                                        // rumqttc, compartido con este mismo
-                                        // hilo, que también debe drenarlo vía
-                                        // `connection.iter()`) — bajo presión
-                                        // sostenida eso puede contender consigo
-                                        // mismo y dejar la sesión atascada
-                                        // (confirmado con evidencia real en
-                                        // DEC-0056: el atasco reapareció tras
-                                        // el fix de sesión persistente).
-                                        // `try_ack()` nunca bloquea; si el
-                                        // canal interno está lleno, el mensaje
-                                        // ya está a salvo en nuestro propio
-                                        // canal acotado — el broker lo
-                                        // reentrega más tarde (QoS1 + dedup
-                                        // por idempotencia lo hacen inocuo).
-                                        if let Err(e) = client.try_ack(&publish) {
-                                            tracing::warn!(error = %e, "failed to ack MQTT publish");
-                                            crate::metrics::MQTT_ACK_FAILURES.add(1, &[]);
+                                Ok(envelope) => {
+                                    let pending = PendingCommand {
+                                        envelope,
+                                        ack: MqttAck {
+                                            client: client.clone(),
+                                            publish: publish.clone(),
+                                        },
+                                    };
+                                    queue_depth_thread.fetch_add(1, Ordering::Relaxed);
+                                    record_queue_depth(
+                                        queue_depth_thread.load(Ordering::Relaxed),
+                                        store_label_thread.as_deref(),
+                                    );
+                                    match tx_clone.try_send(pending) {
+                                        Ok(()) => {
+                                            crate::metrics::MQTT_COMMANDS_ENQUEUED.add(1, &[]);
+                                        }
+                                        Err(mpsc::TrySendError::Full(_)) => {
+                                            queue_depth_thread.fetch_sub(1, Ordering::Relaxed);
+                                            record_queue_depth(
+                                                queue_depth_thread.load(Ordering::Relaxed),
+                                                store_label_thread.as_deref(),
+                                            );
+                                            // El comando sigue sin ACK y permanece
+                                            // pendiente en el broker. No hay
+                                            // pérdida si el proceso cae.
+                                            crate::metrics::MQTT_COMMANDS_DEFERRED.add(1, &[]);
+                                            tracing::warn!(
+                                                capacity,
+                                                "consumer channel full, deferring ack (backpressure)"
+                                            );
+                                        }
+                                        Err(mpsc::TrySendError::Disconnected(_)) => {
+                                            queue_depth_thread.fetch_sub(1, Ordering::Relaxed);
+                                            record_queue_depth(
+                                                queue_depth_thread.load(Ordering::Relaxed),
+                                                store_label_thread.as_deref(),
+                                            );
+                                            tracing::error!(
+                                                "consumer channel closed, dropping message"
+                                            );
                                         }
                                     }
-                                    Err(mpsc::TrySendError::Full(_)) => {
-                                        // No se acked a propósito: el mensaje
-                                        // queda pendiente en el broker (QoS1)
-                                        // y se redistribuye. La backpressure
-                                        // real vive acá, no como memoria sin
-                                        // límite.
-                                        tracing::warn!(
-                                            capacity,
-                                            "consumer channel full, deferring ack (backpressure)"
-                                        );
-                                    }
-                                    Err(mpsc::TrySendError::Disconnected(_)) => {
-                                        tracing::error!(
-                                            "consumer channel closed, dropping message"
-                                        );
-                                    }
-                                },
+                                }
                                 Err(e) => {
                                     tracing::warn!(
                                         error = %e,
@@ -144,12 +207,34 @@ impl MqttConsumer {
             })
             .expect("failed to spawn MQTT consumer thread");
 
-        let consumer = Self { rx };
+        let consumer = Self { rx, queue_depth };
         (consumer, tx)
     }
 
-    pub fn receiver(&mut self) -> &mut mpsc::Receiver<WriteEnvelope> {
-        &mut self.rx
+    pub fn recv_timeout(
+        &mut self,
+        timeout: std::time::Duration,
+    ) -> Result<PendingCommand, mpsc::RecvTimeoutError> {
+        let result = self.rx.recv_timeout(timeout);
+        if result.is_ok() {
+            self.queue_depth.fetch_sub(1, Ordering::Relaxed);
+        }
+        result
+    }
+
+    pub fn queue_depth(&self) -> u64 {
+        self.queue_depth.load(Ordering::Relaxed)
+    }
+}
+
+fn record_queue_depth(depth: u64, store: Option<&str>) {
+    if let Some(store) = store {
+        crate::metrics::CONSUMER_QUEUE_DEPTH.record(
+            depth,
+            &[opentelemetry::KeyValue::new("store", store.to_string())],
+        );
+    } else {
+        crate::metrics::CONSUMER_QUEUE_DEPTH.record(depth, &[]);
     }
 }
 
@@ -177,30 +262,47 @@ mod tests {
     // primitiva de la que depende toda la lógica de backpressure.
     #[test]
     fn try_send_succeeds_under_capacity_and_fails_when_full() {
-        let (tx, rx) = mpsc::sync_channel::<WriteEnvelope>(1);
+        let (tx, rx) = mpsc::sync_channel::<PendingCommand>(1);
 
-        assert!(tx.try_send(make_envelope("a")).is_ok());
+        let make_pending = |key: &str| PendingCommand {
+            envelope: make_envelope(key),
+            ack: test_ack(),
+        };
 
-        match tx.try_send(make_envelope("b")) {
+        assert!(tx.try_send(make_pending("a")).is_ok());
+
+        match tx.try_send(make_pending("b")) {
             Err(mpsc::TrySendError::Full(_)) => {}
-            other => panic!("expected Full, got {other:?}"),
+            _ => panic!("expected Full"),
         }
 
         let received = rx.recv().expect("channel should yield the first item");
-        assert_eq!(received.key, "a");
+        assert_eq!(received.envelope.key, "a");
 
         // Con espacio liberado, un try_send posterior debe volver a entrar.
-        assert!(tx.try_send(make_envelope("c")).is_ok());
+        assert!(tx.try_send(make_pending("c")).is_ok());
     }
 
     #[test]
     fn try_send_fails_closed_when_receiver_dropped() {
-        let (tx, rx) = mpsc::sync_channel::<WriteEnvelope>(1);
+        let (tx, rx) = mpsc::sync_channel::<PendingCommand>(1);
         drop(rx);
 
-        match tx.try_send(make_envelope("a")) {
+        match tx.try_send(PendingCommand {
+            envelope: make_envelope("a"),
+            ack: test_ack(),
+        }) {
             Err(mpsc::TrySendError::Disconnected(_)) => {}
-            other => panic!("expected Disconnected, got {other:?}"),
+            _ => panic!("expected Disconnected"),
+        }
+    }
+
+    fn test_ack() -> MqttAck {
+        let (client, _connection) =
+            Client::new(MqttOptions::new("ixmati-test", "localhost", 1883), 10);
+        MqttAck {
+            client,
+            publish: Publish::new("ixmati/test", QoS::AtLeastOnce, Vec::new()),
         }
     }
 }

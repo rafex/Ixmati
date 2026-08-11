@@ -317,7 +317,7 @@ def show_final_message() -> None:
     print('      -H "Content-Type: application/json" \\')
     print('      -d \'{"op":"upsert","store":"default","entity":"test","key":"k1","version":1,')
     print('           "ts":"2026-01-01T00:00:00Z","idempotency_key":"$(uuidgen)",')
-    print('           "ack_mode":"accepted","payload":{"hello":"world"}}\'')
+    print('           "ack_mode":"committed","payload":{"hello":"world"}}\'')
     print("")
     print("  Logs:")
     print("    journalctl -u ixmati-api -f")

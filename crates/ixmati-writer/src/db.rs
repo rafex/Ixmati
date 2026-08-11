@@ -47,10 +47,8 @@ mod tests {
 
     #[test]
     fn open_with_pragmas_sets_busy_timeout() {
-        let path = std::env::temp_dir().join(format!(
-            "ixmati-db-pragma-test-{}.db",
-            uuid::Uuid::new_v4()
-        ));
+        let path =
+            std::env::temp_dir().join(format!("ixmati-db-pragma-test-{}.db", uuid::Uuid::new_v4()));
         let path_str = path.to_str().unwrap();
 
         let conn = open_with_pragmas(path_str).unwrap();

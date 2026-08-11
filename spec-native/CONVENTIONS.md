@@ -104,7 +104,7 @@ ixmati/health/api                       ← heartbeat de API
 | `version` | u64 | Sí | Número de versión monotónico. El writer rechaza versiones menores o iguales a la almacenada en ese store. |
 | `ts` | ISO 8601 | Sí | Timestamp del origen (no del writer). Last-write-wins. |
 | `idempotency_key` | UUID v4 | Sí | Scope: `(store, key)`. El writer rechaza duplicados en el mismo store. |
-| `ack_mode` | string enum | Sí | `accepted` (async) o `committed` (sync). |
+| `ack_mode` | string enum | Sí | `accepted` (alias durable) o `committed`. |
 | `payload` | object | Sí | Datos específicos de la entidad. Schema libre. |
 
 ## Envelope de evento

@@ -1071,3 +1071,50 @@ disponibles en el tiempo de esta sesión.
 - Archivos: `helpers/wrk/staircase.sh` (nuevo, generalizado para reutilizarse — acepta host/puertos/contenedor por parámetro/env var en vez de hardcodearlos a esta sesión).
 - Consecuencias: (+) reemplaza "~36-40 commits/s" (una medida de saturación deliberada, sin sentido operativo directo) por datos de latencia real bajo tasas de entrada controladas — mucho más útil para fijar SLOs. (+) confirma que el rate-limiter actual (40/s) opera en una zona con buen `p50` pero ya con algo de cola visible en `p90`/`p99` — no hay margen enorme antes de que la cola empiece a notarse. (+) descubre honestamente una limitación de la propia metodología de prueba (concurrencia fija de `wrk`) en vez de reportar 150/200 como si fueran mediciones válidas del sistema. (-) no se encontró el punto de quiebre real (crecimiento de cola sin límite) — queda abierto, requiere una corrida con mayor concurrencia o una herramienta con control de tasa. (-) la causa de la degradación de `p90`/`p99` entre 60-100/s sin crecimiento de las colas medidas no se investigó a fondo — candidato anotado (contención de `StatusQuery::query` bajo polling concurrente) pero no confirmado.
 - Reemplaza: none (cierra P1.5 del plan de priorización de DEC-0055 dentro del rango válido probado; dejar constancia explícita de que 150/200 no son datos confiables en vez de reportarlos sin la salvedad)
+
+### DEC-0059 — Contrato de durabilidad: ACK después de SQLite y PUBACK después del broker
+
+- Fecha: 2026-08-10
+- Estado: `accepted`
+- Relacionado con specs: `SPEC-VAL-0001`
+- Contexto: la revisión de la escalera y del atasco MQTT confirmó que había
+  dos falsos límites de éxito: el consumidor confirmaba al broker al poner el
+  comando en una cola volátil de RAM, y el publicador marcaba el outbox como
+  publicado al encolarlo en rumqttc, antes del PUBACK. Además, la API podía
+  responder `200 ACCEPTED` sin confirmación de SQLite.
+
+**Decisión**:
+
+- `ixmati-writer` conserva el token de ACK MQTT junto con cada comando y sólo
+  lo envía después de que el batch termina correctamente en SQLite. Si la
+  transacción falla o el proceso muere antes de ese punto, el mensaje no se
+  confirma y QoS1 lo reentrega; la idempotencia hace segura la repetición.
+- `EventPublisher` sólo ejecuta `mark_published_batch` para ids cuyo PUBACK
+  fue observado en el eventloop de rumqttc. Un reinicio entre PUBACK y el
+  `UPDATE` puede producir duplicación de eventos, pero no pérdida; el contrato
+  de eventos es at-least-once.
+- La API trata `ack_mode=accepted` como alias compatible de `committed` y sólo
+  devuelve `200 OK` cuando `_idempotency` confirma el commit. Si no puede
+  confirmarlo dentro del timeout devuelve `202 PENDING`; sin `SQLITE_PATH`
+  rechaza la escritura porque no puede prometer el contrato.
+- La sincronización de cache queda deliberadamente después del ACK MQTT y es
+  best-effort: SQLite es la fuente durable y el cache es reconstruible. Las
+  fallas de cache se cuentan y registran, pero no convierten una escritura
+  durable en una pérdida.
+
+**Consecuencias**: (+) el significado de éxito es verificable y resistente a
+  caída del writer/API en las ventanas críticas; (+) las redeliveries quedan
+  cubiertas por la idempotencia existente; (+) las métricas de cola ya tienen
+  call sites reales y la escalera no transforma una métrica ausente en cero;
+  (-) puede aumentar la latencia observada y dejar `202` bajo presión; (-) el
+  outbox es at-least-once y puede duplicar eventos después de un crash entre
+  PUBACK y su marca SQLite; (-) el punto real de saturación aún requiere una
+  corrida con un generador rate-controlled como wrk2/vegeta.
+- Reemplaza: la semántica optimista documentada implícitamente por
+  `ack_mode=accepted` y la marca de outbox basada sólo en enqueue local.
+
+La revisión posterior detectó además que un único `SQLITE_PATH` no alcanza
+para confirmar escrituras multi-store. El API ahora acepta `SQLITE_PATHS` con
+el mapa explícito `store=path` y el compose multi-store monta cada base; sin
+ese mapa una escritura a un store sin ruta se rechaza en vez de responder un
+éxito no verificable.

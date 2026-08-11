@@ -1,11 +1,11 @@
 +++
 [session]
-state = "idle"
-agent = "claude-code"
-initiative = "native-installer-hardening"
-task = "done"
-intent = "Cerrar iniciativa: instalador nativo funcionalmente completo, validado en Debian real"
-last_updated = "2026-08-09T16:47:39Z"
+state = "waiting_handoff"
+agent = "codex"
+initiative = "validation-durability-hardening"
+task = "TASK-VAL-0027..0029"
+intent = "Endurecer durabilidad de ACKs, outbox y contrato HTTP; dejar gates verdes"
+last_updated = "2026-08-10T23:59:00Z"
 +++
 
 # Active Session
@@ -24,7 +24,30 @@ Iniciativa cerrada. El próximo agente puede:
 
 ## Context for next agent
 
-Iniciativa native-installer-hardening COMPLETADA.
+La iniciativa native-installer-hardening anterior está COMPLETADA.
+
+## Current handoff — validation-durability-hardening
+
+Implementado y validado localmente:
+- ACK MQTT del consumidor después del commit SQLite; la cola en memoria ya no
+  es una frontera de éxito.
+- API `200` sólo después de `_idempotency`; `accepted` es alias durable y
+  `SQLITE_PATHS` permite confirmar por store en multi-store.
+- Outbox marcado sólo después de PUBACK; el contrato de eventos queda
+  explícitamente at-least-once.
+- Métricas reales de cola/ACK/cache/último commit y escalera que prefiere wrk2
+  y no convierte una serie ausente en cero.
+- `cargo test --workspace`, clippy estricto, `just validate-config`, `bash -n`
+  y `git diff --check` pasan.
+- Se corrigió el contexto de COPY del Containerfile de Litestream y se
+  actualizaron los compose para rutas SQLite single/multi-store.
+
+Pendiente para el siguiente ciclo:
+1. Ejecutar la escalera en Debian nativo con wrk2/vegeta y registrar números
+   nuevos; los resultados de DEC-0058 no deben reutilizarse para afirmar un
+   punto de quiebre.
+2. Ejecutar crash/restart durante ingestión y entre PUBACK/mark del outbox.
+3. Continuar TASK-VAL-0025: aislar el tiempo del 61.3% no explicado.
 
 Motivo: el usuario preguntó si Ixmati ya tenía un instalador "listo para usar"
 estilo PostgreSQL/MongoDB para Linux Debian. El instalador nativo existía

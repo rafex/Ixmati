@@ -50,6 +50,7 @@ services:
       - API_HOST=0.0.0.0
       - API_PORT=30000
       - IXMATI_API_KEYS=ix-default-key
+      - SQLITE_PATH=/data/default.db
       - CACHE_SOCKET_PATH=/var/run/ixmati/cache.sock
       - RUST_LOG=ixmati_api=info
     depends_on:

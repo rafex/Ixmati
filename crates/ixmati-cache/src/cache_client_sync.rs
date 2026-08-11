@@ -54,18 +54,24 @@ impl SyncCacheClient {
     }
 
     pub fn set_raw(&self, key: &str, value: &[u8]) {
+        let _ = self.set_raw_checked(key, value);
+    }
+
+    pub fn set_raw_checked(&self, key: &str, value: &[u8]) -> bool {
         let req = format!("SET {key} {}\n", value.len());
         let mut guard = self.stream.lock().unwrap();
         if guard.write_all(req.as_bytes()).is_err() {
             tracing::warn!("SyncCacheClient: SET write header failed");
-            return;
+            return false;
         }
         if guard.write_all(value).is_err() {
             tracing::warn!("SyncCacheClient: SET write value failed");
-            return;
+            return false;
         }
-        let _ = guard.write_all(b"\n");
-        Self::read_simple_response(&mut guard);
+        if guard.write_all(b"\n").is_err() {
+            return false;
+        }
+        Self::read_simple_response(&mut guard)
     }
 
     pub fn set_projection(&self, name: &str, key: &str, value: &[u8]) {
@@ -77,12 +83,16 @@ impl SyncCacheClient {
     }
 
     pub fn del_raw(&self, key: &str) {
+        let _ = self.del_raw_checked(key);
+    }
+
+    pub fn del_raw_checked(&self, key: &str) -> bool {
         let req = format!("DEL {key}\n");
         let mut guard = self.stream.lock().unwrap();
         if guard.write_all(req.as_bytes()).is_err() {
-            return;
+            return false;
         }
-        Self::read_simple_response(&mut guard);
+        Self::read_simple_response(&mut guard)
     }
 
     pub fn delete_by_prefix(&self, prefix: &str) {
@@ -122,21 +132,21 @@ impl SyncCacheClient {
             }
         }
 
-        if let Some(len_str) = header.trim().strip_prefix("HIT ") {
-            if let Ok(len) = len_str.trim().parse::<usize>() {
-                let mut payload = vec![0u8; len];
-                if reader.read_exact(&mut payload).is_ok() {
-                    let mut trail = [0u8; 1];
-                    let _ = reader.read_exact(&mut trail);
-                    return Some(payload);
-                }
+        if let Some(len_str) = header.trim().strip_prefix("HIT ")
+            && let Ok(len) = len_str.trim().parse::<usize>()
+        {
+            let mut payload = vec![0u8; len];
+            if reader.read_exact(&mut payload).is_ok() {
+                let mut trail = [0u8; 1];
+                let _ = reader.read_exact(&mut trail);
+                return Some(payload);
             }
         }
 
         None
     }
 
-    fn read_simple_response(guard: &mut UnixStream) {
+    fn read_simple_response(guard: &mut UnixStream) -> bool {
         let mut reader = BufReader::new(&mut *guard);
         let mut line = String::new();
         match reader.read_line(&mut line) {
@@ -144,10 +154,14 @@ impl SyncCacheClient {
                 let resp = line.trim();
                 if resp != "OK" {
                     tracing::warn!(response = %resp, "SyncCacheClient: unexpected response");
+                    false
+                } else {
+                    true
                 }
             }
             Err(e) => {
                 tracing::warn!(error = %e, "SyncCacheClient: read response failed");
+                false
             }
         }
     }
@@ -199,9 +213,7 @@ mod tests {
                     let _ = key;
                     match &stored {
                         Some(payload) => {
-                            let _ = writer.write_all(
-                                format!("HIT {}\n", payload.len()).as_bytes(),
-                            );
+                            let _ = writer.write_all(format!("HIT {}\n", payload.len()).as_bytes());
                             let _ = writer.write_all(payload);
                             let _ = writer.write_all(b"\n");
                         }

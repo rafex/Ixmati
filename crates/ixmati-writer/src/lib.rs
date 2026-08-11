@@ -13,7 +13,9 @@ pub mod standby;
 pub mod write_engine;
 pub mod write_thread;
 
-use ixmati_core::{EventEnvelope, StoreConfig, WriteEnvelope};
+use ixmati_core::{EventEnvelope, StoreConfig};
+
+use crate::consumer::PendingCommand;
 
 pub struct Writer {
     pub store_name: String,
@@ -38,7 +40,7 @@ impl Writer {
 }
 
 pub struct Batch {
-    pub commands: Vec<WriteEnvelope>,
+    pub commands: Vec<PendingCommand>,
 }
 
 impl Batch {
@@ -56,11 +58,11 @@ impl Batch {
         self.commands.len()
     }
 
-    pub fn push(&mut self, cmd: WriteEnvelope) {
+    pub fn push(&mut self, cmd: PendingCommand) {
         self.commands.push(cmd);
     }
 
-    pub fn drain(&mut self) -> Vec<WriteEnvelope> {
+    pub fn drain(&mut self) -> Vec<PendingCommand> {
         std::mem::take(&mut self.commands)
     }
 }
@@ -108,16 +110,30 @@ mod tests {
         let mut batch = Batch::new();
         assert!(batch.is_empty());
 
-        batch.push(WriteEnvelope {
-            op: "upsert".into(),
-            store: "pedidos".into(),
-            entity: "pedido".into(),
-            key: "p1".into(),
-            version: 1,
-            ts: "2026-07-30T00:00:00Z".into(),
-            idempotency_key: "a".into(),
-            ack_mode: "committed".into(),
-            payload: serde_json::json!({"total": 100}),
+        let (client, _connection) = rumqttc::Client::new(
+            rumqttc::MqttOptions::new("ixmati-test", "localhost", 1883),
+            10,
+        );
+        batch.push(PendingCommand {
+            envelope: ixmati_core::WriteEnvelope {
+                op: "upsert".into(),
+                store: "pedidos".into(),
+                entity: "pedido".into(),
+                key: "p1".into(),
+                version: 1,
+                ts: "2026-07-30T00:00:00Z".into(),
+                idempotency_key: "a".into(),
+                ack_mode: "committed".into(),
+                payload: serde_json::json!({"total": 100}),
+            },
+            ack: crate::consumer::MqttAck {
+                client,
+                publish: rumqttc::Publish::new(
+                    "ixmati/test",
+                    rumqttc::QoS::AtLeastOnce,
+                    Vec::new(),
+                ),
+            },
         });
 
         assert_eq!(batch.len(), 1);

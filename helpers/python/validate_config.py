@@ -38,8 +38,8 @@ def validate_stores(config: dict) -> list[str]:
             errors.append(f"stores[{idx}]: name '{name}' duplicado")
         names.add(name)
 
-        if not store.get("path"):
-            errors.append(f"stores[{idx}] ({name}): falta 'path'")
+        if not store.get("db_path"):
+            errors.append(f"stores[{idx}] ({name}): falta 'db_path'")
 
     return errors
 

@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::{oneshot, Mutex};
+use tokio::sync::{Mutex, oneshot};
 use uuid::Uuid;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -15,7 +15,7 @@ struct CacheQuery {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-struct CacheResponse {
+pub(crate) struct CacheResponse {
     correlation_id: String,
     found: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -30,11 +30,7 @@ pub struct CacheProxy {
 impl CacheProxy {
     pub fn new(broker: &str) -> (Self, AsyncClient) {
         let (host, port) = ixmati_core::mqtt::parse_mqtt_broker(broker);
-        let mut opts = MqttOptions::new(
-            format!("api-cache-proxy-{}", Uuid::new_v4()),
-            &host,
-            port,
-        );
+        let mut opts = MqttOptions::new(format!("api-cache-proxy-{}", Uuid::new_v4()), &host, port);
         opts.set_keep_alive(Duration::from_secs(5));
 
         let (client, mut eventloop) = AsyncClient::new(opts, 100);
@@ -91,10 +87,7 @@ impl CacheProxy {
             }
         });
 
-        (
-            Self { pending },
-            client,
-        )
+        (Self { pending }, client)
     }
 
     pub async fn query(
@@ -108,10 +101,7 @@ impl CacheProxy {
         tracing::info!(correlation_id=%correlation_id, store=%store, entity=%entity, key=%key, "CacheProxy: query");
         let (tx, rx) = oneshot::channel();
 
-        self.pending
-            .lock()
-            .await
-            .insert(correlation_id.clone(), tx);
+        self.pending.lock().await.insert(correlation_id.clone(), tx);
 
         let query = CacheQuery {
             correlation_id: correlation_id.clone(),
@@ -144,7 +134,7 @@ impl CacheProxy {
                 tracing::info!(correlation_id=%correlation_id, "CacheProxy hit");
                 r.payload
             }
-            Ok(Ok(r)) => {
+            Ok(Ok(_r)) => {
                 tracing::debug!(correlation_id=%correlation_id, "CacheProxy miss");
                 None
             }

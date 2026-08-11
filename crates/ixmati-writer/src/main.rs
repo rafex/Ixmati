@@ -4,8 +4,8 @@ use ixmati_writer::cache_sync::CacheSync;
 use ixmati_writer::consumer::MqttConsumer;
 use ixmati_writer::event_publisher::EventPublisher;
 use ixmati_writer::write_thread::WriteHandle;
-use std::sync::mpsc::RecvTimeoutError;
 use std::sync::Arc;
+use std::sync::mpsc::RecvTimeoutError;
 
 /// DEC-0052: motor de escritura sin tokio. `fn main()` normal, sin
 /// `#[tokio::main]` — no hay ningún runtime async compartido en el
@@ -92,8 +92,13 @@ fn main() -> std::io::Result<()> {
 
     let topic = format!("ixmati/cmd/{}/#", store_name);
 
-    let (mut consumer, _tx) =
-        MqttConsumer::with_capacity(&mqtt_broker, &client_id, &topic, consumer_channel_capacity);
+    let (mut consumer, _tx) = MqttConsumer::with_capacity_for_store(
+        &mqtt_broker,
+        &client_id,
+        &topic,
+        consumer_channel_capacity,
+        &store_name,
+    );
     let mut batcher = Batcher::new(batch_size, batch_interval_ms);
 
     let publisher = Arc::new(EventPublisher::new(&mqtt_broker, &client_id, &db_path));
@@ -103,13 +108,18 @@ fn main() -> std::io::Result<()> {
         std::thread::Builder::new()
             .name("ixmati-publish-loop".into())
             .spawn(move || {
-                EventPublisher::publish_loop(publisher, store_clone, publish_interval_ms, publish_batch_limit);
+                EventPublisher::publish_loop(
+                    publisher,
+                    store_clone,
+                    publish_interval_ms,
+                    publish_batch_limit,
+                );
             })
             .expect("failed to spawn publish loop thread");
     }
 
-    let cache_socket_path = std::env::var("CACHE_SOCKET_PATH")
-        .unwrap_or_else(|_| "/var/run/ixmati/cache.sock".into());
+    let cache_socket_path =
+        std::env::var("CACHE_SOCKET_PATH").unwrap_or_else(|_| "/var/run/ixmati/cache.sock".into());
 
     let cache_client = Arc::new(SyncCacheClient::connect(&cache_socket_path).map_err(|e| {
         tracing::error!(error = %e, socket = %cache_socket_path, "failed to connect to cache-server");
@@ -130,14 +140,19 @@ fn main() -> std::io::Result<()> {
     let mut fill_started = std::time::Instant::now();
 
     loop {
-        match consumer.receiver().recv_timeout(flush_check) {
+        match consumer.recv_timeout(flush_check) {
             Ok(cmd) => {
                 tracing::debug!(
-                    store = %cmd.store,
-                    entity = %cmd.entity,
-                    key = %cmd.key,
-                    version = cmd.version,
+                    store = %cmd.envelope.store,
+                    entity = %cmd.envelope.entity,
+                    key = %cmd.envelope.key,
+                    version = cmd.envelope.version,
                     "received command"
+                );
+
+                ixmati_writer::metrics::CONSUMER_QUEUE_DEPTH.record(
+                    consumer.queue_depth(),
+                    &[opentelemetry::KeyValue::new("store", store_name.clone())],
                 );
 
                 if let Some(batch) = batcher.push(cmd) {
@@ -177,16 +192,45 @@ fn process_batch(
     cache_sync: &Arc<CacheSync>,
 ) {
     let started = std::time::Instant::now();
-    let result = write_handle.process_batch(batch.commands.clone());
+    let envelopes = batch
+        .commands
+        .iter()
+        .map(|pending| pending.envelope.clone())
+        .collect::<Vec<_>>();
+    let result = write_handle.process_batch(envelopes);
     ixmati_writer::metrics::WRITE_BATCH_DURATION.record(
         started.elapsed().as_secs_f64(),
-        &[opentelemetry::KeyValue::new("store", store_name.to_string())],
+        &[opentelemetry::KeyValue::new(
+            "store",
+            store_name.to_string(),
+        )],
     );
 
     match result {
         Ok(result) => {
+            // El commit SQLite es la frontera de durabilidad. El ACK se envía
+            // antes de tocar el cache porque el cache es una proyección
+            // reconstruible; nunca debe convertirse en una causa de pérdida
+            // o de reentrega indefinida de comandos ya persistidos.
+            for pending in &batch.commands {
+                match pending.ack.ack() {
+                    Ok(()) => ixmati_writer::metrics::MQTT_COMMANDS_ACKED.add(1, &[]),
+                    Err(e) => {
+                        ixmati_writer::metrics::MQTT_ACK_FAILURES.add(1, &[]);
+                        tracing::warn!(error = %e, "failed to ack committed MQTT command")
+                    }
+                }
+            }
+            ixmati_writer::metrics::LAST_BATCH_COMMIT_UNIX_SECONDS.record(
+                chrono::Utc::now().timestamp(),
+                &[opentelemetry::KeyValue::new(
+                    "store",
+                    store_name.to_string(),
+                )],
+            );
+
             let cache_sync_started = std::time::Instant::now();
-            cache_sync.sync_batch(
+            let cache_errors = cache_sync.sync_batch(
                 &result
                     .events
                     .iter()
@@ -203,9 +247,21 @@ fn process_batch(
                     })
                     .collect::<Vec<_>>(),
             );
+            if cache_errors > 0 {
+                ixmati_writer::metrics::CACHE_SYNC_ERRORS.add(
+                    cache_errors as u64,
+                    &[opentelemetry::KeyValue::new(
+                        "store",
+                        store_name.to_string(),
+                    )],
+                );
+            }
             ixmati_writer::metrics::CACHE_SYNC_DURATION.record(
                 cache_sync_started.elapsed().as_secs_f64(),
-                &[opentelemetry::KeyValue::new("store", store_name.to_string())],
+                &[opentelemetry::KeyValue::new(
+                    "store",
+                    store_name.to_string(),
+                )],
             );
 
             tracing::info!(

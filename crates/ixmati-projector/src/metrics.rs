@@ -55,8 +55,8 @@ pub fn record_lag(occurred_at: &str) {
     let Ok(occurred) = chrono::DateTime::parse_from_rfc3339(occurred_at) else {
         return;
     };
-    let lag_secs = (chrono::Utc::now() - occurred.with_timezone(&chrono::Utc))
-        .num_milliseconds() as f64
+    let lag_secs = (chrono::Utc::now() - occurred.with_timezone(&chrono::Utc)).num_milliseconds()
+        as f64
         / 1000.0;
     if lag_secs >= 0.0 {
         PROJECTION_LAG.record(lag_secs, &[]);

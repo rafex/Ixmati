@@ -139,8 +139,7 @@ async fn process_command(
         writer.write_all(b"OK\n").await?;
     } else if let Some(prefix) = line.strip_prefix("DEL_PREFIX ") {
         let prefix = prefix.trim().to_string();
-        let _ =
-            tokio::task::spawn_blocking(move || cache.delete_by_prefix("cache", &prefix)).await;
+        let _ = tokio::task::spawn_blocking(move || cache.delete_by_prefix("cache", &prefix)).await;
         writer.write_all(b"OK\n").await?;
     } else if line.trim() == "FLUSH" {
         let _ = tokio::task::spawn_blocking(move || cache.flush("cache")).await;

@@ -65,6 +65,41 @@ pub static MQTT_ACK_FAILURES: LazyLock<Counter<u64>> = LazyLock::new(|| {
         .build()
 });
 
+pub static MQTT_COMMANDS_ENQUEUED: LazyLock<Counter<u64>> = LazyLock::new(|| {
+    METER
+        .u64_counter("mqtt_commands_enqueued_total")
+        .with_description("Valid MQTT commands accepted into the bounded writer queue")
+        .build()
+});
+
+pub static MQTT_COMMANDS_DEFERRED: LazyLock<Counter<u64>> = LazyLock::new(|| {
+    METER
+        .u64_counter("mqtt_commands_deferred_total")
+        .with_description("Valid MQTT commands deferred because the writer queue was full")
+        .build()
+});
+
+pub static MQTT_COMMANDS_ACKED: LazyLock<Counter<u64>> = LazyLock::new(|| {
+    METER
+        .u64_counter("mqtt_commands_acked_total")
+        .with_description("MQTT commands acknowledged after a successful SQLite commit")
+        .build()
+});
+
+pub static CACHE_SYNC_ERRORS: LazyLock<Counter<u64>> = LazyLock::new(|| {
+    METER
+        .u64_counter("cache_sync_errors_total")
+        .with_description("Cache synchronization operations that failed after SQLite commit")
+        .build()
+});
+
+pub static LAST_BATCH_COMMIT_UNIX_SECONDS: LazyLock<Gauge<i64>> = LazyLock::new(|| {
+    METER
+        .i64_gauge("last_batch_commit_unix_seconds")
+        .with_description("Unix timestamp of the last successfully committed SQLite batch")
+        .build()
+});
+
 pub static CACHE_SYNC_DURATION: LazyLock<Histogram<f64>> = LazyLock::new(|| {
     METER
         .f64_histogram("cache_sync_duration_seconds")

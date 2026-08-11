@@ -13,8 +13,8 @@ async fn main() -> std::io::Result<()> {
 
     let cache_dir = std::env::var("CACHE_DIR").unwrap_or_else(|_| "/var/lib/ixmati/cache".into());
     let backend = std::env::var("CACHE_BACKEND").unwrap_or_else(|_| "redb".into());
-    let socket_path = std::env::var("CACHE_SOCKET_PATH")
-        .unwrap_or_else(|_| "/var/run/ixmati/cache.sock".into());
+    let socket_path =
+        std::env::var("CACHE_SOCKET_PATH").unwrap_or_else(|_| "/var/run/ixmati/cache.sock".into());
 
     tracing::info!(dir = %cache_dir, backend = %backend, socket = %socket_path, "ixmati-cache-server starting");
 

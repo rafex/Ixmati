@@ -24,7 +24,7 @@ Ambos procesos abren el mismo archivo `cache.db` en WAL. Sin conflictos.
 ## Write + Read
 
 ```
-POST /write → {"status":"ACCEPTED"}
+POST /write → {"status":"APPLIED"} (HTTP 200, después del commit SQLite)
 GET  /read  → {"source":"cache","found":true}      # CACHE HIT
 ```
 

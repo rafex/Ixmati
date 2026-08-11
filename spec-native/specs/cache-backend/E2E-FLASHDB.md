@@ -24,7 +24,7 @@ Ambos procesos inicializan FlashDB sin SIGFPE. El fix de `sec_size=4096` funcion
 ## Write + Read
 
 ```
-POST /write → {"status":"ACCEPTED"}
+POST /write → {"status":"APPLIED"} (HTTP 200, después del commit SQLite)
 GET  /read  → {"source":"sqlite"}
 ```
 
@@ -59,6 +59,6 @@ su file mode en Linux no funciona. Criterio de salida DEC-0009 activado.
 ```
 {"timestamp":"...","level":"INFO","fields":{"message":"FlashDB initialized for API (read-only)",...}}
 {"timestamp":"...","level":"INFO","fields":{"message":"FlashDB initialized for writer",...}}
-{"status":"ACCEPTED","store":"default","idempotency_key":"fdb2-1","message":"published"}
+{"status":"APPLIED","store":"default","idempotency_key":"fdb2-1","message":"committed"}
 {"entity":"test","found":true,"key":"fdb2","payload":{"data":"flashdb-works"},"source":"sqlite","store":"default"}
 ```

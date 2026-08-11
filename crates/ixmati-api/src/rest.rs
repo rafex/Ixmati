@@ -13,6 +13,7 @@ use ixmati_core::{AckResponse, WriteEnvelope};
 use opentelemetry::KeyValue;
 use rumqttc::{AsyncClient, MqttOptions, QoS};
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use uuid::Uuid;
@@ -37,6 +38,7 @@ impl Clone for CacheReadMode {
 pub struct AppState {
     mqtt_broker: String,
     db_path: Option<String>,
+    db_paths: Arc<HashMap<String, String>>,
     mqtt_client: Arc<Mutex<Option<AsyncClient>>>,
     throttle: Arc<Mutex<crate::throttle::Throttle>>,
     cache: Arc<dyn CacheBackend>,
@@ -124,6 +126,7 @@ impl AppState {
         Self {
             mqtt_broker: broker.to_string(),
             db_path: None,
+            db_paths: Arc::new(HashMap::new()),
             mqtt_client: Arc::new(Mutex::new(Some(client))),
             throttle: Arc::new(Mutex::new(crate::throttle::Throttle::new(
                 max_writes,
@@ -172,6 +175,7 @@ impl AppState {
         Self {
             mqtt_broker: broker.to_string(),
             db_path: Some(db_path.to_string()),
+            db_paths: Arc::new(HashMap::new()),
             mqtt_client: Arc::new(Mutex::new(Some(client))),
             throttle: Arc::new(Mutex::new(crate::throttle::Throttle::new(
                 max_writes,
@@ -192,6 +196,18 @@ impl AppState {
 
     pub fn outbox_backlog(&self) -> Arc<crate::backpressure::OutboxBacklog> {
         Arc::clone(&self.outbox_backlog)
+    }
+
+    pub fn with_db_paths(mut self, paths: HashMap<String, String>) -> Self {
+        self.db_paths = Arc::new(paths);
+        self
+    }
+
+    pub fn db_path_for(&self, store: &str) -> Option<&str> {
+        self.db_paths
+            .get(store)
+            .map(String::as_str)
+            .or(self.db_path.as_deref())
     }
 }
 
@@ -281,8 +297,9 @@ async fn write_handler(
 ) -> Result<(StatusCode, Json<AckResponse>), (StatusCode, Json<ixmati_core::Error>)> {
     let started = std::time::Instant::now();
     let store = envelope.store.clone();
-    let entity = envelope.entity.clone();
-    let wants_commit_confirmation = envelope.ack_mode == "committed";
+    // La API no expone un ACK optimista: todo 200 significa que el writer ya
+    // confirmó el commit SQLite. `accepted` se conserva como alias de entrada
+    // por compatibilidad, pero tiene la misma semántica durable.
 
     let record_error = |error_type: &str| {
         crate::metrics::WRITE_ERRORS.add(
@@ -292,10 +309,13 @@ async fn write_handler(
                 KeyValue::new("error_type", error_type.to_string()),
             ],
         );
-        crate::metrics::WRITE_LATENCY.record(started.elapsed().as_secs_f64(), &crate::metrics::kv_store(&store));
+        crate::metrics::WRITE_LATENCY.record(
+            started.elapsed().as_secs_f64(),
+            &crate::metrics::kv_store(&store),
+        );
     };
 
-    if wants_commit_confirmation && state.db_path.is_none() {
+    if state.db_path_for(&envelope.store).is_none() {
         record_error("committed_unsupported");
         return Err((
             StatusCode::BAD_REQUEST,
@@ -345,7 +365,8 @@ async fn write_handler(
             ));
         }
         let depth = throttle.depth(&envelope.store);
-        crate::metrics::QUEUE_DEPTH.record(depth as i64, &crate::metrics::kv_store(&envelope.store));
+        crate::metrics::QUEUE_DEPTH
+            .record(depth as i64, &crate::metrics::kv_store(&envelope.store));
     }
 
     let idempotency_key = if envelope.idempotency_key.is_empty() {
@@ -356,6 +377,7 @@ async fn write_handler(
 
     let cmd = WriteEnvelope {
         idempotency_key: idempotency_key.clone(),
+        ack_mode: "committed".into(),
         ..envelope
     };
 
@@ -396,29 +418,34 @@ async fn write_handler(
         })?;
     drop(guard);
 
-    crate::metrics::WRITE_REQUESTS.add(
-        1,
-        &[
-            KeyValue::new("store", cmd.store.clone()),
-            KeyValue::new("entity", entity),
-            KeyValue::new("status", "success"),
-        ],
-    );
-    crate::metrics::WRITE_LATENCY.record(started.elapsed().as_secs_f64(), &crate::metrics::kv_store(&cmd.store));
+    // db_path ya se validó Some() al principio del handler.
+    let db_path = state
+        .db_path_for(&cmd.store)
+        .expect("checked at handler entry")
+        .to_string();
+    let deadline = std::time::Instant::now() + write_committed_timeout();
 
-    if wants_commit_confirmation {
-        // db_path ya se validó Some() al principio del handler.
-        let db_path = state.db_path.clone().expect("checked at handler entry");
-        let deadline = std::time::Instant::now() + write_committed_timeout();
-
-        return Ok(
-            match wait_for_commit(&db_path, &cmd.store, &idempotency_key, deadline).await {
-                CommitOutcome::Applied {
-                    entity,
-                    key,
-                    version,
-                    applied_at,
-                } => (
+    return Ok(
+        match wait_for_commit(&db_path, &cmd.store, &idempotency_key, deadline).await {
+            CommitOutcome::Applied {
+                entity,
+                key,
+                version,
+                applied_at,
+            } => {
+                crate::metrics::WRITE_REQUESTS.add(
+                    1,
+                    &[
+                        KeyValue::new("store", cmd.store.clone()),
+                        KeyValue::new("entity", cmd.entity.clone()),
+                        KeyValue::new("status", "committed"),
+                    ],
+                );
+                crate::metrics::WRITE_LATENCY.record(
+                    started.elapsed().as_secs_f64(),
+                    &crate::metrics::kv_store(&cmd.store),
+                );
+                (
                     StatusCode::OK,
                     Json(AckResponse {
                         status: "APPLIED".into(),
@@ -428,42 +455,44 @@ async fn write_handler(
                             "committed: {entity}/{key} v{version} at {applied_at}"
                         )),
                     }),
-                ),
-                CommitOutcome::TimedOut => {
-                    tracing::warn!(
-                        store = %cmd.store,
-                        idempotency_key = %idempotency_key,
-                        timeout_ms = write_committed_timeout().as_millis(),
-                        "ack_mode=committed: timeout esperando confirmación de commit"
-                    );
-                    (
-                        StatusCode::ACCEPTED,
-                        Json(AckResponse {
-                            status: "PENDING".into(),
-                            store: cmd.store.clone(),
-                            idempotency_key: idempotency_key.clone(),
-                            message: Some(format!(
-                                "aún no comprometido tras {}ms; consultar GET /writes/{}/{}",
-                                write_committed_timeout().as_millis(),
-                                cmd.store,
-                                idempotency_key
-                            )),
-                        }),
-                    )
-                }
-            },
-        );
-    }
-
-    Ok((
-        StatusCode::OK,
-        Json(AckResponse {
-            status: "ACCEPTED".into(),
-            store: cmd.store.clone(),
-            idempotency_key,
-            message: Some("published".into()),
-        }),
-    ))
+                )
+            }
+            CommitOutcome::TimedOut => {
+                tracing::warn!(
+                    store = %cmd.store,
+                    idempotency_key = %idempotency_key,
+                    timeout_ms = write_committed_timeout().as_millis(),
+                    "ack_mode=committed: timeout esperando confirmación de commit"
+                );
+                crate::metrics::WRITE_REQUESTS.add(
+                    1,
+                    &[
+                        KeyValue::new("store", cmd.store.clone()),
+                        KeyValue::new("entity", cmd.entity.clone()),
+                        KeyValue::new("status", "pending"),
+                    ],
+                );
+                crate::metrics::WRITE_LATENCY.record(
+                    started.elapsed().as_secs_f64(),
+                    &crate::metrics::kv_store(&cmd.store),
+                );
+                (
+                    StatusCode::ACCEPTED,
+                    Json(AckResponse {
+                        status: "PENDING".into(),
+                        store: cmd.store.clone(),
+                        idempotency_key: idempotency_key.clone(),
+                        message: Some(format!(
+                            "aún no comprometido tras {}ms; consultar GET /writes/{}/{}",
+                            write_committed_timeout().as_millis(),
+                            cmd.store,
+                            idempotency_key
+                        )),
+                    }),
+                )
+            }
+        },
+    );
 }
 
 #[derive(Deserialize)]
@@ -499,22 +528,22 @@ async fn read_handler(
             CacheReadMode::Direct => state.cache.get("projections", &pkey, ""),
         };
 
-        if let Some(data) = cached {
-            if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&data) {
-                crate::metrics::CACHE_HITS.add(
-                    1,
-                    &[
-                        opentelemetry::KeyValue::new("store", proj.to_string()),
-                        opentelemetry::KeyValue::new("namespace", "projection"),
-                    ],
-                );
-                return Ok(Json(serde_json::json!({
-                    "found": true,
-                    "projection": proj,
-                    "key": key,
-                    "payload": value,
-                })));
-            }
+        if let Some(data) = cached
+            && let Ok(value) = serde_json::from_slice::<serde_json::Value>(&data)
+        {
+            crate::metrics::CACHE_HITS.add(
+                1,
+                &[
+                    opentelemetry::KeyValue::new("store", proj.to_string()),
+                    opentelemetry::KeyValue::new("namespace", "projection"),
+                ],
+            );
+            return Ok(Json(serde_json::json!({
+                "found": true,
+                "projection": proj,
+                "key": key,
+                "payload": value,
+            })));
         }
 
         crate::metrics::CACHE_MISSES.add(
@@ -556,24 +585,24 @@ async fn read_handler(
         CacheReadMode::Socket(client) => client.get(&store, &entity, &key).await,
     };
 
-    if let Some(cached) = cached {
-        if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&cached) {
-            crate::metrics::CACHE_HITS.add(
-                1,
-                &[
-                    opentelemetry::KeyValue::new("store", store.clone()),
-                    opentelemetry::KeyValue::new("namespace", "cache"),
-                ],
-            );
-            return Ok(Json(serde_json::json!({
-                "found": true,
-                "store": store,
-                "entity": entity,
-                "key": key,
-                "source": "cache",
-                "payload": value,
-            })));
-        }
+    if let Some(cached) = cached
+        && let Ok(value) = serde_json::from_slice::<serde_json::Value>(&cached)
+    {
+        crate::metrics::CACHE_HITS.add(
+            1,
+            &[
+                opentelemetry::KeyValue::new("store", store.clone()),
+                opentelemetry::KeyValue::new("namespace", "cache"),
+            ],
+        );
+        return Ok(Json(serde_json::json!({
+            "found": true,
+            "store": store,
+            "entity": entity,
+            "key": key,
+            "source": "cache",
+            "payload": value,
+        })));
     }
 
     crate::metrics::CACHE_MISSES.add(
@@ -584,7 +613,7 @@ async fn read_handler(
         ],
     );
 
-    let db_path = state.db_path.as_ref().ok_or_else(|| {
+    let db_path = state.db_path_for(&store).ok_or_else(|| {
         (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(ixmati_core::Error::Internal {
@@ -616,8 +645,7 @@ async fn read_handler(
             )
         })?;
 
-        let result: rusqlite::Result<Vec<u8>> =
-            stmt.query_row((&entity, &key), |row| row.get(0));
+        let result: rusqlite::Result<Vec<u8>> = stmt.query_row((&entity, &key), |row| row.get(0));
 
         drop(stmt);
 
@@ -653,8 +681,7 @@ async fn read_handler(
         CacheReadMode::Mqtt(_) => {}
     }
 
-    let value: serde_json::Value =
-        serde_json::from_slice(&payload_bytes).unwrap_or_default();
+    let value: serde_json::Value = serde_json::from_slice(&payload_bytes).unwrap_or_default();
     Ok(Json(serde_json::json!({
         "found": true,
         "store": store,
@@ -675,7 +702,7 @@ async fn write_status_handler(
     State(state): State<AppState>,
     Path(params): Path<WriteStatusParams>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ixmati_core::Error>)> {
-    let db_path = state.db_path.as_ref().ok_or_else(|| {
+    let db_path = state.db_path_for(&params.store).ok_or_else(|| {
         (
             StatusCode::SERVICE_UNAVAILABLE,
             Json(ixmati_core::Error::Internal {
@@ -723,7 +750,11 @@ async fn write_status_handler(
 async fn health_handler(State(state): State<AppState>) -> Json<serde_json::Value> {
     let mut checker = crate::health::HealthChecker::new();
 
-    if let Some(ref db) = state.db_path {
+    if let Some(db) = state
+        .db_path
+        .as_deref()
+        .or_else(|| state.db_paths.values().next().map(String::as_str))
+    {
         checker = checker.with_db(db);
     }
 
@@ -745,7 +776,11 @@ mod tests {
 
     fn tmp_db_path(name: &str) -> String {
         let mut p = std::env::temp_dir();
-        p.push(format!("ixmati-rest-test-{}-{}.db", name, uuid::Uuid::new_v4()));
+        p.push(format!(
+            "ixmati-rest-test-{}-{}.db",
+            name,
+            uuid::Uuid::new_v4()
+        ));
         p.to_str().unwrap().to_string()
     }
 
@@ -780,7 +815,12 @@ mod tests {
 
         let deadline = std::time::Instant::now() + std::time::Duration::from_millis(500);
         match wait_for_commit(&db_path, "pedidos", "ik-1", deadline).await {
-            CommitOutcome::Applied { entity, key, version, .. } => {
+            CommitOutcome::Applied {
+                entity,
+                key,
+                version,
+                ..
+            } => {
                 assert_eq!(entity, "pedido");
                 assert_eq!(key, "p1");
                 assert_eq!(version, 1);

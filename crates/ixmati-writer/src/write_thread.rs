@@ -14,9 +14,9 @@
 
 use ixmati_core::WriteEnvelope;
 
+use crate::BatchResult;
 use crate::db;
 use crate::write_engine::WriteEngine;
-use crate::BatchResult;
 
 struct Job {
     cmds: Vec<WriteEnvelope>,
@@ -64,9 +64,14 @@ impl WriteHandle {
     pub fn process_batch(&self, cmds: Vec<WriteEnvelope>) -> rusqlite::Result<BatchResult> {
         let (reply_tx, reply_rx) = std::sync::mpsc::channel();
         self.tx
-            .send(Job { cmds, reply: reply_tx })
+            .send(Job {
+                cmds,
+                reply: reply_tx,
+            })
             .expect("write thread died");
-        reply_rx.recv().expect("write thread dropped the reply channel")
+        reply_rx
+            .recv()
+            .expect("write thread dropped the reply channel")
     }
 }
 

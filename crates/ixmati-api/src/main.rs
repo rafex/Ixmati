@@ -1,4 +1,5 @@
 use ixmati_api::ApiConfig;
+use std::collections::HashMap;
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
@@ -14,6 +15,17 @@ async fn main() -> std::io::Result<()> {
         .nth(1)
         .or_else(|| std::env::var("SQLITE_PATH").ok());
 
+    let db_paths = std::env::var("SQLITE_PATHS")
+        .ok()
+        .map(|raw| {
+            raw.split(',')
+                .filter_map(|entry| entry.split_once('='))
+                .map(|(store, path)| (store.trim().to_string(), path.trim().to_string()))
+                .filter(|(store, path)| !store.is_empty() && !path.is_empty())
+                .collect::<HashMap<_, _>>()
+        })
+        .unwrap_or_default();
+
     let cache_dir = std::env::var("CACHE_DIR").ok();
 
     let config = ApiConfig {
@@ -24,6 +36,7 @@ async fn main() -> std::io::Result<()> {
             .unwrap_or(30000),
         mqtt_broker: std::env::var("MQTT_BROKER").unwrap_or_else(|_| "tcp://localhost:1883".into()),
         db_path,
+        db_paths,
         cache_dir,
     };
 

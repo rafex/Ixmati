@@ -26,7 +26,9 @@ Namespace `c:<store>:<entity>:<key>` en FlashDB. Se llena de forma lazy en cada 
 
 ### Modos de confirmación
 
-- **`accepted`** (async): ack inmediato al recibir el comando. El backend puede consultar `GET /writes/{store}/{idempotency_key}`.
+- **`accepted`** (alias durable): se acepta por compatibilidad, pero el `200`
+  sólo llega después del commit; si no, el backend recibe `202` y puede
+  consultar `GET /writes/{store}/{idempotency_key}`.
 - **`committed`** (sync): ack solo tras commit exitoso en SQLite. Garantiza read-your-writes en ese store.
 
 ### Namespaces de FlashDB

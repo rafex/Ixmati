@@ -20,16 +20,20 @@ pub struct RedbCacheBackend {
 
 impl RedbCacheBackend {
     pub fn new(path: &str) -> Result<Self, String> {
-        let db = Database::create(path)
-            .map_err(|e| format!("Redb: create failed: {}", e))?;
+        let db = Database::create(path).map_err(|e| format!("Redb: create failed: {}", e))?;
 
-        let txn = db.begin_write().map_err(|e| format!("Redb: write txn: {}", e))?;
+        let txn = db
+            .begin_write()
+            .map_err(|e| format!("Redb: write txn: {}", e))?;
         txn.open_table(CACHE_TABLE)
             .map_err(|e| format!("Redb: open table: {}", e))?;
         txn.commit().map_err(|e| format!("Redb: commit: {}", e))?;
 
         tracing::info!(path = %path, "RedbCacheBackend initialized (read-write)");
-        Ok(Self { db, readonly: false })
+        Ok(Self {
+            db,
+            readonly: false,
+        })
     }
 
     pub fn new_readonly(path: &str) -> Result<Self, String> {
@@ -40,9 +44,7 @@ impl RedbCacheBackend {
                 }
                 Database::open(path).ok()
             })
-            .ok_or_else(|| {
-                format!("Redb: readonly open failed after retries: {}", path)
-            })?;
+            .ok_or_else(|| format!("Redb: readonly open failed after retries: {}", path))?;
 
         tracing::info!(path = %path, "RedbCacheBackend initialized (read-only)");
         Ok(Self { db, readonly: true })
@@ -62,7 +64,11 @@ impl CacheBackend for RedbCacheBackend {
         let k = Self::internal_key(ns, entity, key);
         let txn = self.db.begin_read().ok()?;
         let table = txn.open_table(CACHE_TABLE).ok()?;
-        table.get(k.as_str()).ok().flatten().map(|v| v.value().to_vec())
+        table
+            .get(k.as_str())
+            .ok()
+            .flatten()
+            .map(|v| v.value().to_vec())
     }
 
     fn set(&self, ns: &str, entity: &str, key: &str, value: &[u8]) {
@@ -157,10 +163,8 @@ impl CacheBackend for RedbCacheBackend {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
-
     fn tmp_path(name: &str) -> String {
-        let mut p = PathBuf::from(std::env::temp_dir());
+        let mut p = std::env::temp_dir();
         p.push(format!("ixmati-redb-test-{}", name));
         let _ = std::fs::remove_file(&p);
         p.to_str().unwrap().to_string()

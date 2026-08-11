@@ -67,8 +67,10 @@ impl Outbox {
         let sql = format!(
             "UPDATE _outbox SET published_at = datetime('now') WHERE id IN ({placeholders})"
         );
-        let params: Vec<&dyn rusqlite::ToSql> =
-            outbox_ids.iter().map(|id| id as &dyn rusqlite::ToSql).collect();
+        let params: Vec<&dyn rusqlite::ToSql> = outbox_ids
+            .iter()
+            .map(|id| id as &dyn rusqlite::ToSql)
+            .collect();
         conn.execute(&sql, params.as_slice())?;
         Ok(())
     }

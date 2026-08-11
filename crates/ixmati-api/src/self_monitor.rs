@@ -11,11 +11,20 @@ const CLK_TCK: u64 = 100;
 
 static LAST_UTIME_TICKS: AtomicU64 = AtomicU64::new(0);
 
-pub fn spawn(db_path: Option<String>, outbox_backlog: std::sync::Arc<crate::backpressure::OutboxBacklog>) {
+pub fn spawn(
+    db_path: Option<String>,
+    db_paths: std::collections::HashMap<String, String>,
+    outbox_backlog: std::sync::Arc<crate::backpressure::OutboxBacklog>,
+) {
+    let paths = if let Some(path) = db_path {
+        vec![path]
+    } else {
+        db_paths.into_values().collect()
+    };
     tokio::spawn(async move {
         loop {
             collect_process_metrics();
-            if let Some(ref path) = db_path {
+            for path in &paths {
                 collect_outbox_metrics(path, &outbox_backlog);
             }
             tokio::time::sleep(std::time::Duration::from_secs(5)).await;
@@ -27,7 +36,11 @@ fn collect_process_metrics() {
     if let Ok(status) = std::fs::read_to_string("/proc/self/status") {
         for line in status.lines() {
             if let Some(rest) = line.strip_prefix("VmRSS:") {
-                if let Some(kb) = rest.trim().split_whitespace().next().and_then(|v| v.parse::<u64>().ok()) {
+                if let Some(kb) = rest
+                    .split_whitespace()
+                    .next()
+                    .and_then(|v| v.parse::<u64>().ok())
+                {
                     crate::metrics::PROCESS_MEMORY_RSS.record(kb * 1024, &[]);
                 }
                 break;

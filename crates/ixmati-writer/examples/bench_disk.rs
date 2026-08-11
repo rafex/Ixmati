@@ -25,7 +25,11 @@ fn main() {
 
 fn tmp_db_path(name: &str) -> String {
     let mut p = std::env::temp_dir();
-    p.push(format!("ixmati-bench-disk-{}-{}.db", name, uuid::Uuid::new_v4()));
+    p.push(format!(
+        "ixmati-bench-disk-{}-{}.db",
+        name,
+        uuid::Uuid::new_v4()
+    ));
     p.to_str().unwrap().to_string()
 }
 

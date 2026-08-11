@@ -35,18 +35,26 @@ impl CacheSync {
         self.client.set_raw(&cache_key, &value);
     }
 
-    pub fn sync_batch(&self, commands: &[WriteEnvelope]) {
+    pub fn sync_batch(&self, commands: &[WriteEnvelope]) -> usize {
         tracing::info!(count = commands.len(), "CacheSync::sync_batch");
+        let mut errors = 0;
         for cmd in commands {
             let cache_key = SyncCacheClient::cache_key(&cmd.store, &cmd.entity, &cmd.key);
             match cmd.op.as_str() {
-                "delete" => self.client.del_raw(&cache_key),
+                "delete" => {
+                    if !self.client.del_raw_checked(&cache_key) {
+                        errors += 1;
+                    }
+                }
                 _ => {
                     let value = serde_json::to_vec(&cmd.payload).unwrap_or_default();
-                    self.client.set_raw(&cache_key, &value);
+                    if !self.client.set_raw_checked(&cache_key, &value) {
+                        errors += 1;
+                    }
                 }
             }
         }
+        errors
     }
 
     pub fn delete_by_store(&self, store: &str) {

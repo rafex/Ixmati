@@ -39,7 +39,8 @@ impl CacheClient {
     }
 
     pub async fn set(&self, store: &str, entity: &str, key: &str, value: &[u8]) {
-        self.set_raw(&Self::cache_key(store, entity, key), value).await;
+        self.set_raw(&Self::cache_key(store, entity, key), value)
+            .await;
     }
 
     pub async fn set_raw(&self, key: &str, value: &[u8]) {
@@ -54,7 +55,7 @@ impl CacheClient {
             return;
         }
         let _ = guard.write_all(b"\n").await;
-        self.read_simple_response(&mut *guard).await;
+        self.read_simple_response(&mut guard).await;
     }
 
     pub async fn set_projection(&self, name: &str, key: &str, value: &[u8]) {
@@ -71,7 +72,7 @@ impl CacheClient {
         if guard.write_all(req.as_bytes()).await.is_err() {
             return;
         }
-        self.read_simple_response(&mut *guard).await;
+        self.read_simple_response(&mut guard).await;
     }
 
     pub async fn delete_by_prefix(&self, prefix: &str) {
@@ -80,7 +81,7 @@ impl CacheClient {
         if guard.write_all(req.as_bytes()).await.is_err() {
             return;
         }
-        self.read_simple_response(&mut *guard).await;
+        self.read_simple_response(&mut guard).await;
     }
 
     pub async fn flush(&self) {
@@ -88,7 +89,7 @@ impl CacheClient {
         if guard.write_all(b"FLUSH\n").await.is_err() {
             return;
         }
-        self.read_simple_response(&mut *guard).await;
+        self.read_simple_response(&mut guard).await;
     }
 
     async fn send_command_with_response(&self, req: &str) -> Option<Vec<u8>> {
@@ -124,14 +125,14 @@ impl CacheClient {
             _ => return None,
         }
 
-        if let Some(len_str) = header.trim().strip_prefix("HIT ") {
-            if let Ok(len) = len_str.trim().parse::<usize>() {
-                let mut payload = vec![0u8; len];
-                if reader.read_exact(&mut payload).await.is_ok() {
-                    let mut trail = vec![0u8; 1];
-                    let _ = reader.read_exact(&mut trail).await;
-                    return Some(payload);
-                }
+        if let Some(len_str) = header.trim().strip_prefix("HIT ")
+            && let Ok(len) = len_str.trim().parse::<usize>()
+        {
+            let mut payload = vec![0u8; len];
+            if reader.read_exact(&mut payload).await.is_ok() {
+                let mut trail = vec![0u8; 1];
+                let _ = reader.read_exact(&mut trail).await;
+                return Some(payload);
             }
         }
 

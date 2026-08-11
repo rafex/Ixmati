@@ -8,8 +8,8 @@ pub struct SqliteCacheBackend {
 
 impl SqliteCacheBackend {
     pub fn new(db_path: &str) -> Result<Self, String> {
-        let conn = Connection::open(db_path)
-            .map_err(|e| format!("SqliteCache: open failed: {}", e))?;
+        let conn =
+            Connection::open(db_path).map_err(|e| format!("SqliteCache: open failed: {}", e))?;
 
         conn.execute_batch(
             "PRAGMA journal_mode=WAL;
@@ -20,11 +20,14 @@ impl SqliteCacheBackend {
                  value BLOB NOT NULL,
                  created_at TEXT NOT NULL DEFAULT (datetime('now'))
              );
-             CREATE INDEX IF NOT EXISTS idx_cache_key ON _cache(key);"
-        ).map_err(|e| format!("SqliteCache: schema failed: {}", e))?;
+             CREATE INDEX IF NOT EXISTS idx_cache_key ON _cache(key);",
+        )
+        .map_err(|e| format!("SqliteCache: schema failed: {}", e))?;
 
         tracing::info!(db = %db_path, "SqliteCacheBackend initialized");
-        Ok(Self { conn: Mutex::new(conn) })
+        Ok(Self {
+            conn: Mutex::new(conn),
+        })
     }
 
     fn internal_key(ns: &str, entity: &str, key: &str) -> String {
@@ -44,7 +47,8 @@ impl CacheBackend for SqliteCacheBackend {
             "SELECT value FROM _cache WHERE key = ?1",
             params![k],
             |row| row.get(0),
-        ).ok()
+        )
+        .ok()
     }
 
     fn set(&self, ns: &str, entity: &str, key: &str, value: &[u8]) {

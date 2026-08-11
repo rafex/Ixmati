@@ -53,10 +53,10 @@ async fn main() {
 
     let mqtt_broker =
         std::env::var("MQTT_BROKER").unwrap_or_else(|_| "tcp://localhost:1883".into());
-    let socket_path = std::env::var("CACHE_SOCKET_PATH")
-        .unwrap_or_else(|_| "/var/run/ixmati/cache.sock".into());
-    let projections_path =
-        std::env::var("IXMATI_PROJECTIONS_PATH").unwrap_or_else(|_| "config/projections.toml".into());
+    let socket_path =
+        std::env::var("CACHE_SOCKET_PATH").unwrap_or_else(|_| "/var/run/ixmati/cache.sock".into());
+    let projections_path = std::env::var("IXMATI_PROJECTIONS_PATH")
+        .unwrap_or_else(|_| "config/projections.toml".into());
     let dedup_capacity: usize = std::env::var("IXMATI_DEDUP_CAPACITY")
         .unwrap_or_else(|_| "100000".into())
         .parse()
@@ -98,7 +98,8 @@ async fn main() {
 
     tracing::info!("subscribed to ixmati/evt/#");
 
-    let seen: Arc<Mutex<HashSet<String>>> = Arc::new(Mutex::new(HashSet::with_capacity(dedup_capacity)));
+    let seen: Arc<Mutex<HashSet<String>>> =
+        Arc::new(Mutex::new(HashSet::with_capacity(dedup_capacity)));
     let mut processed: u64 = 0;
     let mut skipped: u64 = 0;
 
@@ -121,7 +122,7 @@ async fn main() {
                     }
                     if !seen_guard.insert(event.event_id.clone()) {
                         skipped += 1;
-                        if skipped % 1000 == 0 {
+                        if skipped.is_multiple_of(1000) {
                             tracing::debug!(skipped, "duplicate events skipped");
                         }
                         continue;
@@ -133,7 +134,7 @@ async fn main() {
                 ixmati_projector::metrics::record_lag(&event.occurred_at);
                 processed += 1;
 
-                if processed % 1000 == 0 {
+                if processed.is_multiple_of(1000) {
                     tracing::info!(
                         processed,
                         skipped,
@@ -153,10 +154,8 @@ async fn main() {
                 tracing::error!(error = %e, "MQTT eventloop error, reconnecting in 5s");
                 tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
 
-                let (new_client, new_eventloop) = AsyncClient::new(
-                    MqttOptions::new("ixmati-projector", &host, port),
-                    100,
-                );
+                let (new_client, new_eventloop) =
+                    AsyncClient::new(MqttOptions::new("ixmati-projector", &host, port), 100);
                 eventloop = new_eventloop;
                 new_client
                     .subscribe("ixmati/evt/#", QoS::AtLeastOnce)

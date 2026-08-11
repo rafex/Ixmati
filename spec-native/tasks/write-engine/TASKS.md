@@ -153,7 +153,7 @@ state = "done"
 owner = "team-core"
 dependencies = ["TASK-WRITE-0008", "TASK-WRITE-0006"]
 expected_files = ["crates/ixmati-api/src/ack.rs", "crates/ixmati-writer/src/ack.rs"]
-close_criteria = "Modo async devuelve ack inmediato; modo sync espera commit y devuelve resultado; write_id consultable por (store, idempotency_key)"
+close_criteria = "accepted y committed esperan commit durable; 200 devuelve resultado aplicado, 202 deja estado consultable por (store, idempotency_key)"
 validation = [
   "test: modo async devuelve ack en < 50ms",
   "test: modo sync devuelve ack solo tras commit en SQLite del store correcto",

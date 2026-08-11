@@ -113,7 +113,7 @@ def make_write_payload(
     entity: str = "test",
     key: Optional[str] = None,
     version: int = 1,
-    ack_mode: str = "accepted",
+    ack_mode: str = "committed",
 ) -> dict:
     return {
         "op": "upsert",

@@ -40,7 +40,7 @@ end
 request = function()
   counter = counter + 1
   local body = string.format(
-    '{"op":"upsert","store":"default","entity":"load","key":"k%d-%d-%d","version":1,"ts":"2026-01-01T00:00:00Z","idempotency_key":"wrk-%d-%d-%d","ack_mode":"accepted","payload":{"seq":%d}}',
+    '{"op":"upsert","store":"default","entity":"load","key":"k%d-%d-%d","version":1,"ts":"2026-01-01T00:00:00Z","idempotency_key":"wrk-%d-%d-%d","ack_mode":"committed","payload":{"seq":%d}}',
     run_nonce, id, counter, run_nonce, id, counter, counter
   )
   return wrk.format(nil, nil, nil, body)

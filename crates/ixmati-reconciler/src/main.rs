@@ -63,8 +63,8 @@ async fn main() {
         .json()
         .init();
 
-    let socket_path = std::env::var("CACHE_SOCKET_PATH")
-        .unwrap_or_else(|_| "/var/run/ixmati/cache.sock".into());
+    let socket_path =
+        std::env::var("CACHE_SOCKET_PATH").unwrap_or_else(|_| "/var/run/ixmati/cache.sock".into());
     let projections_path = std::env::var("IXMATI_PROJECTIONS_PATH")
         .unwrap_or_else(|_| "config/projections.toml".into());
     let stores_env = std::env::var("IXMATI_STORE_PATHS").unwrap_or_default();
@@ -85,9 +85,7 @@ async fn main() {
     );
 
     if store_paths.is_empty() {
-        tracing::error!(
-            "IXMATI_STORE_PATHS required (format: store1=/path/db1,store2=/path/db2)"
-        );
+        tracing::error!("IXMATI_STORE_PATHS required (format: store1=/path/db1,store2=/path/db2)");
         std::process::exit(1);
     }
 

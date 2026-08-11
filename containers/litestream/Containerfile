@@ -1,7 +1,7 @@
 # containers/litestream/Containerfile — sidecar de replicacion WAL
 FROM docker.io/litestream/litestream:0.3
 
-COPY litestream.yml /etc/litestream.yml
+COPY containers/litestream/litestream.yml /etc/litestream.yml
 
 USER 1000:1000
 ENTRYPOINT ["litestream"]
