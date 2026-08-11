@@ -268,6 +268,31 @@ async fn wait_for_commit(
     idempotency_key: &str,
     deadline: std::time::Instant,
 ) -> CommitOutcome {
+    let db_path = db_path.to_owned();
+    let store = store.to_owned();
+    let idempotency_key = idempotency_key.to_owned();
+
+    // StatusQuery::query abre una conexión y ejecuta I/O síncrono. Hacerlo
+    // desde el worker async bloquea la capacidad del API justo cuando cada
+    // request durable está esperando al writer. Mantener una conexión por
+    // espera evita además repetir Connection::open cada 30ms.
+    tokio::task::spawn_blocking(move || {
+        wait_for_commit_blocking(&db_path, &store, &idempotency_key, deadline)
+    })
+    .await
+    .unwrap_or(CommitOutcome::TimedOut)
+}
+
+fn wait_for_commit_blocking(
+    db_path: &str,
+    store: &str,
+    idempotency_key: &str,
+    deadline: std::time::Instant,
+) -> CommitOutcome {
+    let Ok(conn) = rusqlite::Connection::open(db_path) else {
+        return CommitOutcome::TimedOut;
+    };
+
     loop {
         if let Ok(crate::status::WriteStatus::Applied {
             entity,
@@ -275,7 +300,7 @@ async fn wait_for_commit(
             version,
             applied_at,
             ..
-        }) = crate::status::StatusQuery::query(db_path, store, idempotency_key)
+        }) = crate::status::StatusQuery::query_connection(&conn, store, idempotency_key)
         {
             return CommitOutcome::Applied {
                 entity,
@@ -287,7 +312,10 @@ async fn wait_for_commit(
         if std::time::Instant::now() >= deadline {
             return CommitOutcome::TimedOut;
         }
-        tokio::time::sleep(WRITE_COMMITTED_POLL_INTERVAL).await;
+        let Some(remaining) = deadline.checked_duration_since(std::time::Instant::now()) else {
+            return CommitOutcome::TimedOut;
+        };
+        std::thread::sleep(remaining.min(WRITE_COMMITTED_POLL_INTERVAL));
     }
 }
 

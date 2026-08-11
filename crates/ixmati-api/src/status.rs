@@ -10,6 +10,14 @@ impl StatusQuery {
     ) -> rusqlite::Result<WriteStatus> {
         let conn = Connection::open(db_path)?;
 
+        Self::query_connection(&conn, store, idempotency_key)
+    }
+
+    pub fn query_connection(
+        conn: &Connection,
+        store: &str,
+        idempotency_key: &str,
+    ) -> rusqlite::Result<WriteStatus> {
         let mut stmt = conn.prepare(
             "SELECT idempotency_key, store, entity, key, version, applied_at
              FROM _idempotency

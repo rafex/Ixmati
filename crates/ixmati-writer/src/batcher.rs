@@ -23,7 +23,11 @@ impl Batcher {
     pub fn push(&mut self, cmd: PendingCommand) -> Option<Batch> {
         self.current.push(cmd);
 
-        if self.current.len() >= self.batch_size {
+        // El loop del writer puede recibir comandos continuamente y, en ese
+        // caso, `recv_timeout` nunca devuelve Timeout. El intervalo es un
+        // límite de latencia del batch, no sólo un motivo para reaccionar
+        // cuando el canal queda momentáneamente vacío.
+        if self.current.len() >= self.batch_size || self.should_flush() {
             return Some(self.flush());
         }
 
@@ -81,6 +85,20 @@ mod tests {
         assert!(batcher.push(make_pending("b")).is_none());
         let flushed = batcher.push(make_pending("c")).unwrap();
         assert_eq!(flushed.len(), 3);
+    }
+
+    #[test]
+    fn flushes_on_interval_even_when_commands_keep_arriving() {
+        let mut batcher = Batcher::new(100, 10);
+        batcher.push(make_pending("a"));
+
+        std::thread::sleep(Duration::from_millis(15));
+        let flushed = batcher
+            .push(make_pending("b"))
+            .expect("interval must flush a non-empty batch");
+
+        assert_eq!(flushed.len(), 2);
+        assert!(batcher.is_empty());
     }
 
     #[test]
