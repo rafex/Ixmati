@@ -16,8 +16,8 @@ services:
   mosquitto:
     image: localhost/ixmati-mosquitto:local
     build:
-      context: ../..
-      dockerfile: containers/mosquitto/Containerfile
+      context: ../mosquitto
+      dockerfile: Containerfile
     ports:
       - "30200:30200"
     volumes:
