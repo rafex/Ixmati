@@ -1175,3 +1175,69 @@ generador equivalente con concurrencia suficiente; (-) la ventana PUBACK→
 `published_at` requiere inyección de fallo controlada.
 - Reemplaza: la interpretación optimista de DEC-0058 sobre 40/s y sus
   escalones altos basados en `wrk` con concurrencia fija.
+
+### DEC-0061 — Límite temporal del batcher y concurrencia productiva validada
+
+- Fecha: 2026-08-11
+- Estado: `accepted`
+- Relacionado con specs: `SPEC-VAL-0001`
+- Relacionado con tareas: `TASK-VAL-0025`, `TASK-VAL-0032`
+- SHA validado: `9d96b0b34c2cfa83b717d6cb79e3e065c35f674c`
+
+**Contexto**: DEC-0060 mostró una regresión severa a 40/s. La instrumentación
+del writer explicó el síntoma: `batch_fill_duration` promediaba ~807ms,
+mientras SQLite promediaba ~20ms y cache ~41ms. El `Batcher` sólo evaluaba
+`should_flush()` después de un `RecvTimeoutError::Timeout`; si llegaba un
+comando antes de cada timeout, el flujo continuo impedía el flush temporal y
+el batch esperaba llenarse.
+
+**Decisión**:
+
+- `Batcher::push()` vacía el batch cuando alcanza `batch_size` o cuando
+  `batch_interval` ya venció, incluso si siguen llegando comandos. El timeout
+  del canal continúa cubriendo el caso de tráfico intermitente.
+- La espera de confirmación SQLite del API se ejecuta con
+  `tokio::task::spawn_blocking` y una conexión reutilizada durante cada
+  espera. Esto evita I/O síncrono en los workers async y elimina un
+  `Connection::open` por cada polling de 30ms. El contrato no cambia:
+  `_idempotency` sigue siendo la fuente de verdad y `202` sigue significando
+  `PENDING`.
+
+**Prueba de regresión**: `flushes_on_interval_even_when_commands_keep_arriving`
+  reproduce el caso que antes no vaciaba el batch. `cargo test -p ixmati-writer
+  --lib`, `cargo test -p ixmati-api --lib` y `make ci-main` pasan.
+
+**Validación Debian amd64**: se construyó el tarball desde el árbol del SHA
+  indicado, se instaló en un contenedor Debian limpio y se ejecutó el
+  generador rate-controlled con concurrencia 200/300 durante 30s por
+  escalón. Los escalones 60–120 usaron un throttle temporal de 1000/s para
+  medir capacidad; la corrida de 40/s usó el throttle de producción.
+
+| Objetivo | Throughput | p50 | p90 | p99 | HTTP 200/202/429 | Cola MQTT |
+|---:|---:|---:|---:|---:|---:|---:|
+| 40/s | 40.0/s | 79ms | 113ms | 147ms | 1165/0/35 | 0 |
+| 60/s | 60.0/s | 110ms | 147ms | 205ms | 1800/0/0 | 0 |
+| 80/s | 80.0/s | 161ms | 235ms | 281ms | 2400/0/0 | 0 |
+| 100/s | 100.0/s | 218ms | 300ms | 375ms | 3000/0/0 | 0 |
+| 120/s | 120.0/s | 128ms | 188ms | 252ms | 3600/0/0 | 0 |
+| 150/s | 147.4/s | 2032ms | 2052ms | 2125ms | 842/3580/0 | 100 |
+
+Los escalones 40–120 son capacidad productiva observada: alcanzaron la
+tasa solicitada, no tuvieron saturación del generador, no devolvieron `202`
+y la profundidad del consumidor terminó en cero. El escalón de 150/s es el
+primer punto de saturación; tuvo `client_saturated_ticks=2486`, por lo que su
+throughput exacto no es una medición pura del servidor, pero sí demuestra que
+el sistema deja de sostener la tasa y acumula cola. La prueba de 120/s se
+repitió en un contenedor limpio; una corrida previa contaminada por el
+backlog de 150/s fue descartada.
+
+**Consecuencias**: (+) el rate limiter de producción de 40/s queda con
+latencia observada muy inferior a DEC-0060; (+) se demuestra concurrencia
+productiva hasta 120/s en el hardware Debian probado; (+) el límite de
+latencia del batch queda protegido por diseño y por test; (-) 150/s no es
+sostenible y requiere backpressure/escala horizontal o más capacidad por
+store; (-) el outbox PUBACK sigue siendo at-least-once y su ventana de crash
+determinista permanece pendiente.
+- Reemplaza: la explicación abierta de DEC-0060 sobre la regresión a 40/s y
+  la hipótesis no confirmada de que la degradación provenía principalmente
+  del polling SQLite.

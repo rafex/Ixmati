@@ -3,25 +3,25 @@
 state = "waiting_handoff"
 agent = "codex"
 initiative = "validation-durability-hardening"
-task = "TASK-VAL-0030..0031"
-intent = "Validar carga rate-controlled y recuperación crash/restart en Debian; dejar main publicado"
-last_updated = "2026-08-11T05:20:00Z"
+task = "TASK-VAL-0032"
+intent = "Corregir el límite temporal del batcher y demostrar concurrencia productiva en Debian"
+last_updated = "2026-08-11T06:40:00Z"
 +++
 
 # Active Session
 
 ## Current state
 
-Validación de carga y durabilidad ejecutada en Debian amd64 contra `main`
-(`6eaa80a`). El instalador fue idempotente, los cinco servicios quedaron
-activos y `/health` respondió `OK`.
+Validación de carga y durabilidad ejecutada en Debian amd64 contra el árbol
+que produjo `9d96b0b`. El instalador fue idempotente, los cinco servicios
+quedaron activos y `/health` respondió `OK`.
 
 ## Next steps
 
-La carga y el crash test están ejecutados. El próximo agente puede:
+La concurrencia productiva está validada. El próximo agente puede:
 1. Ejecutar `just installer-test` para revalidar tras cualquier cambio en installer.py/systemd/*
-2. Investigar el 61.3% del ciclo no explicado y la degradación de `ack_mode=committed` desde 40/s (TASK-VAL-0025)
-3. Forzar de forma determinista el crash entre PUBACK y `published_at` con una inyección de fallo controlada
+2. Forzar de forma determinista el crash entre PUBACK y `published_at` con una inyección de fallo controlada
+3. Recalibrar el SLO productivo con la evidencia de DEC-0061
 4. Considerar reiniciar servicios automáticamente en upgrades de versión (ver DEC-0040, consecuencia pendiente)
 
 ## Context for next agent
@@ -45,14 +45,17 @@ Implementado y validado localmente:
   actualizaron los compose para rutas SQLite single/multi-store.
 
 Resultados del ciclo actual:
-1. La escalera rate-controlled entregó exactamente la tasa objetivo en
-   20/40/60/80/100/s; 150/200 quedaron limitados por concurrencia del
-   generador y no son conclusiones de capacidad del servidor.
-2. El punto de producción de 40/s mostró p50=605ms, p99=2052ms y 48 respuestas
-   `202 PENDING`; no debe seguir describiéndose como zona saludable sin
-   investigar la regresión respecto a DEC-0058.
-3. El crash/restart validó 30/30 escrituras y 30/30 eventos sin pérdida
-   observada; la ventana PUBACK→marca permanece pendiente de prueba forzada.
+1. El defecto era el flush temporal: con tráfico continuo `recv_timeout` no
+   expiraba y el batcher esperaba llenar el batch. `push()` ahora aplica el
+   límite temporal y tiene una regresión específica.
+2. El árbol `9d96b0b` sostuvo exactamente 40/60/80/100/120 solicitudes/s en
+   Debian con `200`, sin `202` ni saturación del generador; p99 fue
+   147/205/281/375/252ms respectivamente y la cola MQTT quedó en 0.
+3. A 150/s aparecieron `202 PENDING`, p99≈2.13s y cola MQTT=100; es el primer
+   escalón de saturación y no debe presentarse como capacidad sostenible.
+4. El crash/restart anterior validó 30/30 escrituras y 30/30 eventos sin
+   pérdida observada; la ventana PUBACK→marca permanece pendiente de prueba
+   forzada.
 
 Motivo: el usuario preguntó si Ixmati ya tenía un instalador "listo para usar"
 estilo PostgreSQL/MongoDB para Linux Debian. El instalador nativo existía

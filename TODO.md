@@ -641,6 +641,12 @@ Tablero de tareas activo. Persiste entre sesiones.
       de `SIGKILL` y reinicio systemd, sin pérdida observada. El intervalo
       PUBACK→marca del outbox sigue siendo at-least-once y no se forzó de forma
       determinista en esta corrida. Ver DEC-0060.
+- [x] `TASK-VAL-0032` — Concurrencia productiva: el batcher ahora respeta
+      `BATCH_INTERVAL_MS` incluso con tráfico continuo; la espera de commit
+      SQLite del API sale del worker async. En Debian amd64, el SHA `9d96b0b`
+      sostuvo 40/60/80/100/120 solicitudes/s rate-controlled con `200` y
+      `consumer_queue_depth=0`; 150/s fue el primer escalón con `202` y cola.
+      Ver DEC-0061.
 
 ## Cancelled / Replaced
 

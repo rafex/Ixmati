@@ -72,10 +72,15 @@ Litestream replica el WAL de cada store a destinos remotos. El sistema es tolera
    SQLite. Si aún no puede confirmarlo devuelve `202 PENDING` con la
    `idempotency_key`; en multi-store la consulta usa `SQLITE_PATHS`.
 5. Si `ack_mode=committed`: la API consulta `_idempotency` hasta confirmar el
-   commit o agotar `WRITE_COMMITTED_TIMEOUT_MS`; un timeout devuelve
-   `202 PENDING` y deja la consulta disponible en `GET /writes/...`.
+   commit o agotar `WRITE_COMMITTED_TIMEOUT_MS`; esa espera se ejecuta en el
+   blocking pool y reutiliza una conexión SQLite por espera, para no bloquear
+   los workers async del API. Un timeout devuelve `202 PENDING` y deja la
+   consulta disponible en `GET /writes/...`.
 6. El writer del store consume el comando, lo acumula en un batch.
-7. Al cumplirse `MAX_BATCH_SIZE` o `MAX_BATCH_INTERVAL_MS`, ejecuta `BEGIN IMMEDIATE`:
+7. El batch se vacía al cumplirse `MAX_BATCH_SIZE` o `MAX_BATCH_INTERVAL_MS`,
+   comprobando el intervalo también cuando siguen llegando comandos; así el
+   tráfico continuo no puede esperar indefinidamente a llenar el batch.
+   Entonces ejecuta `BEGIN IMMEDIATE`:
    - Aplica el comando a la tabla de la entidad.
    - Inserta en `_idempotency`.
    - Inserta el evento en `_outbox` (misma transacción).
