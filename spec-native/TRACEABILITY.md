@@ -19,3 +19,9 @@ Vínculos entre artefactos del proyecto.
 | SPEC-CONTAINERS-0001 | spec-native/specs/containers/SPEC.md | closed | 2026-07-30 |
 | SPEC-TOOL-0001 | spec-native/specs/tooling/SPEC.md | closed | 2026-07-30 |
 | SPEC-AUTH-0001 | spec-native/specs/authentication/SPEC.md | closed | 2026-07-30 |
+
+## Validación de capacidad
+
+| Tarea | Implementación | Evidencia | Decisión |
+|---|---|---|---|
+| `TASK-VAL-0037` | `benchmarks/`, `just benchmark-db` | `spec-native/evidence/DB-COMPARISON-20260811.md` | `DEC-0063` |

@@ -260,7 +260,40 @@ atasco real, no lentitud — confirmar además que no hay líneas de
 error/panic (`journalctl -u ixmati-writer@default | grep -i "error\|panic"`)
 antes de concluir cuál es la causa.
 
-## 8. Limpieza
+## 8. Comparativa SQLite directo / Ixmati / PostgreSQL
+
+La comparación completa se ejecuta en el mismo Debian amd64 y nunca mantiene
+los motores bajo prueba activos simultáneamente:
+
+```bash
+BENCH_DURATION=30 BENCH_WARMUP=15 BENCH_REPETITIONS=3 \
+  just benchmark-db
+```
+
+`benchmarks/run_suite.sh` levanta PostgreSQL 18 desde la imagen oficial,
+prepara 10,000 usuarios y 100,000 pedidos, ejecuta lecturas puntuales,
+lecturas con relación, inserciones, actualizaciones, idempotencia y carga
+mixta. También ejecuta el camino HTTP de Ixmati y guarda cada JSON, log y
+manifiesto bajo `spec-native/evidence/raw/`.
+
+El baseline SQLite usa exactamente `WAL`, `synchronous=NORMAL` y
+`busy_timeout=5000`. El baseline PostgreSQL usa `synchronous_commit=on`.
+Las corridas `cold-first-pass` son primeras lecturas sin warmup sobre una base
+recién preparada; no pretenden vaciar la page cache del kernel. Las corridas
+`warm` tienen 15s de warmup.
+
+Una corrida sólo es válida si `client_saturated_ticks` vale cero. La tabla
+final debe separar los resultados directos de base de datos del camino
+completo de Ixmati, porque Ixmati incluye HTTP, MQTT, batching, idempotencia,
+outbox, cache y proyecciones.
+
+Las referencias oficiales de PostgreSQL se documentan por separado en la
+evidencia: [`pgbench`](https://www.postgresql.org/docs/current/pgbench.html)
+define el formato de TPS/latencia y el anuncio oficial de PostgreSQL 17
+reporta mejoras de hasta 2x en throughput de escritura bajo alta concurrencia
+([fuente](https://www.postgresql.org/about/news/postgresql-17-released-2936/)).
+
+## 9. Limpieza
 
 Siempre al terminar — un contenedor de prueba olvidado sigue corriendo en
 la máquina remota compartida, no en el Mac:

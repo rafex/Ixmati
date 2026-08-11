@@ -455,6 +455,9 @@ Tablero de tareas activo. Persiste entre sesiones.
 
 ### Próximo ciclo de beta
 
+- [ ] `TASK-VAL-0037` — Ejecutar y mantener la comparativa reproducible de
+      capacidad entre SQLite directo, Ixmati y PostgreSQL 18; separar datos
+      medidos de referencias oficiales y conservar evidencia por SHA.
 - [x] Documentación pública y release: README, guía de uso, instalación nativa,
       upgrade, backup/restore y troubleshooting reproducible. La validación
       del libro requiere instalar `mdbook` en el entorno del agente.

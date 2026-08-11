@@ -45,6 +45,22 @@ quedó pendiente y debe consultarse con `GET /writes/{store}/{idempotency_key}`.
 - Cada store tiene un writer y un archivo SQLite; sharding interno, clustering
   de Mosquitto y failover transparente siguen fuera del alcance de esta beta.
 
+## Comparativa de capacidad
+
+La suite reproducible está en [`benchmarks/`](benchmarks/). Ejecuta SQLite
+directo, PostgreSQL 18 e Ixmati en Debian con dataset, tasas y métricas
+equivalentes:
+
+```bash
+just benchmark-db
+```
+
+La evidencia queda en
+[`spec-native/evidence/DB-COMPARISON-20260811.md`](spec-native/evidence/DB-COMPARISON-20260811.md).
+Los resultados medidos se mantienen separados de las referencias oficiales
+de PostgreSQL; el ejemplo de `pgbench` publicado por PostgreSQL no es una
+promesa de capacidad para este hardware.
+
 ## Stack
 
 Rust (tokio, axum, tonic, rusqlite, rumqttc) · Mosquitto (persistence + QoS 1) · SQLite (WAL + synchronous=NORMAL) · FlashDB (cache) · Litestream (backup continuo).

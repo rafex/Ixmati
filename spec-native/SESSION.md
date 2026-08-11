@@ -3,8 +3,8 @@
 state = "waiting_handoff"
 agent = "codex"
 initiative = "validation-durability-hardening"
-task = "TASK-VAL-0036"
-intent = "Resolver la invalidación de Pattern R cuando cambia una entidad relacionada"
+task = "TASK-VAL-0037"
+intent = "Ejecutar comparativa reproducible SQLite directo, Ixmati y PostgreSQL"
 last_updated = "2026-08-11T06:40:00Z"
 +++
 
@@ -20,6 +20,11 @@ resolución de hostnames en `/health`. Pattern R no refresca automáticamente
 referencias existentes cuando cambia el store relacionado; queda como
 TASK-VAL-0036. El build/check de mdBook sigue pendiente porque `mdbook` no está
 instalado en el entorno local.
+
+La suite de comparativa de capacidad está implementada en `benchmarks/` y
+pendiente de ejecución completa en Debian. Separará SQLite directo, PostgreSQL
+18 e Ixmati, conservará tres repeticiones por escenario y distinguirá las
+referencias oficiales de PostgreSQL de los resultados medidos.
 
 ## Next steps
 

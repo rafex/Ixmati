@@ -18,6 +18,7 @@ import 'helpers/just/ci.just'
 import 'helpers/just/release.just'
 import 'helpers/just/containers.just'
 import 'helpers/just/installer.just'
+import 'helpers/just/benchmark.just'
 
 # ── top-level aliases ──
 

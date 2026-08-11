@@ -1278,3 +1278,37 @@ quedan verificadas en Debian amd64; (+) el health check refleja correctamente
 un broker con hostname; (-) Pattern R no es actualmente seguro como vista viva
 cuando cambian sus stores referenciados; (-) 1000/s no es un SLO sostenible
 porque el cliente de prueba se saturó, aunque no hubo respuestas erróneas.
+
+### DEC-0063 — Comparativa reproducible de capacidad entre motores
+
+- Fecha: 2026-08-11
+- Estado: `accepted`
+- Relacionado con tareas: `TASK-VAL-0037`
+- Evidencia: `spec-native/evidence/DB-COMPARISON-20260811.md`
+
+**Contexto**: los números anteriores medían el pipeline completo de Ixmati,
+pero no separaban el costo de la base SQLite directa ni ofrecían una línea de
+comparación con PostgreSQL bajo el mismo hardware, dataset y tasa de llegada.
+
+**Decisión**:
+
+1. La suite usa un esquema equivalente con `payload_usuarios`,
+   `payload_pedidos`, `_idempotency` y `_outbox` en SQLite y PostgreSQL.
+2. SQLite directo usa `WAL`, `synchronous=NORMAL` y `busy_timeout=5000`;
+   PostgreSQL usa `synchronous_commit=on`.
+3. Los escenarios incluyen lecturas puntuales, lecturas con relación,
+   inserciones, actualizaciones, idempotencia y carga mixta.
+4. Cada escenario usa warmup, tasa controlada, tres repeticiones, p50/p95/p99,
+   errores y detección de saturación del cliente.
+5. Las referencias oficiales de PostgreSQL se muestran en una sección
+   separada. El ejemplo de `pgbench` con 896.967 TPS y 11.013 ms es
+   ilustrativo y no se trata como capacidad de este host; la afirmación de
+   PostgreSQL 17 de hasta 2x en throughput de escritura bajo alta
+   concurrencia tampoco se mezcla con mediciones locales.
+
+**Consecuencias**: (+) la tabla permite distinguir base de datos, pipeline,
+cache, proyecciones y durabilidad; (+) el resultado queda reproducible por
+   SHA con manifiesto, configuración y JSON crudos; (-) PostgreSQL directo no
+   es equivalente al pipeline completo de Ixmati; (-) `cold-first-pass` no
+   implica vaciar la page cache del kernel; (-) Pattern R mutable permanece
+   fuera de los escenarios aceptados para producción.
