@@ -1,11 +1,11 @@
 +++
 [session]
-state = "waiting_handoff"
+state = "in_progress"
 agent = "codex"
-initiative = "validation-durability-hardening"
-task = "TASK-VAL-0037"
-intent = "Ejecutar comparativa reproducible SQLite directo, Ixmati y PostgreSQL"
-last_updated = "2026-08-11T17:11:42Z"
+initiative = "production-backlog-hardening"
+task = "TASK-VAL-0033..0036 / TASK-VAL-0025"
+intent = "Cerrar observabilidad, latencia durable, crash PUBACK, MQTT y Pattern R mutable"
+last_updated = "2026-08-11T19:00:00Z"
 +++
 
 # Active Session
@@ -21,24 +21,19 @@ referencias existentes cuando cambia el store relacionado; queda como
 TASK-VAL-0036. El build/check de mdBook sigue pendiente porque `mdbook` no está
 instalado en el entorno local.
 
-La suite de comparativa de capacidad está implementada y ejecutada en Debian
-amd64. Usó 1,000 usuarios y 10,000 pedidos comunes, tres repeticiones,
-SQLite directo, PostgreSQL 18 e Ixmati completo. La evidencia quedó en
-`spec-native/evidence/DB-COMPARISON-20260811.md` y en sus JSON/snapshots crudos.
-La interpretación de producto quedó consolidada en DEC-0064, PRODUCT.md,
-README.md y la guía de uso: lectura hasta 1,000/s; aproximadamente 40/s de
-escritura durable con el perfil productivo; p99 cercana a 2 s en
-`ack_mode=committed`; no se presenta Ixmati como motor SQL de throughput bruto.
+La suite de comparativa de capacidad permanece como baseline publicado en
+Debian amd64. Este ciclo alineó el contrato durable (`accepted` es alias de
+`committed`), agregó progreso MQTT/outbox/projector, segmentación del writer,
+un failpoint exacto para PUBACK→`published_at`, watchdog opt-in y un índice
+inverso reconstruible para Pattern R mutable.
 
 ## Next steps
 
-La lectura cacheada y la vista materializada se validaron a 100–1000/s sin
-errores en esta ejecución. El writer confirmó aproximadamente 40 escrituras
-durables/s; desde 40–60/s aparecen `429`/pendientes y no crece el commit rate.
-La suite también confirmó que `consumer_queue_depth` no aparece en `/metrics`.
-Después deben priorizarse la reducción de latencia del writer, Pattern R
-mutable, el crash determinista entre PUBACK y `published_at`, las alertas
-operativas y el atasco MQTT bajo sobrecarga extrema.
+La siguiente acción es ejecutar los gates y la matriz Debian desde el SHA
+actual: baseline 40/s, prueba controlada de crash, pérdida de progreso MQTT y
+actualizaciones/deletes/out-of-order de Pattern R con reconstrucción mediante
+reconciler. No se debe marcar el backlog como cerrado hasta guardar esa
+evidencia.
 
 ## Context for next agent
 

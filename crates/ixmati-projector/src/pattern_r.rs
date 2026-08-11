@@ -149,10 +149,9 @@ async fn refresh_references_for_secondary_event(
                     &target_key,
                 )
                 .await
+                && let Ok(value) = serde_json::from_slice::<serde_json::Value>(&data)
             {
-                if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&data) {
-                    projection_payload.insert(source_store.clone(), value);
-                }
+                projection_payload.insert(source_store.clone(), value);
             }
         }
 
