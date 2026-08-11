@@ -1410,3 +1410,76 @@ negocio distinta; (-) la deduplicación de versiones es en memoria hasta que el
 reconciler vuelva a reconstruir el estado persistente.
 - Reemplaza: la limitación documentada en DEC-0062 de Pattern R mutable sólo
   como snapshot inicial.
+
+### DEC-0066 — Evidencia inicial del supuesto atasco MQTT y del coste SQLite
+
+- Fecha: 2026-08-11
+- Estado: `accepted`
+- Relacionado con tareas: `TASK-VAL-0035`, `TASK-VAL-0025`
+- Evidencia: `spec-native/evidence/MQTT-STALL-DIAGNOSTIC-20260811.md`
+
+**Contexto**: se repitió la sobrecarga con 180,000 comandos MQTT directos y
+se capturó `strace -f` sobre el writer Debian. El broker llegó a cerca de
+100,000 mensajes almacenados, pero el writer continuó procesando y la cola
+descendió. No se reprodujo el estado histórico de proceso vivo sin progreso.
+
+**Decisión**:
+
+1. No se declara resuelto el atasco histórico ni se cambia el transporte MQTT
+   sin una reproducción específica. `TASK-VAL-0035` permanece pendiente.
+2. En la corrida inicial, `batch_ack_duration_seconds` promedió unos 45 µs por
+   batch, frente a unos 413 ms de procesamiento SQLite y 96 ms de cache. El
+   cuello observado es el camino durable SQLite bajo backlog, no el envío del
+   `PUBACK`.
+3. Se corrige la trazabilidad de DEC-0057: su prueba de `try_ack()` correspondía
+   al diseño previo. Desde `5cccb91`, el camino durable conserva el ACK junto
+   al comando y llama a `Client::ack()` después de SQLite; por tanto la prueba
+   P1 histórica no cubre el camino actual.
+4. El probe incorpora captura opcional de syscalls (`STRACE=1`) y conserva la
+   evidencia para la siguiente corrida con un generador externo no saturado.
+
+**Consecuencias**: (+) evita atribuir a MQTT un tiempo que las métricas no
+   muestran; (+) identifica una regresión/lag documental importante entre
+   DEC-0057 y el diseño durable vigente; (+) la recuperación por watchdog
+   sigue siendo una defensa válida para pérdida de progreso; (-) la causa del
+   bloqueo histórico del broker permanece sin confirmar; (-) la latencia de
+   SQLite bajo backlog sigue siendo un riesgo de capacidad y requiere una
+   investigación separada antes de subir el límite productivo.
+- Reemplaza: no reemplaza DEC-0057; delimita su alcance experimental. La
+  resolución posterior del cuello SQLite está registrada en DEC-0067.
+
+### DEC-0067 — Índice faltante en `_idempotency` era la causa del atasco aparente
+
+- Fecha: 2026-08-11
+- Estado: `accepted`
+- Relacionado con tareas: `TASK-VAL-0035`, `TASK-VAL-0025`
+- Evidencia: `spec-native/evidence/MQTT-STALL-DIAGNOSTIC-20260811.md`
+
+**Contexto**: `IdempotencyTracker::current_version()` consultaba
+`MAX(version)` filtrando por `(store, entity, key)`, pero `_idempotency` sólo
+tenía la clave primaria `(store, idempotency_key)`. Cada comando podía recorrer
+las filas del store completo. Bajo backlog MQTT esto hacía crecer el tiempo de
+SQLite hasta parecer un bloqueo del consumidor y del broker.
+
+**Decisión**:
+
+1. `ensure_schema()` crea de forma idempotente el índice covering
+   `idx_idempotency_entity_key_version(store, entity, key, version)`. La
+   operación sirve tanto para bases nuevas como para bases existentes y no
+   cambia el contrato de idempotencia.
+2. Se añadió una regresión que verifica el plan `EXPLAIN QUERY PLAN` y otra que
+   verifica la migración de una tabla `_idempotency` ya creada.
+3. En Debian amd64, con la misma base de 50,000 filas, el plan pasó de usar
+   únicamente `sqlite_autoindex__idempotency_1 (store=?)` a usar el índice
+   covering. Con 20,000 comandos adicionales, SQLite procesó 398 batches en
+   3.49 s (8.8 ms/batch promedio), frente a la corrida sin índice que llegó a
+   aproximadamente 200 ms/batch al crecer la base.
+
+**Consecuencias**: (+) el cuello observado queda atribuido a un error de
+diseño de acceso SQLite, no a un cambio de transporte MQTT; (+) la migración
+es automática y reproducible; (+) el consumidor puede drenar el backlog sin
+que el coste de deduplicación crezca linealmente con el store; (-) el índice
+añade espacio y coste de escritura; (-) la capacidad final debe repetirse con
+el artefacto publicado y una carga controlada. El watchdog sigue siendo una
+defensa operativa, no la corrección primaria.
+- Reemplaza: la conclusión provisional de DEC-0066 sobre causa no confirmada.

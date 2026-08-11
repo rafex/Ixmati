@@ -33,12 +33,16 @@ inverso reconstruible para Pattern R mutable.
 
 La validación controlada de las 13 alertas ya pasó con `promtool`. El watchdog
 también pasó en Debian ante una pérdida forzada de progreso: código 42,
-reinicio systemd y recuperación durable. Se ejecutó el probe MQTT con dos
-perfiles extremos; ambos saturaron al generador antes de producir una medición
-de capacidad válida, mientras el writer continuó avanzando. El diagnóstico no
-reproduce ni descarta el atasco histórico, por lo que `TASK-VAL-0035` sigue
-abierto. Se corrigió además la duplicación `_total_total` del exporter y se
-añadió una regresión unitaria.
+reinicio systemd y recuperación durable. Las reproducciones MQTT no mostraron
+un event loop bloqueado. La causa reproducible del aparente atasco era un error
+de diseño en SQLite: `current_version()` no tenía índice por
+`(store, entity, key)`, por lo que el coste crecía con el store. Se añadió el
+índice covering, migración automática y regresiones de plan. En una base Debian
+de 50,000 filas, 20,000 comandos nuevos promediaron 8.8 ms/batch indexados,
+frente a aproximadamente 200 ms/batch sin índice al crecer la base. Ver
+DEC-0067 y la evidencia MQTT. El transporte no se cambia; el watchdog queda
+como defensa operativa. DEC-0057 sigue delimitada al diseño anterior de
+`try_ack()`.
 
 ## Context for next agent
 

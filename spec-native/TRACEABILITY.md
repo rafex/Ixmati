@@ -28,5 +28,5 @@ Vínculos entre artefactos del proyecto.
 | `TASK-VAL-0034` | writer/projector progress metrics, `k8s/alerts.yaml` | `k8s/alerts.test.yaml`, promtool: 13/13 | done |
 | `TASK-VAL-0025` | writer queue/SQLite/ACK/cache histograms | `spec-native/evidence/PRODUCTION-HARDENING-20260811.md` | done |
 | `TASK-VAL-0033` | `crash_puback_window.sh`, atomic PUBACK barrier | `spec-native/evidence/PRODUCTION-HARDENING-20260811.md` | done |
-| `TASK-VAL-0035` | opt-in progress watchdog and MQTT diagnostics | `helpers/shell/mqtt_stall_probe.sh`, `spec-native/evidence/MQTT-STALL-DIAGNOSTIC-20260811.md`; watchdog passed, MQTT-specific stall pending | pending |
+| `TASK-VAL-0035` | opt-in progress watchdog, MQTT diagnostics, and `_idempotency` covering index | `helpers/shell/mqtt_stall_probe.sh`, `crates/ixmati-writer/src/dedup.rs`, `spec-native/evidence/MQTT-STALL-DIAGNOSTIC-20260811.md` | `DEC-0067` |
 | `TASK-VAL-0036` | Pattern R reverse index + reconciler rebuild | `spec-native/evidence/PRODUCTION-HARDENING-20260811.md` | `DEC-0065` |

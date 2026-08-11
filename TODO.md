@@ -471,18 +471,21 @@ Tablero de tareas activo. Persiste entre sesiones.
       cola de consumo, outbox, errores MQTT y lag de proyecciones. Las 13 reglas
       pasan `promtool` y `k8s/alerts.test.yaml` activa cada alerta con series
       sintéticas usando los nombres reales del exporter.
-- [ ] `TASK-VAL-0035` — Investigar y documentar el atasco de sesión MQTT bajo
+- [x] `TASK-VAL-0035` — Investigar y documentar el atasco de sesión MQTT bajo
       sobrecarga extrema; definir recuperación automática sólo con evidencia.
-      El watchdog opt-in ya reinicia de forma segura ante tráfico pendiente sin
+      El watchdog opt-in reinicia de forma segura ante tráfico pendiente sin
       progreso: una prueba Debian bloqueando SQLite confirmó salida 42,
-      reinicio systemd y recuperación `APPLIED`. Falta reproducir y atribuir la
-      causa específicamente en MQTT. El probe `helpers/shell/mqtt_stall_probe.sh`
-      ejecutó dos corridas de diagnóstico, pero el generador se saturó
-      (`client_saturated_ticks>0`) antes de una medición válida; el writer sí
-      mantuvo progreso y el watchdog no se activó. La evidencia queda en
-      `spec-native/evidence/MQTT-STALL-DIAGNOSTIC-20260811.md`. También se
-      corrigió el bug de nombres `*_total_total` del exporter y se añadió una
-      regresión de métricas.
+      reinicio systemd y recuperación `APPLIED`. Las reproducciones MQTT no
+      mostraron un event loop bloqueado; el cuello reproducible era un error de
+      diseño en `IdempotencyTracker::current_version()`: faltaba el índice
+      `(store, entity, key, version)` y el coste de deduplicación crecía con
+      todo el store. `ensure_schema()` ya migra bases existentes de forma
+      idempotente y la regresión verifica el plan SQLite. En Debian, con 50,000
+      filas y 20,000 comandos nuevos, el camino indexado promedió 8.8 ms/batch;
+      sin el índice llegó aproximadamente a 200 ms/batch. Ver DEC-0067 y
+      `spec-native/evidence/MQTT-STALL-DIAGNOSTIC-20260811.md`. El transporte
+      MQTT no se cambia; el watchdog queda como defensa ante pérdida real de
+      progreso.
 - [x] `TASK-VAL-0036` — Resolver la actualización de Pattern R cuando cambia
       una entidad referenciada. DEC-0065 implementa índice inverso
       reconstruible y fan-out limitado. La matriz Debian cubrió creación,

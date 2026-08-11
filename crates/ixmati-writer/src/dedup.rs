@@ -14,7 +14,10 @@ impl IdempotencyTracker {
                 version         INTEGER NOT NULL,
                 applied_at      TEXT NOT NULL DEFAULT (datetime('now')),
                 PRIMARY KEY (store, idempotency_key)
-            );",
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_idempotency_entity_key_version
+                ON _idempotency(store, entity, key, version);",
         )
     }
 
@@ -154,5 +157,55 @@ mod tests {
 
         let v = IdempotencyTracker::current_version(&conn, "pedidos", "pedido", "ped_1").unwrap();
         assert_eq!(v, Some(3));
+    }
+
+    #[test]
+    fn current_version_uses_the_entity_key_index() {
+        let conn = Connection::open_in_memory().unwrap();
+        IdempotencyTracker::ensure_schema(&conn).unwrap();
+
+        let detail: String = conn
+            .query_row(
+                "EXPLAIN QUERY PLAN
+                 SELECT MAX(version) FROM _idempotency
+                 WHERE store = 'pedidos' AND entity = 'pedido' AND key = 'ped_1'",
+                [],
+                |row| row.get(3),
+            )
+            .unwrap();
+
+        assert!(
+            detail.contains("idx_idempotency_entity_key_version"),
+            "current_version must use the composite index, got: {detail}"
+        );
+    }
+
+    #[test]
+    fn ensure_schema_migrates_an_existing_idempotency_table() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE _idempotency (
+                store TEXT NOT NULL,
+                idempotency_key TEXT NOT NULL,
+                entity TEXT NOT NULL,
+                key TEXT NOT NULL,
+                version INTEGER NOT NULL,
+                applied_at TEXT NOT NULL DEFAULT (datetime('now')),
+                PRIMARY KEY (store, idempotency_key)
+            );",
+        )
+        .unwrap();
+
+        IdempotencyTracker::ensure_schema(&conn).unwrap();
+
+        let index_sql: String = conn
+            .query_row(
+                "SELECT sql FROM sqlite_master
+                 WHERE type = 'index' AND name = 'idx_idempotency_entity_key_version'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(index_sql.contains("ON _idempotency(store, entity, key, version)"));
     }
 }

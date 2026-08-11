@@ -14,12 +14,16 @@ CONCURRENCY="${CONCURRENCY:-500}"
 TIMEOUT="${TIMEOUT:-5}"
 STORE="${STORE:-default}"
 RESULT_DIR="${RESULT_DIR:-/tmp/ixmati-mqtt-stall-$(date -u +%Y%m%dT%H%M%SZ)}"
+STRACE="${STRACE:-0}"
+STRACE_DURATION="${STRACE_DURATION:-30}"
 
 mkdir -p "$RESULT_DIR"
 LOAD_RESULT="$RESULT_DIR/load.json"
 LOAD_ERROR="$RESULT_DIR/load.err"
 SAMPLES="$RESULT_DIR/samples.tsv"
 JOURNAL="$RESULT_DIR/writer-journal.log"
+STRACE_LOG="$RESULT_DIR/writer-strace.log"
+CONTAINER_STRACE_LOG="/tmp/ixmati-writer-strace-$$.log"
 
 metric_value() {
   local text="$1" name="$2"
@@ -42,6 +46,20 @@ python3 helpers/python/rate_load.py "http://${TEST_HOST}:${API_PORT}/write" \
   --rate "$RATE" --duration "$DURATION" --concurrency "$CONCURRENCY" \
   --timeout "$TIMEOUT" --store "$STORE" >"$LOAD_RESULT" 2>"$LOAD_ERROR" &
 load_pid=$!
+
+strace_pid=""
+if [ "$STRACE" = "1" ]; then
+  writer_pid=$(podman exec "$CONTAINER_NAME" pgrep -xo ixmati-writer 2>/dev/null || true)
+  if [ -n "$writer_pid" ] && podman exec "$CONTAINER_NAME" sh -lc 'command -v strace >/dev/null'; then
+    podman exec -d "$CONTAINER_NAME" sh -lc \
+      "timeout '${STRACE_DURATION}s' strace -f -tt -T -p '${writer_pid}' \
+        -e trace=pread64,pwrite64,fdatasync,fsync,fcntl,sendto,recvfrom,epoll_wait,futex \
+        -o '${CONTAINER_STRACE_LOG}'" >/dev/null
+    strace_pid="attached:${writer_pid}"
+  else
+    printf 'strace=unavailable\n' > "$STRACE_LOG"
+  fi
+fi
 
 while kill -0 "$load_pid" 2>/dev/null; do
   now=$(date +%s)
@@ -67,7 +85,16 @@ while kill -0 "$load_pid" 2>/dev/null; do
 done
 wait "$load_pid" || true
 
+if [ -n "$strace_pid" ]; then
+  podman exec "$CONTAINER_NAME" sh -lc \
+    "cat '${CONTAINER_STRACE_LOG}' 2>/dev/null || true" > "$STRACE_LOG"
+  podman exec "$CONTAINER_NAME" rm -f "$CONTAINER_STRACE_LOG" >/dev/null 2>&1 || true
+fi
+
 podman exec "$CONTAINER_NAME" journalctl -u "ixmati-writer@${STORE}" --no-pager -n 400 > "$JOURNAL" 2>&1 || true
 printf 'result_dir=%s\nload_result=%s\nsamples=%s\njournal=%s\n' \
   "$RESULT_DIR" "$LOAD_RESULT" "$SAMPLES" "$JOURNAL"
+if [ -n "$strace_pid" ]; then
+  printf 'strace=%s\nstrace_log=%s\n' "$strace_pid" "$STRACE_LOG"
+fi
 cat "$LOAD_RESULT"
