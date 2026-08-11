@@ -11,7 +11,7 @@
 //! Exposición HTTP opt-in vía `METRICS_PORT` (mismo patrón que
 //! `ixmati-writer`, ver ese módulo para el porqué).
 
-use opentelemetry::metrics::{Histogram, Meter, MeterProvider};
+use opentelemetry::metrics::{Counter, Gauge, Histogram, Meter, MeterProvider};
 use opentelemetry_sdk::metrics::SdkMeterProvider;
 use std::sync::LazyLock;
 
@@ -38,6 +38,41 @@ pub static PROJECTION_LAG: LazyLock<Histogram<f64>> = LazyLock::new(|| {
         .build()
 });
 
+pub static EVENTS_PROCESSED: LazyLock<Counter<u64>> = LazyLock::new(|| {
+    METER
+        .u64_counter("projector_events_processed")
+        .with_description("Events successfully passed through the projector")
+        .build()
+});
+
+pub static EVENTS_SKIPPED: LazyLock<Counter<u64>> = LazyLock::new(|| {
+    METER
+        .u64_counter("projector_events_skipped")
+        .with_description("Duplicate or invalid events skipped by the projector")
+        .build()
+});
+
+pub static LAST_EVENT_UNIX_SECONDS: LazyLock<Gauge<i64>> = LazyLock::new(|| {
+    METER
+        .i64_gauge("projector_last_event_unix_seconds")
+        .with_description("Unix timestamp of the last event processed by the projector")
+        .build()
+});
+
+pub static MQTT_CONNECTED: LazyLock<Gauge<i64>> = LazyLock::new(|| {
+    METER
+        .i64_gauge("mqtt_consumer_connected")
+        .with_description("Whether the projector MQTT consumer is connected")
+        .build()
+});
+
+pub static MQTT_EVENTLOOP_ERRORS: LazyLock<Counter<u64>> = LazyLock::new(|| {
+    METER
+        .u64_counter("mqtt_eventloop_errors")
+        .with_description("Projector MQTT event loop errors")
+        .build()
+});
+
 pub fn encode_metrics() -> String {
     use prometheus::Encoder;
     let encoder = prometheus::TextEncoder::new();
@@ -61,6 +96,12 @@ pub fn record_lag(occurred_at: &str) {
     if lag_secs >= 0.0 {
         PROJECTION_LAG.record(lag_secs, &[]);
     }
+}
+
+pub fn record_processed(occurred_at: &str) {
+    EVENTS_PROCESSED.add(1, &[]);
+    LAST_EVENT_UNIX_SECONDS.record(chrono::Utc::now().timestamp(), &[]);
+    record_lag(occurred_at);
 }
 
 /// Arranca el servidor HTTP `/metrics` si `METRICS_PORT` está seteado.

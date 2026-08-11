@@ -101,7 +101,12 @@ fn main() -> std::io::Result<()> {
     );
     let mut batcher = Batcher::new(batch_size, batch_interval_ms);
 
-    let publisher = Arc::new(EventPublisher::new(&mqtt_broker, &client_id, &db_path));
+    let publisher = Arc::new(EventPublisher::new(
+        &mqtt_broker,
+        &client_id,
+        &db_path,
+        &store_name,
+    ));
     {
         let publisher = Arc::clone(&publisher);
         let store_clone = store_name.clone();
@@ -212,15 +217,32 @@ fn process_batch(
             // antes de tocar el cache porque el cache es una proyección
             // reconstruible; nunca debe convertirse en una causa de pérdida
             // o de reentrega indefinida de comandos ya persistidos.
+            let ack_started = std::time::Instant::now();
             for pending in &batch.commands {
                 match pending.ack.ack() {
-                    Ok(()) => ixmati_writer::metrics::MQTT_COMMANDS_ACKED.add(1, &[]),
+                    Ok(()) => {
+                        ixmati_writer::metrics::MQTT_COMMANDS_ACKED.add(1, &[]);
+                        ixmati_writer::metrics::MQTT_CONSUMER_LAST_ACK_UNIX_SECONDS.record(
+                            chrono::Utc::now().timestamp(),
+                            &[opentelemetry::KeyValue::new(
+                                "store",
+                                store_name.to_string(),
+                            )],
+                        );
+                    }
                     Err(e) => {
                         ixmati_writer::metrics::MQTT_ACK_FAILURES.add(1, &[]);
                         tracing::warn!(error = %e, "failed to ack committed MQTT command")
                     }
                 }
             }
+            ixmati_writer::metrics::BATCH_ACK_DURATION.record(
+                ack_started.elapsed().as_secs_f64(),
+                &[opentelemetry::KeyValue::new(
+                    "store",
+                    store_name.to_string(),
+                )],
+            );
             ixmati_writer::metrics::LAST_BATCH_COMMIT_UNIX_SECONDS.record(
                 chrono::Utc::now().timestamp(),
                 &[opentelemetry::KeyValue::new(
@@ -271,6 +293,13 @@ fn process_batch(
                 version_conflicts = result.version_conflicts,
                 events = result.events.len(),
                 "batch processed"
+            );
+            ixmati_writer::metrics::BATCH_CYCLE_DURATION.record(
+                started.elapsed().as_secs_f64(),
+                &[opentelemetry::KeyValue::new(
+                    "store",
+                    store_name.to_string(),
+                )],
             );
         }
         Err(e) => {

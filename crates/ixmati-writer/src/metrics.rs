@@ -65,6 +65,34 @@ pub static MQTT_ACK_FAILURES: LazyLock<Counter<u64>> = LazyLock::new(|| {
         .build()
 });
 
+pub static MQTT_CONSUMER_CONNECTED: LazyLock<Gauge<i64>> = LazyLock::new(|| {
+    METER
+        .i64_gauge("mqtt_consumer_connected")
+        .with_description("Whether the writer MQTT consumer is connected")
+        .build()
+});
+
+pub static MQTT_CONSUMER_LAST_EVENT_UNIX_SECONDS: LazyLock<Gauge<i64>> = LazyLock::new(|| {
+    METER
+        .i64_gauge("mqtt_consumer_last_event_unix_seconds")
+        .with_description("Unix timestamp of the last command received by the MQTT consumer")
+        .build()
+});
+
+pub static MQTT_CONSUMER_LAST_ACK_UNIX_SECONDS: LazyLock<Gauge<i64>> = LazyLock::new(|| {
+    METER
+        .i64_gauge("mqtt_consumer_last_ack_unix_seconds")
+        .with_description("Unix timestamp of the last command acknowledged by the writer")
+        .build()
+});
+
+pub static MQTT_EVENTLOOP_ERRORS: LazyLock<Counter<u64>> = LazyLock::new(|| {
+    METER
+        .u64_counter("mqtt_eventloop_errors")
+        .with_description("MQTT event loop errors")
+        .build()
+});
+
 pub static MQTT_COMMANDS_ENQUEUED: LazyLock<Counter<u64>> = LazyLock::new(|| {
     METER
         .u64_counter("mqtt_commands_enqueued_total")
@@ -107,6 +135,47 @@ pub static CACHE_SYNC_DURATION: LazyLock<Histogram<f64>> = LazyLock::new(|| {
         .with_boundaries(vec![
             0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0,
         ])
+        .build()
+});
+
+pub static BATCH_ACK_DURATION: LazyLock<Histogram<f64>> = LazyLock::new(|| {
+    METER
+        .f64_histogram("batch_ack_duration_seconds")
+        .with_description("Time spent acknowledging commands after SQLite commit")
+        .with_boundaries(vec![
+            0.0001, 0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5,
+        ])
+        .build()
+});
+
+pub static BATCH_CYCLE_DURATION: LazyLock<Histogram<f64>> = LazyLock::new(|| {
+    METER
+        .f64_histogram("batch_cycle_duration_seconds")
+        .with_description("Time from batch fill start through cache synchronization")
+        .with_boundaries(vec![
+            0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0,
+        ])
+        .build()
+});
+
+pub static OUTBOX_PUBLISH_ATTEMPTS: LazyLock<Counter<u64>> = LazyLock::new(|| {
+    METER
+        .u64_counter("outbox_publish_attempts")
+        .with_description("Outbox rows submitted to MQTT")
+        .build()
+});
+
+pub static OUTBOX_PUBACK_TIMEOUTS: LazyLock<Counter<u64>> = LazyLock::new(|| {
+    METER
+        .u64_counter("outbox_puback_timeouts")
+        .with_description("Outbox rows that did not receive PUBACK before timeout")
+        .build()
+});
+
+pub static OUTBOX_LAST_PUBACK_UNIX_SECONDS: LazyLock<Gauge<i64>> = LazyLock::new(|| {
+    METER
+        .i64_gauge("outbox_last_puback_unix_seconds")
+        .with_description("Unix timestamp of the last outbox PUBACK")
         .build()
 });
 

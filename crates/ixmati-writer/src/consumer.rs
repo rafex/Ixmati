@@ -130,6 +130,12 @@ impl MqttConsumer {
                 for notification in connection.iter() {
                     match notification {
                         Ok(Event::Incoming(Packet::Publish(publish))) => {
+                            if let Some(store) = store_label_thread.as_deref() {
+                                crate::metrics::MQTT_CONSUMER_LAST_EVENT_UNIX_SECONDS.record(
+                                    chrono::Utc::now().timestamp(),
+                                    &[opentelemetry::KeyValue::new("store", store.to_string())],
+                                );
+                            }
                             match serde_json::from_slice::<WriteEnvelope>(&publish.payload) {
                                 Ok(envelope) => {
                                     let pending = PendingCommand {
@@ -192,6 +198,12 @@ impl MqttConsumer {
                             }
                         }
                         Ok(Event::Incoming(Packet::ConnAck(_))) => {
+                            if let Some(store) = store_label_thread.as_deref() {
+                                crate::metrics::MQTT_CONSUMER_CONNECTED.record(
+                                    1,
+                                    &[opentelemetry::KeyValue::new("store", store.to_string())],
+                                );
+                            }
                             tracing::info!(
                                 topic = %topic_owned,
                                 "MQTT consumer connected and subscribed"
@@ -199,6 +211,16 @@ impl MqttConsumer {
                         }
                         Ok(_) => {}
                         Err(e) => {
+                            if let Some(store) = store_label_thread.as_deref() {
+                                crate::metrics::MQTT_CONSUMER_CONNECTED.record(
+                                    0,
+                                    &[opentelemetry::KeyValue::new("store", store.to_string())],
+                                );
+                                crate::metrics::MQTT_EVENTLOOP_ERRORS.add(
+                                    1,
+                                    &[opentelemetry::KeyValue::new("store", store.to_string())],
+                                );
+                            }
                             tracing::error!(error = %e, "MQTT event loop error");
                             std::thread::sleep(std::time::Duration::from_secs(1));
                         }

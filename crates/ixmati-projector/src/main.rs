@@ -122,6 +122,7 @@ async fn main() {
                     }
                     if !seen_guard.insert(event.event_id.clone()) {
                         skipped += 1;
+                        ixmati_projector::metrics::EVENTS_SKIPPED.add(1, &[]);
                         if skipped.is_multiple_of(1000) {
                             tracing::debug!(skipped, "duplicate events skipped");
                         }
@@ -131,7 +132,8 @@ async fn main() {
 
                 tracing::debug!(event_id = %event.event_id, store = %event.store, entity = %event.entity, "processing event");
                 engine.process_event_async(&event, &cache).await;
-                ixmati_projector::metrics::record_lag(&event.occurred_at);
+                ixmati_projector::metrics::record_processed(&event.occurred_at);
+                ixmati_projector::metrics::MQTT_CONNECTED.record(1, &[]);
                 processed += 1;
 
                 if processed.is_multiple_of(1000) {
@@ -144,6 +146,7 @@ async fn main() {
                 }
             }
             Ok(Event::Incoming(Packet::ConnAck(_))) => {
+                ixmati_projector::metrics::MQTT_CONNECTED.record(1, &[]);
                 tracing::info!("MQTT connected");
             }
             Ok(Event::Incoming(other)) => {
@@ -151,6 +154,8 @@ async fn main() {
             }
             Ok(_) => {}
             Err(e) => {
+                ixmati_projector::metrics::MQTT_CONNECTED.record(0, &[]);
+                ixmati_projector::metrics::MQTT_EVENTLOOP_ERRORS.add(1, &[]);
                 tracing::error!(error = %e, "MQTT eventloop error, reconnecting in 5s");
                 tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
 

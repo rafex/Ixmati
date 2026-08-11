@@ -12,33 +12,33 @@ groups:
           description: "Writer for store {{ $labels.store }} has been down for more than 1 minute."
 
       - alert: IxmatiQueueGrowing
-        expr: rate(ixmati_queue_depth[5m]) > 100
+        expr: deriv(ixmati_consumer_queue_depth[5m]) > 0
         for: 5m
         labels:
           severity: warning
           team: core
         annotations:
           summary: "Queue for {{ $labels.store }} is growing"
-          description: "Queue depth for store {{ $labels.store }} is growing at {{ $value }}/s. Check writer throughput."
+          description: "Consumer queue depth for store {{ $labels.store }} is growing. Check writer throughput and MQTT backpressure."
 
       - alert: IxmatiOutboxStalled
-        expr: ixmati_outbox_size > 1000
+        expr: ixmati_outbox_size > 1000 and rate(ixmati_outbox_publish_attempts_total[5m]) == 0
         for: 5m
         labels:
           severity: warning
           team: core
         annotations:
           summary: "Outbox stalled for {{ $labels.store }}"
-          description: "Outbox for store {{ $labels.store }} has {{ $value }} unpublished events. Check event publisher."
+          description: "Outbox for store {{ $labels.store }} has pending events but no publish attempts. Check event publisher."
 
       - alert: IxmatiHighWriteLatency
-        expr: histogram_quantile(0.99, rate(ixmati_write_latency_seconds_bucket[5m])) > 1
+        expr: histogram_quantile(0.99, sum by (le, store) (rate(ixmati_write_latency_seconds_bucket[5m]))) > 0.25
         for: 5m
         labels:
           severity: warning
           team: core
         annotations:
-          summary: "High write latency (p99 > 1s) for {{ $labels.store }}"
+          summary: "High write latency (p99 > 250ms) for {{ $labels.store }}"
           description: "p99 write latency for store {{ $labels.store }} is {{ $value }}s."
 
       - alert: IxmatiWriteErrorRate
@@ -52,14 +52,14 @@ groups:
           description: "Write error rate for store {{ $labels.store }} is {{ $value }}/s."
 
       - alert: IxmatiProjectionLag
-        expr: ixmati_projection_lag_events > 500
+        expr: histogram_quantile(0.99, rate(ixmati_projection_lag_seconds_bucket[5m])) > 1
         for: 10m
         labels:
           severity: warning
           team: core
         annotations:
-          summary: "Projection {{ $labels.projection }} lagging behind"
-          description: "Projection {{ $labels.projection }} is {{ $value }} events behind for store {{ $labels.store }}."
+          summary: "Projection lag p99 is above 1s"
+          description: "The projector event processing lag p99 is {{ $value }}s. Check projector progress and MQTT."
 
       - alert: IxmatiHighCacheMissRate
         expr: rate(ixmati_cache_misses_total[5m]) / (rate(ixmati_cache_hits_total[5m]) + rate(ixmati_cache_misses_total[5m])) > 0.5
@@ -80,3 +80,53 @@ groups:
         annotations:
           summary: "API is throttling writes for {{ $labels.store }}"
           description: "API is rejecting writes for store {{ $labels.store }} due to backpressure."
+
+      - alert: IxmatiWriterCommitStalled
+        expr: rate(ixmati_mqtt_commands_enqueued_total[5m]) > 0 and time() - ixmati_last_batch_commit_unix_seconds > 30
+        for: 2m
+        labels:
+          severity: critical
+          team: core
+        annotations:
+          summary: "Writer {{ $labels.store }} has traffic but no recent commit"
+          description: "Commands are arriving while the last SQLite batch commit is older than 30 seconds."
+
+      - alert: IxmatiMqttDisconnected
+        expr: ixmati_mqtt_consumer_connected == 0
+        for: 2m
+        labels:
+          severity: critical
+          team: core
+        annotations:
+          summary: "MQTT consumer disconnected for {{ $labels.store }}"
+          description: "The writer or projector MQTT consumer reports no connection."
+
+      - alert: IxmatiMqttErrors
+        expr: rate(ixmati_mqtt_eventloop_errors_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+          team: core
+        annotations:
+          summary: "MQTT event loop errors for {{ $labels.store }}"
+          description: "MQTT event loop errors are occurring at {{ $value }}/s."
+
+      - alert: IxmatiMqttAckFailures
+        expr: rate(ixmati_mqtt_ack_failures_total[5m]) > 0
+        for: 2m
+        labels:
+          severity: critical
+          team: core
+        annotations:
+          summary: "MQTT command acknowledgements failing for {{ $labels.store }}"
+          description: "The writer cannot acknowledge committed commands; inspect the MQTT session."
+
+      - alert: IxmatiCacheSyncErrors
+        expr: rate(ixmati_cache_sync_errors_total[5m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+          team: core
+        annotations:
+          summary: "Cache synchronization errors for {{ $labels.store }}"
+          description: "SQLite commits succeed but cache synchronization is failing."

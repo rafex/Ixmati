@@ -1,31 +1,84 @@
-### Observabilidad
+# Observabilidad
 
-#### Métricas clave
+Los procesos de writer y projector exponen `/metrics` sólo cuando se asigna
+un `METRICS_PORT` único a cada instancia. Esto evita colisiones en despliegues
+con varios stores; el instalador no abre puertos por defecto.
 
-| Métrica | Tipo | Descripción |
+## Métricas principales
+
+| Métrica Prometheus | Proceso | Uso |
 |---|---|---|
-| `ixmati_cmds_total{store}` | Counter | Comandos recibidos |
-| `ixmati_cmds_latency_ms{store}` | Histogram | Latencia de commit |
-| `ixmati_events_published{store}` | Counter | Eventos publicados |
-| `ixmati_outbox_pending{store}` | Gauge | Eventos en _outbox sin publicar |
-| `ixmati_cache_hits` / `_misses` | Counter | Hits/misses en FlashDB |
-| `ixmati_projection_lag_ms{projection}` | Histogram | Lag de proyección |
-| `ixmati_writer_alive{store}` | Gauge | 1 si el writer responde |
+| `ixmati_write_requests_total` | API | Solicitudes de escritura por estado |
+| `ixmati_write_latency_seconds` | API | Latencia HTTP de escritura |
+| `ixmati_queue_depth` | API | Cola de comandos hacia MQTT |
+| `ixmati_outbox_size` | API | Eventos sin `published_at` |
+| `ixmati_consumer_queue_depth` | writer | Cola entre MQTT y el batcher |
+| `ixmati_last_batch_commit_unix_seconds` | writer | Último commit SQLite exitoso |
+| `ixmati_write_batch_duration_seconds` | writer | Escritura y espera del hilo SQLite |
+| `ixmati_batch_fill_duration_seconds` | writer | Tiempo de acumulación del batch |
+| `ixmati_batch_ack_duration_seconds` | writer | Tiempo de ACK después del commit |
+| `ixmati_cache_sync_duration_seconds` | writer | Sincronización post-commit con cache |
+| `ixmati_cache_sync_errors_total` | writer | Fallos de cache después de un commit |
+| `ixmati_mqtt_consumer_connected` | writer/projector | Estado de conexión MQTT |
+| `ixmati_mqtt_consumer_last_event_unix_seconds` | writer | Último comando recibido |
+| `ixmati_mqtt_consumer_last_ack_unix_seconds` | writer | Último comando confirmado |
+| `ixmati_mqtt_eventloop_errors_total` | writer/projector | Errores de los event loops |
+| `ixmati_mqtt_ack_failures_total` | writer | ACKs de comandos que fallaron |
+| `ixmati_outbox_publish_attempts_total` | writer | Filas entregadas al cliente MQTT |
+| `ixmati_outbox_puback_timeouts_total` | writer | Filas sin PUBACK dentro del timeout |
+| `ixmati_outbox_last_puback_unix_seconds` | writer | Último PUBACK del outbox |
+| `ixmati_projector_events_processed_total` | projector | Eventos procesados |
+| `ixmati_projector_last_event_unix_seconds` | projector | Último evento procesado |
+| `ixmati_projection_lag_seconds` | projector | Histograma de `now - occurred_at` |
 
-#### Logs
+Los counters aparecen con sufijo `_total` en Prometheus aunque en el código se
+declaren sin ese sufijo, porque lo añade el exporter OpenTelemetry.
 
-Formato JSON estructurado (`tracing-subscriber`). Campos obligatorios: `timestamp`, `level`, `store`, `idempotency_key`/`event_id`, `entity`, `key`, `latency_ms`.
+## Activar scraping
 
-#### Health checks
+Para una unidad systemd template, crear un drop-in con un puerto libre por
+store, por ejemplo:
 
-- `GET /health`: estado agregado de todos los componentes.
-- `GET /health/{store}`: estado de un store específico.
-- Heartbeat MQTT: cada writer publica en `ixmati/health/{store}` cada 5s.
+```ini
+# systemctl edit ixmati-writer@pedidos
+[Service]
+Environment=METRICS_PORT=9101
+```
 
-#### Alertas recomendadas
+El projector necesita otro puerto:
 
-- Writer caído: `ixmati_writer_alive == 0` por > 30s.
-- Outbox estancado: `ixmati_outbox_pending > 1000` por > 5 min.
-- Lag de proyección: `ixmati_projection_lag_ms p99 > 1000` por > 2 min.
-- Litestream detenido: sin generaciones nuevas por > 5 min.
-- Cola creciendo: `$SYS/broker/messages/stored > 10000`.
+```ini
+# systemctl edit ixmati-projector
+[Service]
+Environment=METRICS_PORT=9102
+```
+
+Después:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart ixmati-writer@pedidos ixmati-projector
+curl -fsS http://127.0.0.1:9101/metrics
+curl -fsS http://127.0.0.1:9102/metrics
+```
+
+## Diagnóstico de alertas
+
+- `IxmatiWriterCommitStalled`: confirmar que `mqtt_commands_enqueued_total`
+  aumenta y `last_batch_commit_unix_seconds` no. Revisar SQLite, el hilo de
+  escritura y el journal del writer.
+- `IxmatiQueueGrowing`: comparar `consumer_queue_depth` con
+  `write_batch_duration_seconds` y `batch_fill_duration_seconds`. Una cola
+  estable durante tráfico no es una alerta.
+- `IxmatiOutboxStalled`: comprobar `outbox_size`, los intentos de publicación,
+  `outbox_puback_timeouts_total` y la conexión de Mosquitto.
+- `IxmatiMqttErrors` o `IxmatiMqttAckFailures`: revisar errores del event loop,
+  `last_ack`, la sesión persistente y los logs del broker antes de modificar
+  QoS o semántica de ACK.
+- `IxmatiProjectionLag`: consultar el p99 de
+  `projection_lag_seconds`, `projector_last_event_unix_seconds` y el estado del
+  projector. La métrica es lag temporal, no cantidad de eventos.
+- `IxmatiCacheSyncErrors`: el commit SQLite ya ocurrió; ejecutar reconciler o
+  revisar cache-server. No borrar la evidencia de `_outbox`.
+
+Las consultas Prometheus completas están en `k8s/alerts.yaml`.

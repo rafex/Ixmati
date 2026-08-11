@@ -53,13 +53,14 @@ impl PublishTracker {
 pub struct EventPublisher {
     client: Client,
     db_path: String,
+    store: String,
     tracker: Arc<Mutex<PublishTracker>>,
     puback_rx: Mutex<Receiver<i64>>,
     late_acks: Mutex<HashSet<i64>>,
 }
 
 impl EventPublisher {
-    pub fn new(broker: &str, client_id: &str, db_path: &str) -> Self {
+    pub fn new(broker: &str, client_id: &str, db_path: &str, store: &str) -> Self {
         let (host, port) = ixmati_core::mqtt::parse_mqtt_broker(broker);
         let mut mqtt_options = MqttOptions::new(format!("{}-publisher", client_id), &host, port);
         mqtt_options.set_keep_alive(std::time::Duration::from_secs(5));
@@ -75,11 +76,17 @@ impl EventPublisher {
         let tracker = Arc::new(Mutex::new(PublishTracker::default()));
         let (puback_tx, puback_rx) = mpsc::channel();
 
-        Self::spawn_eventloop(connection, Arc::clone(&tracker), puback_tx);
+        Self::spawn_eventloop(
+            connection,
+            Arc::clone(&tracker),
+            puback_tx,
+            store.to_string(),
+        );
 
         Self {
             client,
             db_path: db_path.to_string(),
+            store: store.to_string(),
             tracker,
             puback_rx: Mutex::new(puback_rx),
             late_acks: Mutex::new(HashSet::new()),
@@ -94,6 +101,7 @@ impl EventPublisher {
         mut connection: Connection,
         tracker: Arc<Mutex<PublishTracker>>,
         puback_tx: Sender<i64>,
+        store: String,
     ) {
         std::thread::Builder::new()
             .name("ixmati-mqtt-publisher".into())
@@ -104,6 +112,10 @@ impl EventPublisher {
                             tracker.lock().unwrap().on_outgoing_publish(packet_id);
                         }
                         Ok(Event::Incoming(Packet::PubAck(puback))) => {
+                            crate::metrics::OUTBOX_LAST_PUBACK_UNIX_SECONDS.record(
+                                chrono::Utc::now().timestamp(),
+                                &[opentelemetry::KeyValue::new("store", store.clone())],
+                            );
                             let row_id = tracker.lock().unwrap().on_puback(puback.pkid);
                             if let Some(row_id) = row_id {
                                 let _ = puback_tx.send(row_id);
@@ -111,6 +123,8 @@ impl EventPublisher {
                         }
                         Ok(_) => continue,
                         Err(e) => {
+                            crate::metrics::MQTT_EVENTLOOP_ERRORS
+                                .add(1, &[opentelemetry::KeyValue::new("store", store.clone())]);
                             tracing::error!(error = %e, "MQTT publisher eventloop error");
                             std::thread::sleep(std::time::Duration::from_secs(5));
                         }
@@ -153,6 +167,10 @@ impl EventPublisher {
             if already_tracked {
                 continue;
             }
+            crate::metrics::OUTBOX_PUBLISH_ATTEMPTS.add(
+                1,
+                &[opentelemetry::KeyValue::new("store", self.store.clone())],
+            );
             match self
                 .client
                 .publish(&topic, QoS::AtLeastOnce, false, row.payload.clone())
@@ -171,6 +189,13 @@ impl EventPublisher {
         }
 
         let published_ids = self.wait_for_pubacks(&queued_ids, std::time::Duration::from_secs(5));
+        let timed_out = queued_ids.len().saturating_sub(published_ids.len());
+        if timed_out > 0 {
+            crate::metrics::OUTBOX_PUBACK_TIMEOUTS.add(
+                timed_out as u64,
+                &[opentelemetry::KeyValue::new("store", self.store.clone())],
+            );
+        }
         if !published_ids.is_empty() {
             let conn = crate::db::open_with_pragmas(&self.db_path)?;
             Outbox::mark_published_batch(&conn, &published_ids)?;
