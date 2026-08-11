@@ -10,6 +10,7 @@ PG_PORT="${PG_PORT:-30432}"
 PG_DSN="host=127.0.0.1 port=${PG_PORT} dbname=ixmati_bench user=postgres password=benchmark"
 RUN_IXMATI="${RUN_IXMATI:-1}"
 START_IXMATI="${START_IXMATI:-1}"
+RUN_DIRECT="${RUN_DIRECT:-1}"
 IXMATI_URL="${IXMATI_URL:-http://127.0.0.1:30000}"
 UV_ARGS=(uv run --with 'psycopg[binary]==3.2.9' python)
 RATES_WRITE=(20 40 60 80 100 150 200)
@@ -36,10 +37,11 @@ trap cleanup EXIT
   podman image inspect "$PG_IMAGE" --format 'postgres_image={{.Id}}' 2>/dev/null || true
 } > "$OUT_DIR/manifest.txt"
 
-SQLITE_DB="$OUT_DIR/direct.sqlite"
-"${UV_ARGS[@]}" "$ROOT/benchmarks/runner.py" init-sqlite "$SQLITE_DB"
-"${UV_ARGS[@]}" "$ROOT/benchmarks/runner.py" seed-sqlite "$SQLITE_DB" \
-  --users "${BENCH_USERS:-10000}" --orders "${BENCH_ORDERS:-100000}"
+if [[ "$RUN_DIRECT" == 1 ]]; then
+  SQLITE_DB="$OUT_DIR/direct.sqlite"
+  "${UV_ARGS[@]}" "$ROOT/benchmarks/runner.py" init-sqlite "$SQLITE_DB"
+  "${UV_ARGS[@]}" "$ROOT/benchmarks/runner.py" seed-sqlite "$SQLITE_DB" \
+    --users "${BENCH_USERS:-10000}" --orders "${BENCH_ORDERS:-100000}"
 
 podman run -d --name "$PG_CONTAINER" \
   --cpus="${BENCH_CPUS:-2}" --memory="${BENCH_MEMORY:-2g}" \
@@ -99,6 +101,7 @@ for operation in update idempotency mixed; do
     run_direct postgres "$PG_DSN" "$operation" 100 16 1 warm "$repeat"
   done
 done
+fi
 
 if [[ "$RUN_IXMATI" == 1 ]]; then
   if [[ "$START_IXMATI" == 1 ]]; then
