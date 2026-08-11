@@ -16,12 +16,18 @@ UV_ARGS=(uv run --with 'psycopg[binary]==3.2.9' python)
 RATES_WRITE=(20 40 60 80 100 150 200)
 RATES_READ=(100 250 500 1000)
 REPETITIONS="${BENCH_REPETITIONS:-3}"
+BENCH_USERS_VALUE="${BENCH_USERS:-1000}"
+BENCH_ORDERS_VALUE="${BENCH_ORDERS:-10000}"
+SEED_CONCURRENCY="${SEED_CONCURRENCY:-8}"
 
 mkdir -p "$OUT_DIR"
 exec > >(tee "$OUT_DIR/run.log") 2>&1
 
 cleanup() {
   podman rm -f "$PG_CONTAINER" >/dev/null 2>&1 || true
+  if [[ "$RUN_IXMATI" == 1 && "$START_IXMATI" == 1 ]]; then
+    podman compose -f "$ROOT/containers/compose/multi-store.yaml" down -v >/dev/null 2>&1 || true
+  fi
 }
 trap cleanup EXIT
 
@@ -41,7 +47,7 @@ if [[ "$RUN_DIRECT" == 1 ]]; then
   SQLITE_DB="$OUT_DIR/direct.sqlite"
   "${UV_ARGS[@]}" "$ROOT/benchmarks/runner.py" init-sqlite "$SQLITE_DB"
   "${UV_ARGS[@]}" "$ROOT/benchmarks/runner.py" seed-sqlite "$SQLITE_DB" \
-    --users "${BENCH_USERS:-10000}" --orders "${BENCH_ORDERS:-100000}"
+    --users "$BENCH_USERS_VALUE" --orders "$BENCH_ORDERS_VALUE"
 
 podman run -d --name "$PG_CONTAINER" \
   --cpus="${BENCH_CPUS:-2}" --memory="${BENCH_MEMORY:-2g}" \
@@ -57,7 +63,7 @@ podman exec "$PG_CONTAINER" pg_isready -U postgres -d ixmati_bench
 
 "${UV_ARGS[@]}" "$ROOT/benchmarks/runner.py" init-postgres "$PG_DSN"
 "${UV_ARGS[@]}" "$ROOT/benchmarks/runner.py" seed-postgres "$PG_DSN" \
-  --users "${BENCH_USERS:-10000}" --orders "${BENCH_ORDERS:-100000}"
+  --users "$BENCH_USERS_VALUE" --orders "$BENCH_ORDERS_VALUE"
 
 run_direct() {
   local engine="$1" target="$2" operation="$3" rate="$4" concurrency="$5" batch_size="$6" cache_state="${7:-warm}" repeat="${8:-1}"
@@ -106,7 +112,11 @@ fi
 if [[ "$RUN_IXMATI" == 1 ]]; then
   if [[ "$START_IXMATI" == 1 ]]; then
     podman compose -f "$ROOT/containers/compose/multi-store.yaml" down -v || true
-    podman compose -f "$ROOT/containers/compose/multi-store.yaml" up -d ${IXMATI_BUILD:+--build}
+    if [[ "${IXMATI_BUILD:-0}" == 1 ]]; then
+      podman compose -f "$ROOT/containers/compose/multi-store.yaml" up -d --build
+    else
+      podman compose -f "$ROOT/containers/compose/multi-store.yaml" up -d
+    fi
     for _ in $(seq 1 60); do
       if curl -fsS "$IXMATI_URL/health" >/dev/null 2>&1; then break; fi
       sleep 1
@@ -114,7 +124,8 @@ if [[ "$RUN_IXMATI" == 1 ]]; then
     curl -fsS "$IXMATI_URL/health"
   fi
   "${UV_ARGS[@]}" "$ROOT/benchmarks/seed_ixmati.py" "$IXMATI_URL" \
-    --users "${BENCH_USERS:-1000}" --orders "${BENCH_ORDERS:-10000}"
+    --users "$BENCH_USERS_VALUE" --orders "$BENCH_ORDERS_VALUE" \
+    --concurrency "$SEED_CONCURRENCY"
   for rate in "${RATES_READ[@]}"; do
     for cache_state in cold-first-pass warm; do
       warmup="${BENCH_WARMUP:-15}"

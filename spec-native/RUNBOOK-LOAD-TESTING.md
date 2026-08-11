@@ -271,7 +271,8 @@ BENCH_DURATION=30 BENCH_WARMUP=15 BENCH_REPETITIONS=3 \
 ```
 
 `benchmarks/run_suite.sh` levanta PostgreSQL 18 desde la imagen oficial,
-prepara 10,000 usuarios y 100,000 pedidos, ejecuta lecturas puntuales,
+prepara 1,000 usuarios y 10,000 pedidos por defecto (configurables mediante
+`BENCH_USERS` y `BENCH_ORDERS`), ejecuta lecturas puntuales,
 lecturas con relación, inserciones, actualizaciones, idempotencia y carga
 mixta. También ejecuta el camino HTTP de Ixmati y guarda cada JSON, log y
 manifiesto bajo `spec-native/evidence/raw/`.

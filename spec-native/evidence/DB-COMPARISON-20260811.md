@@ -10,7 +10,8 @@ Estado: ejecución preparada; los valores medidos se agregan después de correr
 - PostgreSQL medido: imagen oficial `postgres:18`, digest registrado en
   `raw/db-comparison-*/manifest.txt`, `synchronous_commit=on`.
 - Ixmati: API, Mosquitto, writers, cache-server y projector.
-- Dataset por ejecución: 10,000 usuarios y 100,000 pedidos por defecto.
+- Dataset de esta comparación: 1,000 usuarios y 10,000 pedidos, igual para
+  los tres motores; es configurable mediante `BENCH_USERS` y `BENCH_ORDERS`.
 - Warmup: 15s; medición: 30s; repeticiones: 3 por escenario.
 - Una ejecución fría significa primer pase sin warmup sobre la base recién
   preparada; no equivale a vaciar forzosamente la page cache del kernel.

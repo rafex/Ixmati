@@ -44,10 +44,10 @@ def user_payload(index: int) -> dict[str, Any]:
     }
 
 
-def order_payload(index: int) -> dict[str, Any]:
+def order_payload(index: int, user_count: int = 10000) -> dict[str, Any]:
     return {
         "pedido_id": f"ped_{index:06d}",
-        "usuario_id": f"usr_{index % 10000:06d}",
+        "usuario_id": f"usr_{index % user_count:06d}",
         "total": round(100 + (index % 1000) * 1.25, 2),
         "estado": "pendiente",
     }
@@ -99,7 +99,7 @@ def seed_database(engine: str, target: str, users: int, orders: int) -> None:
         )
         conn.executemany(
             "INSERT INTO payload_pedidos(entity,key,version,payload) VALUES(?,?,1,?)",
-            [("pedido", f"ped_{i:06d}", json.dumps(order_payload(i))) for i in range(orders)],
+            [("pedido", f"ped_{i:06d}", json.dumps(order_payload(i, users))) for i in range(orders)],
         )
         conn.commit()
         conn.close()
@@ -112,7 +112,7 @@ def seed_database(engine: str, target: str, users: int, orders: int) -> None:
         )
         cur.executemany(
             "INSERT INTO payload_pedidos(entity,key,version,payload) VALUES(%s,%s,1,%s::jsonb)",
-            [("pedido", f"ped_{i:06d}", json.dumps(order_payload(i))) for i in range(orders)],
+            [("pedido", f"ped_{i:06d}", json.dumps(order_payload(i, users))) for i in range(orders)],
         )
     conn.commit()
     conn.close()

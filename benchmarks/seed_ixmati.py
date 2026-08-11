@@ -18,20 +18,20 @@ def write(url: str, api_key: str, store: str, entity: str, key: str, payload: di
         "idempotency_key": f"benchmark-seed-{store}-{key}",
         "ack_mode": "committed", "payload": payload,
     }).encode()
-    request = urllib.request.Request(
-        f"{url}/write", data=body, method="POST",
-        headers={"Authorization": f"ApiKey {api_key}", "Content-Type": "application/json"},
-    )
-    for attempt in range(10):
+    for attempt in range(60):
         try:
+            request = urllib.request.Request(
+                f"{url}/write", data=body, method="POST",
+                headers={"Authorization": f"ApiKey {api_key}", "Content-Type": "application/json"},
+            )
             with urllib.request.urlopen(request, timeout=30) as response:
                 response.read()
                 return str(response.status)
         except urllib.error.HTTPError as error:
             error.read()
-            if error.code != 429 or attempt == 9:
+            if error.code != 429 or attempt == 59:
                 return str(error.code)
-            time.sleep(0.1 * (attempt + 1))
+            time.sleep(1.1)
     return "429"
 
 
@@ -41,7 +41,7 @@ def main() -> int:
     parser.add_argument("--api-key", default="ix-default-key")
     parser.add_argument("--users", type=int, default=1000)
     parser.add_argument("--orders", type=int, default=10000)
-    parser.add_argument("--concurrency", type=int, default=32)
+    parser.add_argument("--concurrency", type=int, default=8)
     args = parser.parse_args()
     jobs = []
     for index in range(args.users):
