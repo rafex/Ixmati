@@ -164,8 +164,19 @@ systemctl restart ixmati-writer@default"
 Quitar cualquier override (volver al default de producción):
 
 ```bash
-podman exec ixmati-load-test bash -c "rm -f /etc/systemd/system/ixmati-api.service.d/override.conf /etc/systemd/system/ixmati-writer@.service.d/override.conf && systemctl daemon-reload && systemctl restart ixmati-api ixmati-writer@default"
+podman exec ixmati-load-test bash -c "rm -f /etc/systemd/system/ixmati-api.service.d/override.conf /etc/systemd/system/ixmati-writer@.service.d/override.conf /etc/systemd/system/ixmati-writer@default.service.d/90-crash-puback-window.conf /etc/systemd/system/ixmati-writer@.service.d/91-watchdog.conf && systemctl daemon-reload && systemctl restart ixmati-api ixmati-writer@default"
 ```
+
+**Watchdog de progreso (sólo diagnóstico/recovery controlado):**
+
+```bash
+podman exec ixmati-load-test bash -c "mkdir -p /etc/systemd/system/ixmati-writer@.service.d && printf '%s\\n' '[Service]' 'Environment=MQTT_WATCHDOG_TIMEOUT_MS=30000' > /etc/systemd/system/ixmati-writer@.service.d/91-watchdog.conf && systemctl daemon-reload && systemctl restart ixmati-writer@default"
+```
+
+El valor `0` (default) lo desactiva. Sólo termina el writer si ya recibió
+comandos y no logró un commit durante el intervalo; systemd lo reinicia. No se
+debe usar para ocultar una causa MQTT: conservar primero CPU, `/proc`, journal,
+cola `$SYS` y métricas. El override debe eliminarse al terminar.
 
 ## 6. Las 3 herramientas de carga del repo
 
@@ -214,6 +225,22 @@ y SQLite, y compara los `event_id` del outbox con un suscriptor MQTT. Los
 duplicados son evidencia de at-least-once, no una pérdida; cualquier clave o
 evento ausente es fallo.
 
+Para forzar la ventana exacta `PUBACK → published_at`, usar el failpoint
+exclusivo de pruebas. El script instala `IXMATI_TEST_MODE=1` y una barrera
+atómica, espera el manifiesto con los `outbox_ids` que recibieron PUBACK, mata
+el writer con `SIGKILL`, elimina el override antes del restart y verifica
+`_idempotency`, estado `APPLIED`, `_outbox`, `published_at` y eventos MQTT:
+
+```bash
+CONTAINER_NAME=ixmati-load-test TEST_HOST=192.168.3.175 \
+  OUT="/tmp/ixmati-puback-window-$(date +%Y%m%dT%H%M%S).tsv" \
+  helpers/shell/crash_puback_window.sh default 20
+```
+
+Si la barrera no aparece, el resultado es inconcluso; no se sustituye por un
+`sleep`. Los duplicados observados se cuantifican y son válidos por
+at-least-once; un evento confirmado ausente es fallo.
+
 ## 7. Protocolo de diagnóstico (atascos silenciosos)
 
 Usado en DEC-0055/0056/0057 para distinguir "el writer está lento" de "el
@@ -260,7 +287,33 @@ atasco real, no lentitud — confirmar además que no hay líneas de
 error/panic (`journalctl -u ixmati-writer@default | grep -i "error\|panic"`)
 antes de concluir cuál es la causa.
 
-## 8. Comparativa SQLite directo / Ixmati / PostgreSQL
+Con el watchdog activo, un atasco reproducible debe mostrar en el journal el
+mensaje `pending commands but no durable progress`, salir con código 42 y ser
+reiniciado por systemd. Comparar los reinicios con
+`mqtt_eventloop_errors_total`, `mqtt_ack_failures_total`,
+`outbox_puback_timeouts_total` y `last_batch_commit_unix_seconds`; el watchdog
+es recuperación, no diagnóstico de causa raíz.
+
+## 8. Pattern R mutable y reconciliación
+
+La primera escritura de un Pattern R registra un índice interno bajo
+`ridx:<projection>:<store>:<entity>:<key>`. Para validar una relación mutable:
+
+1. crear la entidad referenciada y la entidad primaria;
+2. esperar `projector_events_processed_total` y leer la proyección inicial;
+3. actualizar sólo la entidad referenciada con una versión mayor;
+4. esperar que `projector_last_event_unix_seconds` avance y confirmar que la
+   proyección contiene el valor nuevo;
+5. repetir con duplicado MQTT, evento fuera de orden y eliminación;
+6. reiniciar o limpiar cache, ejecutar `ixmati-reconciler` y confirmar que el
+   índice y la vista vuelven a aparecer.
+
+La propagación es eventual, con fan-out máximo de 100 dependientes. Antes de
+procesar el evento la vista puede conservar el snapshot anterior; después de
+procesarlo correctamente debe contener el valor nuevo. La pérdida de cache no
+se considera corregida hasta ejecutar reconciler y guardar sus logs.
+
+## 9. Comparativa SQLite directo / Ixmati / PostgreSQL
 
 La comparación completa se ejecuta en el mismo Debian amd64 y nunca mantiene
 los motores bajo prueba activos simultáneamente:
@@ -294,7 +347,7 @@ define el formato de TPS/latencia y el anuncio oficial de PostgreSQL 17
 reporta mejoras de hasta 2x en throughput de escritura bajo alta concurrencia
 ([fuente](https://www.postgresql.org/about/news/postgresql-17-released-2936/)).
 
-## 9. Limpieza
+## 10. Limpieza
 
 Siempre al terminar — un contenedor de prueba olvidado sigue corriendo en
 la máquina remota compartida, no en el Mac:
