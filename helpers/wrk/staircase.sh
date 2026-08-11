@@ -47,11 +47,14 @@ scrape_gauge() {
 if command -v wrk2 >/dev/null 2>&1; then
   LOAD_GENERATOR="wrk2"
   RATE_CONTROLLED=true
+elif command -v python3 >/dev/null 2>&1; then
+  LOAD_GENERATOR="python-rate-load"
+  RATE_CONTROLLED=true
 elif command -v wrk >/dev/null 2>&1; then
   LOAD_GENERATOR="wrk"
   RATE_CONTROLLED=false
 else
-  echo "ERROR: se requiere wrk2 o wrk" >&2
+  echo "ERROR: se requiere wrk2, python3 o wrk" >&2
   exit 1
 fi
 
@@ -77,8 +80,14 @@ systemctl restart ixmati-api"
 
   if [[ "$LOAD_GENERATOR" == "wrk2" ]]; then
     result=$(wrk2 -t4 -c"$CONCURRENCY" -R"$rate" -d"$DURATION" --timeout 5s -s "$REPO/helpers/wrk/write_committed.lua" "http://${HOST}:${API_PORT}/write" 2>&1)
-  else
+  elif [[ "$LOAD_GENERATOR" == "wrk" ]]; then
     result=$(wrk -t4 -c"$CONCURRENCY" -d"$DURATION" --timeout 5s -s "$REPO/helpers/wrk/write_committed.lua" "http://${HOST}:${API_PORT}/write" 2>&1)
+  else
+    duration_seconds="${DURATION%s}"
+    result=$(python3 "$REPO/helpers/python/rate_load.py" \
+      "http://${HOST}:${API_PORT}/write" \
+      --rate "$rate" --duration "$duration_seconds" \
+      --concurrency "$CONCURRENCY" --timeout 5 2>&1)
   fi
   echo "$result" | tee -a "$OUT"
   printf '%s\n' "$result" > "${RESULT_DIR}/${rate}-${LOAD_GENERATOR}.txt"

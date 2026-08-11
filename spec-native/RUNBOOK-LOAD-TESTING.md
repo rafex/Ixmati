@@ -173,7 +173,7 @@ podman exec ixmati-load-test bash -c "rm -f /etc/systemd/system/ixmati-api.servi
 |---|---|---|---|
 | `helpers/wrk/write.lua` | `committed` | Latencia end-to-end real; generador de stress de alta concurrencia | Sobrecarga controlada o pruebas de techo; cada `200` implica commit |
 | `helpers/wrk/write_committed.lua` | `committed` | Latencia end-to-end real con concurrencia baja | Medir SLOs sin que el generador sea el cuello de botella |
-| `helpers/wrk/staircase.sh` | `committed` | Latencia, estados HTTP y métricas por escalón | Capacidad sostenible; requiere `wrk2` para conclusiones de tasa |
+| `helpers/wrk/staircase.sh` | `committed` | Latencia, estados HTTP y métricas por escalón | Capacidad sostenible; usa `wrk2` o `helpers/python/rate_load.py` |
 
 Ejemplos (con el rango de puertos de la sección 2):
 
@@ -184,14 +184,18 @@ wrk -t4 -c50 -d90s -s helpers/wrk/write.lua http://192.168.3.175:30300/write
 # Latencia real (committed) — usar con el throttle en su valor de producción
 wrk -t2 -c10 -d30s --timeout 5s -s helpers/wrk/write_committed.lua http://192.168.3.175:30300/write
 
-# Escalera automática — exige preferentemente wrk2 (-R, tasa fija real).
-# Si sólo existe wrk, los escalones altos quedan inconclusos.
+# Escalera automática — usa wrk2 (-R) o el fallback estándar de Python con
+# tasa global fija. Si sólo existe wrk, los escalones altos quedan inconclusos.
 helpers/wrk/staircase.sh 192.168.3.175 30300 30301
 ```
 
 `staircase.sh` necesita el contenedor ya instalado y `METRICS_PORT` activo
 en el writer (sección 5). Hace los overrides de `MAX_WRITES_PER_WINDOW`
-por escalón automáticamente y registra si el generador fue `wrk2` o `wrk`.
+por escalón automáticamente y registra si el generador fue `wrk2`,
+`python-rate-load` o `wrk`. El fallback de Python genera una idempotency key
+única por request y limita la concurrencia, por lo que sus tasas son válidas
+para comparar capacidad; sólo el fallback `wrk` queda marcado como
+inconcluso en los escalones altos.
 Cada corrida debe conservar la salida completa, incluyendo p50/p90/p99,
 conteos HTTP `200`/`202`/`429`, `outbox_size`, `consumer_queue_depth`,
 `last_batch_commit_unix_seconds`, errores de cache y mensajes del broker.
