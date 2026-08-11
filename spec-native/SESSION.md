@@ -5,7 +5,7 @@ agent = "codex"
 initiative = "production-backlog-hardening"
 task = "TASK-VAL-0033..0036 / TASK-VAL-0025"
 intent = "Cerrar observabilidad, latencia durable, crash PUBACK, MQTT y Pattern R mutable"
-last_updated = "2026-08-11T19:00:00Z"
+last_updated = "2026-08-11T23:05:00Z"
 +++
 
 # Active Session
@@ -29,20 +29,20 @@ Debian amd64. Este ciclo alineó el contrato durable (`accepted` es alias de
 un failpoint exacto para PUBACK→`published_at`, watchdog opt-in y un índice
 inverso reconstruible para Pattern R mutable.
 
+La validación posterior al índice se ejecutó contra `cc7b912` en Debian amd64:
+baseline de 40/s con 2,339/2,400 respuestas 200, p99 143.9 ms y escalera
+rate-controlled de 20–200/s sin saturación del generador. El rango 40–100/s
+quedó bajo 160 ms p99; 150/s mostró p99 321 ms. El throttle fue restaurado a
+40/s y el contenedor de prueba se eliminó.
+
 ## Next steps
 
-La validación controlada de las 13 alertas ya pasó con `promtool`. El watchdog
-también pasó en Debian ante una pérdida forzada de progreso: código 42,
-reinicio systemd y recuperación durable. Las reproducciones MQTT no mostraron
-un event loop bloqueado. La causa reproducible del aparente atasco era un error
-de diseño en SQLite: `current_version()` no tenía índice por
-`(store, entity, key)`, por lo que el coste crecía con el store. Se añadió el
-índice covering, migración automática y regresiones de plan. En una base Debian
-de 50,000 filas, 20,000 comandos nuevos promediaron 8.8 ms/batch indexados,
-frente a aproximadamente 200 ms/batch sin índice al crecer la base. Ver
-DEC-0067 y la evidencia MQTT. El transporte no se cambia; el watchdog queda
-como defensa operativa. DEC-0057 sigue delimitada al diseño anterior de
-`try_ack()`.
+El hardening de producción está cerrado. Queda una validación prolongada de
+150–200/s para separar capacidad sostenible de caracterización de escalón; el
+perfil recomendado sigue en 40/s. También queda instalar `mdbook` y ejecutar
+el build documental. Después de eso, el siguiente ciclo de producto es
+sharding interno, dashboard operativo y migración/merge/split de stores. El
+clustering de Mosquitto permanece fuera del alcance beta.
 
 ## Context for next agent
 

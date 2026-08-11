@@ -647,12 +647,21 @@ Tablero de tareas activo. Persiste entre sesiones.
       real, con 0 rechazos porque el límite nunca se activó). El punto
       real de quiebre (cola creciendo sin límite) no se encontró — hace
       falta repetir con mayor concurrencia o una herramienta con control
-      de tasa real (`wrk2`/`vegeta`). Ver DEC-0058.
+      de tasa real (`wrk2`/`vegeta`). Ver DEC-0058. **Actualización posterior
+      al índice de `_idempotency`**: `cc7b912` repitió los siete escalones con
+      generador Python rate-controlled y 200 clientes, sin saturación del
+      cliente. Se obtuvieron 39.0/s aceptadas y p99=143.9ms en el baseline de
+      40/s; 40–100/s quedaron bajo 160ms p99, 150/s llegó a 321ms p99 y 200/s
+      alcanzó 193.3/s aceptadas. Ver
+      `spec-native/evidence/LOAD-POST-INDEX-20260811.md`.
 - [x] `TASK-VAL-0025` — El 61.3% del ciclo por batch sin explicar quedó
       atribuido con la instrumentación nueva: en la corrida Debian el ciclo
       promedió 22.3ms, compuesto por SQLite 13.7ms, cache 8.5ms y cola del
       hilo 0.05ms. A 40/s el p99 durable fue 136.7ms, sin `202`, cola MQTT ni
-      outbox pendiente tras el drenado. Ver la evidencia de hardening.
+      outbox pendiente tras el drenado. La validación posterior a la corrección
+      del índice confirmó p99=143.9ms a 40/s y 2.84ms/batch de SQLite promedio
+      en la corrida completa. Ver
+      `spec-native/evidence/LOAD-POST-INDEX-20260811.md`.
 - [x] `TASK-VAL-0027` (P0) — ACK MQTT del consumidor sólo después del commit
       SQLite: `PendingCommand` conserva el token de ACK hasta `process_batch`
       exitoso; la cola acotada deja de ser una falsa frontera de durabilidad.

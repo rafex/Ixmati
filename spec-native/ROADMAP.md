@@ -17,27 +17,36 @@ producto viable beta.
 - Lecturas cacheadas/proyectadas validadas hasta 1,000 operaciones/s; p99 de
   escritura `ack_mode=committed` cercano a 2 s en la comparativa completa.
 
-## Próximo ciclo — hardening de producción
+## Estado del hardening de producción
 
-1. Reducir la latencia de cola del writer y validar el SLO de escritura durable
-   con `accepted`/`committed` como alias durable. Un modo async real queda como
-   iniciativa independiente.
-2. Prueba determinista del crash entre PUBACK y `published_at`.
-3. Alertas de writer detenido, último batch, cola de consumo, outbox, errores
-   MQTT y lag de proyecciones.
-4. Investigar el atasco de sesión MQTT bajo sobrecarga extrema y definir una
-   recuperación automática segura.
-5. Automatizar la validación de releases, instalación idempotente y upgrade con
-   los mismos artefactos publicados.
+El ciclo de hardening quedó cerrado en `cc7b912`:
 
-`TASK-VAL-0025` queda como investigación de profiling no bloqueante para la
-beta; no debe confundirse con una falla de durabilidad.
+1. El writer mantiene ACK durable y el lookup de idempotencia usa un índice
+   covering migrable en bases existentes. El baseline posterior al cambio
+   sostuvo 39.0 escrituras/s aceptadas, p99 143.9 ms y cero saturación del
+   generador; ver `spec-native/evidence/LOAD-POST-INDEX-20260811.md`.
+2. El crash entre PUBACK y `published_at` fue probado con recuperación durable y
+   duplicados at-least-once cuantificados.
+3. Las alertas operativas pasan `promtool` y cubren writer, colas, outbox,
+   MQTT, cache y lag de proyecciones.
+4. El supuesto atasco MQTT se atribuyó al acceso no indexado de
+   `_idempotency`; el transporte no requiere cambios. El watchdog queda como
+   defensa ante pérdida auténtica de progreso.
+5. La instalación, upgrade y validación de artefactos están automatizados.
 
-## Horizonte posterior
+El perfil productivo recomendado permanece en aproximadamente 40 escrituras
+durables/s hasta completar una prueba prolongada de estabilidad a 150–200/s.
+La investigación de profiling adicional es optimización, no una falla de
+durabilidad.
+
+## Próximo ciclo de producto
 
 - Sharding interno de un store.
 - Dashboard web de operación.
 - Migración de stores (renombrar, merge, split).
+
+## Horizonte de alta disponibilidad
+
 - Clustering de Mosquitto y topologías de alta disponibilidad.
 
 Estas funcionalidades requieren decisiones de arquitectura y no forman parte

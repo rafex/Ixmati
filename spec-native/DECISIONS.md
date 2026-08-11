@@ -1475,6 +1475,12 @@ SQLite hasta parecer un bloqueo del consumidor y del broker.
    3.49 s (8.8 ms/batch promedio), frente a la corrida sin índice que llegó a
    aproximadamente 200 ms/batch al crecer la base.
 
+**Validación posterior**: la corrida rate-controlled de `cc7b912` confirmó el
+perfil productivo a 40/s con p99 de 143.9 ms y cero saturación del generador.
+La escalera 20–200/s mantuvo `consumer_queue_depth=0`; el rango 40–100/s quedó
+por debajo de 160 ms p99 y 150/s presentó 321 ms p99. Los datos completos están
+en `spec-native/evidence/LOAD-POST-INDEX-20260811.md`.
+
 **Consecuencias**: (+) el cuello observado queda atribuido a un error de
 diseño de acceso SQLite, no a un cambio de transporte MQTT; (+) la migración
 es automática y reproducible; (+) el consumidor puede drenar el backlog sin
