@@ -9,6 +9,7 @@ import json
 import math
 import random
 import sqlite3
+import threading
 import time
 import urllib.parse
 import urllib.request
@@ -27,6 +28,17 @@ POSTGRES_SCHEMA = (ROOT / "schema" / "postgres.sql").read_text()
 class OperationResult:
     latency_ms: float
     error: str | None = None
+
+
+class HttpStatusError(Exception):
+    """HTTP response classified as a benchmark result instead of a traceback."""
+
+    def __init__(self, status: int) -> None:
+        super().__init__(f"HTTP {status}")
+        self.status = status
+
+
+_thread_connections = threading.local()
 
 
 def percentile(values: list[float], pct: float) -> float:
@@ -70,6 +82,16 @@ def postgres_connection(dsn: str):
         ) from error
     conn = psycopg.connect(dsn)
     conn.execute("SET synchronous_commit = on")
+    return conn
+
+
+def worker_connection(engine: str, target: str) -> Any:
+    """Reuse one direct-database connection per benchmark worker thread."""
+    current = getattr(_thread_connections, "value", None)
+    if current and current[0] == engine and current[1] == target:
+        return current[2]
+    conn = sqlite_connection(target) if engine == "sqlite" else postgres_connection(target)
+    _thread_connections.value = (engine, target, conn)
     return conn
 
 
@@ -218,10 +240,14 @@ def http_operation(url: str, operation: str, key_index: int, sequence: int, api_
         )
     else:
         raise ValueError(f"operación HTTP desconocida: {operation}")
-    with urllib.request.urlopen(request, timeout=5) as response:
-        if response.status not in (200, 202):
-            raise RuntimeError(f"HTTP {response.status}")
-        response.read()
+    try:
+        with urllib.request.urlopen(request, timeout=5) as response:
+            if response.status not in (200, 202):
+                raise HttpStatusError(response.status)
+            response.read()
+    except urllib.error.HTTPError as error:
+        error.read()
+        raise HttpStatusError(error.code) from error
 
 
 def execute_batch(engine: str, target: str, operation: str, indices: list[int], sequence: int, api_key: str) -> list[OperationResult]:
@@ -231,19 +257,22 @@ def execute_batch(engine: str, target: str, operation: str, indices: list[int], 
             for offset, key_index in enumerate(indices):
                 http_operation(target, operation, key_index, sequence + offset, api_key)
         else:
-            conn = sqlite_connection(target) if engine == "sqlite" else postgres_connection(target)
-            try:
-                for offset, key_index in enumerate(indices):
-                    direct_operation(conn, engine, operation, key_index, sequence + offset)
-                if engine == "postgres":
-                    conn.commit()
-            finally:
-                conn.close()
+            conn = worker_connection(engine, target)
+            for offset, key_index in enumerate(indices):
+                direct_operation(conn, engine, operation, key_index, sequence + offset)
+            if engine == "postgres":
+                conn.commit()
         elapsed = (time.perf_counter() - started) * 1000
         return [OperationResult(elapsed) for _ in indices]
     except Exception as error:  # noqa: BLE001 - benchmark must classify all driver failures
+        if engine == "postgres":
+            try:
+                conn.rollback()
+            except (UnboundLocalError, AttributeError):
+                pass
         elapsed = (time.perf_counter() - started) * 1000
-        return [OperationResult(elapsed, type(error).__name__) for _ in indices]
+        label = f"http_{error.status}" if isinstance(error, HttpStatusError) else type(error).__name__
+        return [OperationResult(elapsed, label) for _ in indices]
 
 
 def run_window(args: argparse.Namespace, record: bool) -> tuple[list[OperationResult], int]:
@@ -290,12 +319,14 @@ def load(args: argparse.Namespace) -> int:
     results, saturated = run_window(args, record=True)
     latencies = [result.latency_ms for result in results]
     errors = Counter(result.error for result in results if result.error)
+    successful = len(results) - sum(errors.values())
     output = {
         "engine": args.engine, "target": args.target, "operation": args.operation,
         "target_rate": args.rate, "duration_seconds": args.duration, "warmup_seconds": args.warmup,
         "cache_state": args.cache_state,
         "concurrency": args.concurrency, "batch_size": args.batch_size,
-        "submitted_operations": len(results), "throughput_per_second": len(results) / max(args.duration, 0.001),
+        "submitted_operations": len(results), "successful_operations": successful,
+        "throughput_per_second": successful / max(args.duration, 0.001),
         "client_saturated_ticks": saturated, "errors": dict(sorted(errors.items())),
         "latency_ms": {"p50": percentile(latencies, 50), "p95": percentile(latencies, 95), "p99": percentile(latencies, 99), "max": max(latencies, default=0)},
         "valid_rate_controlled": saturated == 0,
