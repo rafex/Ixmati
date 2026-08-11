@@ -591,6 +591,24 @@ Tablero de tareas activo. Persiste entre sesiones.
       (es una mejora de robustez legítima por sí sola), pero no cierra el
       hallazgo. Siguiente paso: `strace`/`gdb` reales o logs de Mosquitto
       en nivel `debug` — no disponibles en esta sesión. Ver DEC-0057.
+- [x] `TASK-VAL-0026` (P1.5) — Escalera de carga con `ack_mode: committed`
+      (`helpers/wrk/staircase.sh`, nuevo) para reemplazar "~36-40
+      commits/s" por throughput sostenible real. **Válido en 20-100/s**
+      (aceptadas/s coincide exacto con el objetivo en cada escalón): `p50`
+      estable y bajo en todo el rango (17.85-20.96ms), pero `p90`/`p99`
+      se degradan visiblemente desde 60/s (`p90` 37ms→109ms) y ya
+      pronunciado en 100/s (`p90`=216ms, `p99`=320ms) — sin que
+      `outbox_size`/`consumer_queue_depth` muestren crecimiento
+      descontrolado (`outbox_size` aparece en 48 desde 100/s pero no
+      sigue subiendo). El rate-limiter de producción (40/s, DEC-0054)
+      queda en zona saludable. **Los escalones 150/200 NO son datos
+      confiables** — la concurrencia fija de `wrk` (`-c50`) se vuelve el
+      límite antes que el rate-limiter una vez que la latencia sube lo
+      suficiente (150/s objetivo → solo 136/s real; 200/s objetivo → 115/s
+      real, con 0 rechazos porque el límite nunca se activó). El punto
+      real de quiebre (cola creciendo sin límite) no se encontró — hace
+      falta repetir con mayor concurrencia o una herramienta con control
+      de tasa real (`wrk2`/`vegeta`). Ver DEC-0058.
 - [ ] `TASK-VAL-0025` — El 61.3% del ciclo por batch sin explicar
       (DEC-0055, empeora el 41% de DEC-0050) sigue abierto. Candidato no
       probado: `tracing::info!` con formato JSON hace I/O de escritura

@@ -1040,3 +1040,34 @@ disponibles en el tiempo de esta sesión.
 
 - Consecuencias: (+) el cambio a `try_ack()` sigue siendo correcto en sí mismo (evita que el hilo que conduce el eventloop pueda bloquearse a sí mismo esperando espacio que solo el mismo hilo puede liberar) y se mantiene aunque no haya resuelto el atasco — es una mejora de robustez real, no un desperdicio. (+) `max_inflight_messages=200` tampoco se revierte — más margen no hace daño y sigue siendo una mitigación razonable para otros escenarios. (+) se evitó reportar un falso positivo — la tentación de declarar "P1 resuelto" tras ver el fix compilar y desplegarse fue descartada con la misma evidencia empírica exigida en toda esta investigación. (-) el atasco de sesión sigue sin causa raíz confirmada — con P0 en producción, un writer bajo sobrecarga sostenida sigue pudiendo quedar indefinidamente detenido hasta que un operador lo note y lo reinicie manualmente (P0 asegura que ese reinicio ya no pierde el backlog, pero no hay nada que dispare el reinicio automáticamente todavía — eso es tarea de `P3`, observabilidad). (-) esta sobrecarga es deliberadamente extrema (throttle desactivado a propósito, ~20-25x la capacidad real del writer) — no está confirmado si este escenario específico es realista en producción con el rate-limiter de DEC-0054 activo (40/s), donde la entrada nunca debería acumular un backlog de esta magnitud en primer lugar.
 - Reemplaza: none (cierra la implementación de P1 del plan; dejar constancia de que la hipótesis de causa raíz no se confirmó, en vez de asumir que sí)
+
+### DEC-0058 — P1.5: escalera de carga con `ack_mode: committed` — throughput sostenible real (dentro de un rango válido)
+
+- Fecha: 2026-08-10
+- Estado: `accepted`
+- Relacionado con specs: `SPEC-VAL-0001`
+- Contexto: P1.5 del plan de priorización de DEC-0055 (propuesta del usuario) — reemplazar "~36-40 commits/s" por la pregunta correcta: ¿a qué tasa de entrada la cola empieza a crecer sin límite y el p99 se dispara? Script nuevo `helpers/wrk/staircase.sh`, 7 escalones (20/40/60/80/100/150/200 escrituras/s) fijando `MAX_WRITES_PER_WINDOW` por escalón, `ack_mode: committed` (latencia real, no solo aceptación), 30s por escalón, mismo contenedor Debian real.
+
+**Resultados**:
+
+| Objetivo | Aceptadas/s real | p50 | p90 | p99 | `outbox_size` (antes→después) |
+|---|---|---|---|---|---|
+| 20/s | 20.0/s exacto | 17.85ms | 24.30ms | 96.67ms | 0→0 |
+| 40/s | 40.0/s exacto | 18.36ms | 37.07ms | 155.71ms | 0→0 |
+| 60/s | 60.0/s exacto | 19.05ms | 108.82ms | 239.39ms | 0→0 |
+| 80/s | 80.0/s exacto | 19.56ms | 132.09ms | 226.86ms | 0→0 |
+| 100/s | 100.0/s exacto | 20.96ms | 216.62ms | 320.11ms | 0→48 |
+| 150/s | **136.0/s** (no llegó a 150) | 275.00ms | 372.27ms | 542.99ms | 0→48 |
+| 200/s | **115.2/s** (no llegó a 200, ni superó al de 150) | 408.25ms | 509.69ms | 609.62ms | 0→48 |
+
+`consumer_queue_depth` se mantuvo en 0 en los 7 escalones — el canal acotado del consumidor MQTT nunca llegó a acumular nada en este rango.
+
+**Limitación de metodología encontrada (a diferencia de los escalones 20-100, los de 150/200 NO son mediciones válidas de "qué pasa a esa tasa de entrada")**: `wrk` usa concurrencia fija (`-c50`) durante toda la corrida — no tiene control nativo de tasa. En los escalones 20-100, las aceptadas/s coinciden exactamente con el objetivo (confirmando que el rate-limiter, no `wrk`, era el limitante real, tal como se buscaba). Pero en el escalón de 150, la latencia real ya subió tanto (`p50`≈275ms) que **50 conexiones concurrentes no alcanzan a generar 150 requests/s** (el techo teórico con esa latencia y esa concurrencia es ≈180/s, y el observado fue menor aún, 136/s) — a partir de ahí, la métrica que se está midiendo es el límite de la propia herramienta de carga, no el límite de Ixmati. El escalón de 200 confirma esto: 0 rechazos por `429` (`errors_status=0`) porque el rate-limiter de 200/s nunca llegó a activarse — `wrk` ni siquiera pudo generar tráfico suficiente para acercarse.
+
+**Conclusión honesta, solo sobre el rango válido (20-100/s)**: `p50` se mantiene notablemente bajo y estable en todo el rango (17.85ms→20.96ms, sin degradación marcada) — pero la cola (`p90`/`p99`) empieza a degradarse de forma visible a partir de **60/s** (`p90` salta de 37ms a 109ms) y ya es pronunciada en **100/s** (`p90`=216ms, `p99`=320ms), sin que `outbox_size`/`consumer_queue_depth` muestren un crecimiento descontrolado (`outbox_size` aparece en 48 a partir de 100/s pero **no sigue creciendo** en los escalones siguientes — un residuo estable, no una fuga). Esto sugiere que la degradación de cola en 60-100/s no es por acumulación de backlog en las colas medidas, sino por otra causa no identificada (candidato: contención de lecturas concurrentes de `StatusQuery::query` contra SQLite desde múltiples peticiones `ack_mode: committed` en paralelo, cada una haciendo polling cada 30ms — no confirmado, requeriría instrumentación nueva). El rate-limiter actual de producción (40/s, DEC-0054) queda claramente dentro de la zona saludable de esta escalera.
+
+**No se determinó el punto real de quiebre** (donde la cola crece sin límite) — la escalera necesitaría repetirse con mayor concurrencia de `wrk` (`-c150`+ o una herramienta con control de tasa real, ej. `wrk2` o `vegeta`) para poder probar honestamente los escalones de 150-200/s y más allá.
+
+- Archivos: `helpers/wrk/staircase.sh` (nuevo, generalizado para reutilizarse — acepta host/puertos/contenedor por parámetro/env var en vez de hardcodearlos a esta sesión).
+- Consecuencias: (+) reemplaza "~36-40 commits/s" (una medida de saturación deliberada, sin sentido operativo directo) por datos de latencia real bajo tasas de entrada controladas — mucho más útil para fijar SLOs. (+) confirma que el rate-limiter actual (40/s) opera en una zona con buen `p50` pero ya con algo de cola visible en `p90`/`p99` — no hay margen enorme antes de que la cola empiece a notarse. (+) descubre honestamente una limitación de la propia metodología de prueba (concurrencia fija de `wrk`) en vez de reportar 150/200 como si fueran mediciones válidas del sistema. (-) no se encontró el punto de quiebre real (crecimiento de cola sin límite) — queda abierto, requiere una corrida con mayor concurrencia o una herramienta con control de tasa. (-) la causa de la degradación de `p90`/`p99` entre 60-100/s sin crecimiento de las colas medidas no se investigó a fondo — candidato anotado (contención de `StatusQuery::query` bajo polling concurrente) pero no confirmado.
+- Reemplaza: none (cierra P1.5 del plan de priorización de DEC-0055 dentro del rango válido probado; dejar constancia explícita de que 150/200 no son datos confiables en vez de reportarlos sin la salvedad)

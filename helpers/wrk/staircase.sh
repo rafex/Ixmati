@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+# helpers/wrk/staircase.sh — escalera de carga (DEC-0055/0058, P1.5) para
+# encontrar el throughput sostenible real en vez de asumir un techo de
+# commits/s aislado. Para cada escalón: fija MAX_WRITES_PER_WINDOW al
+# valor objetivo (vía override de systemd en ixmati-api dentro del
+# contenedor de test), corre wrk con ack_mode:committed (latencia real
+# end-to-end, no solo "la API aceptó"), captura aceptadas/comprometidas/429
+# + latencia + profundidad de cola antes/después de cada escalón.
+#
+# IMPORTANTE (ver DEC-0058): la concurrencia de wrk (-c) es fija durante
+# toda la corrida. Si la latencia real sube lo suficiente, la propia
+# concurrencia de wrk se vuelve el límite antes que el rate-limiter del
+# servidor — a partir de ahí los escalones altos ya no miden "qué pasa a
+# esa tasa de entrada", miden "el límite de wrk". Subir -c si se agregan
+# escalones más altos que los que ya se validaron como confiables.
+#
+# Uso: helpers/wrk/staircase.sh <host> <api_port> <writer_metrics_port>
+#   ej: helpers/wrk/staircase.sh 192.168.3.175 30012 30013
+# Requiere: un contenedor de test corriendo (nombre fijo abajo), con
+# METRICS_PORT habilitado en ixmati-writer@default.
+set -euo pipefail
+
+HOST="${1:-127.0.0.1}"
+API_PORT="${2:-30000}"
+METRICS_PORT="${3:-9464}"
+CONTAINER="${CONTAINER_NAME:-ixmati-load-test}"
+DURATION="${DURATION:-30s}"
+RATES=(20 40 60 80 100 150 200)
+
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+OUT="${OUT:-/tmp/staircase-results.txt}"
+: > "$OUT"
+
+scrape_gauge() {
+  # $1=url $2=metric_name -> suma todas las series (por store)
+  # `grep` sin matches (métrica aún no observada, ej. sin tráfico previo)
+  # devuelve 1 y con pipefail tumba el pipeline entero -- por eso el `|| true`.
+  curl -sS "$1/metrics" 2>/dev/null | { grep "^$2{" || true; } | awk '{s+=$NF} END {print s+0}'
+}
+
+for rate in "${RATES[@]}"; do
+  echo "=== escalon: ${rate}/s ===" | tee -a "$OUT"
+
+  podman exec "$CONTAINER" bash -c "mkdir -p /etc/systemd/system/ixmati-api.service.d && cat > /etc/systemd/system/ixmati-api.service.d/override.conf <<EOF
+[Service]
+Environment=MAX_WRITES_PER_WINDOW=${rate}
+Environment=THROTTLE_WINDOW_SECS=1
+EOF
+systemctl daemon-reload
+systemctl restart ixmati-api"
+  sleep 2
+
+  outbox_before=$(scrape_gauge "http://${HOST}:${API_PORT}" "ixmati_outbox_size")
+  qdepth_before=$(scrape_gauge "http://${HOST}:${METRICS_PORT}" "ixmati_consumer_queue_depth")
+
+  result=$(wrk -t4 -c50 -d"$DURATION" --timeout 5s -s "$REPO/helpers/wrk/write_committed.lua" "http://${HOST}:${API_PORT}/write" 2>&1)
+  echo "$result" | tee -a "$OUT"
+
+  sleep 2
+  outbox_after=$(scrape_gauge "http://${HOST}:${API_PORT}" "ixmati_outbox_size")
+  qdepth_after=$(scrape_gauge "http://${HOST}:${METRICS_PORT}" "ixmati_consumer_queue_depth")
+
+  echo "outbox_size before=$outbox_before after=$outbox_after | consumer_queue_depth before=$qdepth_before after=$qdepth_after" | tee -a "$OUT"
+  echo "" | tee -a "$OUT"
+done
+
+echo "=== listo, resultados en $OUT ==="
