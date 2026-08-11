@@ -1371,3 +1371,42 @@ necesaria para cerrar la afirmación de entrega sin pérdida.
 - Reemplaza: cualquier lectura que interprete los resultados directos como
   prueba de que Ixmati supera a SQLite/PostgreSQL en capacidad bruta, o que
   presente 100–200 escrituras/s del API como capacidad durable productiva.
+
+### DEC-0065 — Índice inverso para mantener Pattern R mutable
+
+- Fecha: 2026-08-11
+- Estado: `accepted`
+- Relacionado con tareas: `TASK-VAL-0036`
+
+**Contexto**: Pattern R construía correctamente la vista inicial, pero sólo
+reconstruía cuando cambiaba el evento del store primario. Una actualización de
+una entidad referenciada dejaba el read model con el valor anterior.
+
+**Decisión**:
+
+1. El projector mantiene un índice interno en cache bajo el namespace
+   `ridx:<projection>:<store>:<entity>:<key>`. El valor es una lista JSON de
+   claves de proyección afectadas; no forma parte de la API pública.
+2. Al procesar un evento del store primario, Pattern R registra cada clave de
+   referencia y la clave de la proyección. El fan-out queda limitado a 100
+   dependientes, igual que la regla operativa vigente para decidir entre R y M.
+3. Al procesar un evento de un store referenciado, el projector consulta el
+   índice, reconstruye todas las vistas afectadas y usa el payload del evento
+   como valor autoritativo para evitar una carrera con `cache_sync`.
+4. Los eventos de eliminación eliminan las vistas afectadas. Los eventos fuera
+   de orden se descartan dentro de la vida del projector cuando tienen una
+   versión menor que la ya procesada para la misma entidad.
+5. `ixmati-reconciler` borra y reconstruye el índice junto con cada Pattern R.
+   La pérdida total de cache, un reinicio del projector o un cambio de clave de
+   referencia se recuperan mediante reproyección completa.
+
+**Consecuencias**: (+) una actualización referenciada deja de requerir una
+lectura en tiempo real ni una modificación de la API; (+) el índice es
+reconstruible y el límite de fan-out es explícito; (+) la consistencia sigue
+siendo eventual, pero después de procesar el evento la vista contiene el nuevo
+valor; (-) una relación con más de 100 dependientes no se propaga
+automáticamente y debe usar Pattern M, partición del modelo o una política de
+negocio distinta; (-) la deduplicación de versiones es en memoria hasta que el
+reconciler vuelva a reconstruir el estado persistente.
+- Reemplaza: la limitación documentada en DEC-0062 de Pattern R mutable sólo
+  como snapshot inicial.

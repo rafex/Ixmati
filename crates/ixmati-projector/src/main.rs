@@ -2,7 +2,7 @@ use ixmati_cache::CacheClient;
 use ixmati_core::{EventEnvelope, ProjectionConfig, ProjectionRegistry};
 use ixmati_projector::ProjectorEngine;
 use rumqttc::{AsyncClient, Event, MqttOptions, Packet, QoS};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -102,6 +102,7 @@ async fn main() {
         Arc::new(Mutex::new(HashSet::with_capacity(dedup_capacity)));
     let mut processed: u64 = 0;
     let mut skipped: u64 = 0;
+    let mut latest_versions: HashMap<(String, String, String), u64> = HashMap::new();
 
     loop {
         match eventloop.poll().await {
@@ -113,6 +114,22 @@ async fn main() {
                         continue;
                     }
                 };
+
+                let version_key = (event.store.clone(), event.entity.clone(), event.key.clone());
+                if latest_versions
+                    .get(&version_key)
+                    .is_some_and(|latest| event.version < *latest)
+                {
+                    skipped += 1;
+                    ixmati_projector::metrics::EVENTS_SKIPPED.add(1, &[]);
+                    tracing::debug!(
+                        event_id = %event.event_id,
+                        version = event.version,
+                        "stale out-of-order event skipped"
+                    );
+                    continue;
+                }
+                latest_versions.insert(version_key, event.version);
 
                 {
                     let mut seen_guard = seen.lock().await;

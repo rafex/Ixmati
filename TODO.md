@@ -463,15 +463,22 @@ Tablero de tareas activo. Persiste entre sesiones.
       upgrade, backup/restore y troubleshooting reproducible. La validación
       del libro requiere instalar `mdbook` en el entorno del agente.
 - [ ] `TASK-VAL-0033` — Forzar de forma determinista el crash entre PUBACK y
-      `published_at`; verificar que no haya pérdida y cuantificar duplicados.
+      `published_at`; el failpoint y `helpers/shell/crash_puback_window.sh` ya
+      están implementados; falta ejecutar la evidencia Debian.
 - [ ] `TASK-VAL-0034` — Alertas operativas para writer detenido, último commit,
-      cola de consumo, outbox, errores MQTT y lag de proyecciones.
+      cola de consumo, outbox, errores MQTT y lag de proyecciones. Las reglas y
+      métricas reales ya fueron alineadas; falta validación con promtool y
+      activación controlada de cada alerta.
 - [ ] `TASK-VAL-0035` — Investigar y documentar el atasco de sesión MQTT bajo
       sobrecarga extrema; definir recuperación automática sólo con evidencia.
+      El watchdog opt-in ya reinicia de forma segura ante tráfico pendiente sin
+      progreso; falta reproducir y atribuir la causa en Debian.
 - [ ] `TASK-VAL-0036` — Resolver la actualización de Pattern R cuando cambia
       una entidad referenciada. La validación Debian confirma que la vista
-      inicial es correcta, pero conserva el snapshot anterior después del
-      update; requiere fan-out, índice inverso o lookup en lectura.
+      inicial es correcta, pero conservaba el snapshot anterior después del
+      update. DEC-0065 implementa índice inverso reconstruible y fan-out
+      limitado; falta ejecutar la matriz e2e de cambios, duplicados y pérdida
+      de cache.
 
 - [x] `TASK-VAL-0018` — Investigar por qué el writer solo compromete ~30-40
       comandos/s a SQLite bajo carga sostenida (hallado en DEC-0049). 8
@@ -630,12 +637,10 @@ Tablero de tareas activo. Persiste entre sesiones.
       falta repetir con mayor concurrencia o una herramienta con control
       de tasa real (`wrk2`/`vegeta`). Ver DEC-0058.
 - [ ] `TASK-VAL-0025` — El 61.3% del ciclo por batch sin explicar
-      (DEC-0055, empeora el 41% de DEC-0050) sigue abierto. Candidato no
-      probado: `tracing::info!` con formato JSON hace I/O de escritura
-      síncrona por línea de log, que bajo journald puede bloquear.
-      Instrumentar el propio loop de `main.rs` con mediciones más finas
-      (tiempo entre que `process_batch()` retorna y el próximo
-      `fill_started` se resetea) para aislarlo.
+      (DEC-0055, empeora el 41% de DEC-0050) requiere baseline Debian con la
+      instrumentación nueva: cola del hilo SQLite, proceso SQLite, ACK, cache
+      y ciclo completo. Falta comparar logging y confirmar si el p99 durable
+      queda por debajo de 250ms a 40/s.
 - [x] `TASK-VAL-0027` (P0) — ACK MQTT del consumidor sólo después del commit
       SQLite: `PendingCommand` conserva el token de ACK hasta `process_batch`
       exitoso; la cola acotada deja de ser una falsa frontera de durabilidad.

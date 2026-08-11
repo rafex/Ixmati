@@ -93,6 +93,8 @@ impl Reconciler {
         config: &ReconcilerConfig,
         cache: &CacheClient,
     ) -> Result<usize, String> {
+        let reverse_index_prefix = format!("ridx:{}:", proj.name);
+        cache.delete_by_prefix(&reverse_index_prefix).await;
         let mut store_data: HashMap<String, HashMap<String, serde_json::Value>> = HashMap::new();
 
         for store_name in &proj.source_stores {
@@ -141,17 +143,35 @@ impl Reconciler {
         for (key, payload) in primary_data {
             let mut projection_payload = serde_json::Map::new();
             projection_payload.insert(primary_store.clone(), payload.clone());
+            let projection_key = event_key_from_value(payload, &proj.target_key, key);
 
             for other_store in proj.source_stores.iter().skip(1) {
                 if let Some(other_data) = store_data.get(other_store) {
-                    let lookup_key = event_key_from_value(payload, &proj.target_key, key);
+                    let lookup_key = reference_key_from_value(payload, other_store, key);
                     if let Some(other_payload) = other_data.get(&lookup_key) {
                         projection_payload.insert(other_store.clone(), other_payload.clone());
+                    }
+                    let index_key = format!(
+                        "ridx:{}:{}:{}:{}",
+                        proj.name,
+                        other_store,
+                        singular_entity(other_store),
+                        lookup_key
+                    );
+                    let mut targets = cache
+                        .get_raw(&index_key)
+                        .await
+                        .and_then(|bytes| serde_json::from_slice::<Vec<String>>(&bytes).ok())
+                        .unwrap_or_default();
+                    if !targets.contains(&projection_key) && targets.len() < 100 {
+                        targets.push(projection_key.clone());
+                        if let Ok(bytes) = serde_json::to_vec(&targets) {
+                            cache.set_raw(&index_key, &bytes).await;
+                        }
                     }
                 }
             }
 
-            let projection_key = event_key_from_value(payload, &proj.target_key, key);
             let merged = serde_json::Value::Object(projection_payload);
             let merged_bytes = serde_json::to_vec(&merged).unwrap_or_default();
 
@@ -251,6 +271,27 @@ fn event_key_from_value(payload: &serde_json::Value, target_key: &str, fallback:
         return val.to_string();
     }
     fallback.to_string()
+}
+
+fn reference_key_from_value(
+    payload: &serde_json::Value,
+    store_name: &str,
+    fallback: &str,
+) -> String {
+    let field = format!("{}_id", singular_entity(store_name));
+    payload
+        .get(&field)
+        .map(|value| {
+            value
+                .as_str()
+                .map(str::to_owned)
+                .unwrap_or_else(|| value.to_string())
+        })
+        .unwrap_or_else(|| fallback.to_string())
+}
+
+fn singular_entity(store_name: &str) -> String {
+    store_name.trim_end_matches('s').to_string()
 }
 
 #[cfg(test)]
