@@ -10,6 +10,7 @@ pub mod event_publisher;
 pub mod metrics;
 pub mod outbox;
 pub mod standby;
+pub mod watchdog;
 pub mod write_engine;
 pub mod write_thread;
 
@@ -79,6 +80,9 @@ pub struct BatchResult {
     pub duplicates: usize,
     pub version_conflicts: usize,
     pub events: Vec<EventEnvelope>,
+    /// Filled by `WriteHandle`; direct `WriteEngine` calls leave these at 0.
+    pub write_queue_wait_seconds: f64,
+    pub sqlite_process_seconds: f64,
 }
 
 #[cfg(test)]

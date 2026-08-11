@@ -35,6 +35,26 @@ pub static WRITE_BATCH_DURATION: LazyLock<Histogram<f64>> = LazyLock::new(|| {
         .build()
 });
 
+pub static WRITE_THREAD_QUEUE_WAIT: LazyLock<Histogram<f64>> = LazyLock::new(|| {
+    METER
+        .f64_histogram("write_thread_queue_wait_seconds")
+        .with_description("Time a batch waits before the dedicated SQLite thread starts it")
+        .with_boundaries(vec![
+            0.0001, 0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5,
+        ])
+        .build()
+});
+
+pub static SQLITE_PROCESS_DURATION: LazyLock<Histogram<f64>> = LazyLock::new(|| {
+    METER
+        .f64_histogram("sqlite_process_duration_seconds")
+        .with_description("Time spent processing a batch in SQLite")
+        .with_boundaries(vec![
+            0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0,
+        ])
+        .build()
+});
+
 // Ver DEC-0048/TASK-VAL-0016: antes de esto, el canal entre el eventloop de
 // MQTT y el loop principal era `mpsc::unbounded_channel()` — sin límite ni
 // visibilidad. Ahora es acotado y se observa su profundidad acá.

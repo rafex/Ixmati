@@ -6,6 +6,7 @@ use ixmati_writer::event_publisher::EventPublisher;
 use ixmati_writer::write_thread::WriteHandle;
 use std::sync::Arc;
 use std::sync::mpsc::RecvTimeoutError;
+use std::time::Duration;
 
 /// DEC-0052: motor de escritura sin tokio. `fn main()` normal, sin
 /// `#[tokio::main]` — no hay ningún runtime async compartido en el
@@ -99,6 +100,13 @@ fn main() -> std::io::Result<()> {
         consumer_channel_capacity,
         &store_name,
     );
+    let watchdog_timeout = std::env::var("MQTT_WATCHDOG_TIMEOUT_MS")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .map(Duration::from_millis)
+        .unwrap_or_default();
+    let progress = Arc::new(ixmati_writer::watchdog::Progress::default());
+    ixmati_writer::watchdog::spawn(Arc::clone(&progress), watchdog_timeout);
     let mut batcher = Batcher::new(batch_size, batch_interval_ms);
 
     let publisher = Arc::new(EventPublisher::new(
@@ -147,6 +155,7 @@ fn main() -> std::io::Result<()> {
     loop {
         match consumer.recv_timeout(flush_check) {
             Ok(cmd) => {
+                progress.command_received();
                 tracing::debug!(
                     store = %cmd.envelope.store,
                     entity = %cmd.envelope.entity,
@@ -165,7 +174,9 @@ fn main() -> std::io::Result<()> {
                         fill_started.elapsed().as_secs_f64(),
                         &[opentelemetry::KeyValue::new("store", store_name.clone())],
                     );
-                    process_batch(&write_handle, &batch, &store_name, &cache_sync);
+                    if process_batch(&write_handle, &batch, &store_name, &cache_sync) {
+                        progress.batch_committed();
+                    }
                     fill_started = std::time::Instant::now();
                 }
             }
@@ -176,7 +187,9 @@ fn main() -> std::io::Result<()> {
                         &[opentelemetry::KeyValue::new("store", store_name.clone())],
                     );
                     let batch = batcher.flush();
-                    process_batch(&write_handle, &batch, &store_name, &cache_sync);
+                    if process_batch(&write_handle, &batch, &store_name, &cache_sync) {
+                        progress.batch_committed();
+                    }
                     fill_started = std::time::Instant::now();
                 }
             }
@@ -195,7 +208,7 @@ fn process_batch(
     batch: &ixmati_writer::Batch,
     store_name: &str,
     cache_sync: &Arc<CacheSync>,
-) {
+) -> bool {
     let started = std::time::Instant::now();
     let envelopes = batch
         .commands
@@ -213,6 +226,20 @@ fn process_batch(
 
     match result {
         Ok(result) => {
+            ixmati_writer::metrics::WRITE_THREAD_QUEUE_WAIT.record(
+                result.write_queue_wait_seconds,
+                &[opentelemetry::KeyValue::new(
+                    "store",
+                    store_name.to_string(),
+                )],
+            );
+            ixmati_writer::metrics::SQLITE_PROCESS_DURATION.record(
+                result.sqlite_process_seconds,
+                &[opentelemetry::KeyValue::new(
+                    "store",
+                    store_name.to_string(),
+                )],
+            );
             // El commit SQLite es la frontera de durabilidad. El ACK se envía
             // antes de tocar el cache porque el cache es una proyección
             // reconstruible; nunca debe convertirse en una causa de pérdida
@@ -301,9 +328,11 @@ fn process_batch(
                     store_name.to_string(),
                 )],
             );
+            true
         }
         Err(e) => {
             tracing::error!(error = %e, store = %store_name, "batch failed");
+            false
         }
     }
 }

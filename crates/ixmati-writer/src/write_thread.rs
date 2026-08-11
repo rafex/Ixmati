@@ -21,6 +21,7 @@ use crate::write_engine::WriteEngine;
 struct Job {
     cmds: Vec<WriteEnvelope>,
     reply: std::sync::mpsc::Sender<rusqlite::Result<BatchResult>>,
+    submitted_at: std::time::Instant,
 }
 
 #[derive(Clone)]
@@ -42,7 +43,14 @@ impl WriteHandle {
                     .unwrap_or_else(|e| panic!("write thread: failed to open {db_path}: {e}"));
 
                 while let Ok(job) = rx.recv() {
-                    let result = WriteEngine::process_batch(&mut conn, &job.cmds);
+                    let queue_wait = job.submitted_at.elapsed().as_secs_f64();
+                    let sqlite_started = std::time::Instant::now();
+                    let result =
+                        WriteEngine::process_batch(&mut conn, &job.cmds).map(|mut result| {
+                            result.write_queue_wait_seconds = queue_wait;
+                            result.sqlite_process_seconds = sqlite_started.elapsed().as_secs_f64();
+                            result
+                        });
                     // Si quien pidió el batch ya no está esperando (p.ej. se
                     // cayó el hilo llamador), no hay nada que hacer con el
                     // error de `send` — el hilo de escritura sigue vivo para
@@ -67,6 +75,7 @@ impl WriteHandle {
             .send(Job {
                 cmds,
                 reply: reply_tx,
+                submitted_at: std::time::Instant::now(),
             })
             .expect("write thread died");
         reply_rx

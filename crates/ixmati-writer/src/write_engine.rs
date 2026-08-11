@@ -43,6 +43,8 @@ impl WriteEngine {
             duplicates: 0,
             version_conflicts: 0,
             events: Vec::new(),
+            write_queue_wait_seconds: 0.0,
+            sqlite_process_seconds: 0.0,
         };
 
         let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
