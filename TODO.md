@@ -467,14 +467,16 @@ Tablero de tareas activo. Persiste entre sesiones.
       están implementados y validados en Debian: 20/20 escrituras durables,
       20/20 eventos observados, outbox drenado y 1 duplicado permitido por
       at-least-once. Ver `spec-native/evidence/PRODUCTION-HARDENING-20260811.md`.
-- [ ] `TASK-VAL-0034` — Alertas operativas para writer detenido, último commit,
-      cola de consumo, outbox, errores MQTT y lag de proyecciones. Las reglas y
-      métricas reales ya fueron alineadas; falta validación con promtool y
-      activación controlada de cada alerta.
+- [x] `TASK-VAL-0034` — Alertas operativas para writer detenido, último commit,
+      cola de consumo, outbox, errores MQTT y lag de proyecciones. Las 13 reglas
+      pasan `promtool` y `k8s/alerts.test.yaml` activa cada alerta con series
+      sintéticas usando los nombres reales del exporter.
 - [ ] `TASK-VAL-0035` — Investigar y documentar el atasco de sesión MQTT bajo
       sobrecarga extrema; definir recuperación automática sólo con evidencia.
       El watchdog opt-in ya reinicia de forma segura ante tráfico pendiente sin
-      progreso; falta reproducir y atribuir la causa en Debian.
+      progreso: una prueba Debian bloqueando SQLite confirmó salida 42,
+      reinicio systemd y recuperación `APPLIED`. Falta reproducir y atribuir la
+      causa específicamente en MQTT.
 - [x] `TASK-VAL-0036` — Resolver la actualización de Pattern R cuando cambia
       una entidad referenciada. DEC-0065 implementa índice inverso
       reconstruible y fan-out limitado. La matriz Debian cubrió creación,

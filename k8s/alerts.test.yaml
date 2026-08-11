@@ -1,0 +1,115 @@
+rule_files:
+  - alerts.yaml
+
+evaluation_interval: 1m
+
+tests:
+  # Todas las series representan una condición sostenida. El objetivo es
+  # comprobar que cada regla usa los nombres y labels que realmente expone
+  # Ixmati; no sustituye una prueba de integración con Alertmanager.
+  - interval: 1m
+    input_series:
+      - series: 'up{job="ixmati-writer",store="default"}'
+        values: '0+0x20'
+      - series: 'ixmati_consumer_queue_depth{store="default"}'
+        values: '0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20'
+      - series: 'ixmati_outbox_size{store="default"}'
+        values: '2000+0x20'
+      - series: 'ixmati_outbox_publish_attempts_total{store="default"}'
+        values: '0+0x20'
+      - series: 'ixmati_write_latency_seconds_bucket{store="default",le="0.25"}'
+        values: '0+0x20'
+      - series: 'ixmati_write_latency_seconds_bucket{store="default",le="1"}'
+        values: '0 10 20 30 40 50 60 70 80 90 100 110 120 130 140 150 160 170 180 190 200'
+      - series: 'ixmati_write_latency_seconds_bucket{store="default",le="+Inf"}'
+        values: '0 10 20 30 40 50 60 70 80 90 100 110 120 130 140 150 160 170 180 190 200'
+      - series: 'ixmati_write_errors_total{store="default",error_type="queue_full"}'
+        values: '0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20'
+      - series: 'ixmati_projection_lag_seconds_bucket{le="0.5"}'
+        values: '0+0x20'
+      - series: 'ixmati_projection_lag_seconds_bucket{le="2.5"}'
+        values: '0 10 20 30 40 50 60 70 80 90 100 110 120 130 140 150 160 170 180 190 200'
+      - series: 'ixmati_projection_lag_seconds_bucket{le="+Inf"}'
+        values: '0 10 20 30 40 50 60 70 80 90 100 110 120 130 140 150 160 170 180 190 200'
+      - series: 'ixmati_cache_hits_total{store="default",namespace="cache"}'
+        values: '0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20'
+      - series: 'ixmati_cache_misses_total{store="default",namespace="cache"}'
+        values: '0 5 10 15 20 25 30 35 40 45 50 55 60 65 70 75 80 85 90 95 100'
+      - series: 'ixmati_mqtt_commands_enqueued_total{store="default"}'
+        values: '0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20'
+      - series: 'ixmati_last_batch_commit_unix_seconds{store="default"}'
+        values: '0+0x20'
+      - series: 'ixmati_mqtt_consumer_connected{store="default"}'
+        values: '0+0x20'
+      - series: 'ixmati_mqtt_eventloop_errors_total{store="default"}'
+        values: '0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20'
+      - series: 'ixmati_mqtt_ack_failures_total{store="default"}'
+        values: '0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20'
+      - series: 'ixmati_cache_sync_errors_total{store="default"}'
+        values: '0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20'
+    alert_rule_test:
+      - eval_time: 16m
+        alertname: IxmatiWriterDown
+        exp_alerts:
+          - exp_labels: {severity: critical, team: core, job: ixmati-writer, store: default}
+            exp_annotations: {summary: "Writer default is down", description: "Writer for store default has been down for more than 1 minute."}
+      - eval_time: 16m
+        alertname: IxmatiQueueGrowing
+        exp_alerts:
+          - exp_labels: {severity: warning, team: core, store: default}
+            exp_annotations: {summary: "Queue for default is growing", description: "Consumer queue depth for store default is growing. Check writer throughput and MQTT backpressure."}
+      - eval_time: 16m
+        alertname: IxmatiOutboxStalled
+        exp_alerts:
+          - exp_labels: {severity: warning, team: core, store: default}
+            exp_annotations: {summary: "Outbox stalled for default", description: "Outbox for store default has pending events but no publish attempts. Check event publisher."}
+      - eval_time: 16m
+        alertname: IxmatiHighWriteLatency
+        exp_alerts:
+          - exp_labels: {severity: warning, team: core, store: default}
+            exp_annotations: {summary: "High write latency (p99 > 250ms) for default", description: "p99 write latency for store default is 0.9924999999999999s."}
+      - eval_time: 16m
+        alertname: IxmatiWriteErrorRate
+        exp_alerts:
+          - exp_labels: {severity: critical, team: core, store: default, error_type: queue_full}
+            exp_annotations: {summary: "Elevated write error rate for default", description: "Write error rate for store default is 0.016666666666666666/s."}
+      - eval_time: 16m
+        alertname: IxmatiProjectionLag
+        exp_alerts:
+          - exp_labels: {severity: warning, team: core}
+            exp_annotations: {summary: "Projection lag p99 is above 1s", description: "The projector event processing lag p99 is 2.4799999999999995s. Check projector progress and MQTT."}
+      - eval_time: 16m
+        alertname: IxmatiHighCacheMissRate
+        exp_alerts:
+          - exp_labels: {severity: info, team: core, namespace: cache, store: default}
+            exp_annotations: {summary: "High cache miss rate for default", description: "Cache miss rate for default (ns=cache) is above 50%."}
+      - eval_time: 16m
+        alertname: IxmatiApiThrottling
+        exp_alerts:
+          - exp_labels: {severity: warning, team: core, store: default, error_type: queue_full}
+            exp_annotations: {summary: "API is throttling writes for default", description: "API is rejecting writes for store default due to backpressure."}
+      - eval_time: 16m
+        alertname: IxmatiWriterCommitStalled
+        exp_alerts:
+          - exp_labels: {severity: critical, team: core, store: default}
+            exp_annotations: {summary: "Writer default has traffic but no recent commit", description: "Commands are arriving while the last SQLite batch commit is older than 30 seconds."}
+      - eval_time: 16m
+        alertname: IxmatiMqttDisconnected
+        exp_alerts:
+          - exp_labels: {severity: critical, team: core, store: default}
+            exp_annotations: {summary: "MQTT consumer disconnected for default", description: "The writer or projector MQTT consumer reports no connection."}
+      - eval_time: 16m
+        alertname: IxmatiMqttErrors
+        exp_alerts:
+          - exp_labels: {severity: warning, team: core, store: default}
+            exp_annotations: {summary: "MQTT event loop errors for default", description: "MQTT event loop errors are occurring at 0.016666666666666666/s."}
+      - eval_time: 16m
+        alertname: IxmatiMqttAckFailures
+        exp_alerts:
+          - exp_labels: {severity: critical, team: core, store: default}
+            exp_annotations: {summary: "MQTT command acknowledgements failing for default", description: "The writer cannot acknowledge committed commands; inspect the MQTT session."}
+      - eval_time: 16m
+        alertname: IxmatiCacheSyncErrors
+        exp_alerts:
+          - exp_labels: {severity: warning, team: core, store: default}
+            exp_annotations: {summary: "Cache synchronization errors for default", description: "SQLite commits succeed but cache synchronization is failing."}

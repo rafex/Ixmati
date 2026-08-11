@@ -294,6 +294,18 @@ reiniciado por systemd. Comparar los reinicios con
 `outbox_puback_timeouts_total` y `last_batch_commit_unix_seconds`; el watchdog
 es recuperación, no diagnóstico de causa raíz.
 
+Para validar sólo el mecanismo de recuperación, sin afirmar una causa MQTT,
+ejecutar el escenario controlado que bloquea SQLite:
+
+```bash
+CONTAINER_NAME=ixmati-load-test TEST_HOST=192.168.3.175 API_PORT=30300 \
+  WATCHDOG_TIMEOUT_MS=2500 LOCK_HOLD_SECONDS=7 \
+  helpers/shell/test_watchdog_debian.sh
+```
+
+El script debe reportar `watchdog=triggered`, `NRestarts` creciente y
+`status=APPLIED`; elimina el override al finalizar.
+
 ## 8. Pattern R mutable y reconciliación
 
 La primera escritura de un Pattern R registra un índice interno bajo

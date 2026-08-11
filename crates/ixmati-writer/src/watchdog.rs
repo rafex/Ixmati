@@ -39,7 +39,7 @@ pub fn spawn(progress: Arc<Progress>, timeout: Duration) {
                 continue;
             }
             let elapsed = Duration::from_millis(now_ms().saturating_sub(pending_since));
-            if elapsed >= timeout {
+            if should_exit(pending_since, now_ms(), timeout) {
                 tracing::error!(
                     elapsed_ms = elapsed.as_millis(),
                     timeout_ms = timeout.as_millis(),
@@ -51,9 +51,35 @@ pub fn spawn(progress: Arc<Progress>, timeout: Duration) {
         .expect("failed to spawn writer progress watchdog");
 }
 
+fn should_exit(pending_since_ms: u64, now_ms: u64, timeout: Duration) -> bool {
+    pending_since_ms != 0
+        && Duration::from_millis(now_ms.saturating_sub(pending_since_ms)) >= timeout
+}
+
 fn now_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as u64
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn watchdog_ignores_empty_progress() {
+        assert!(!should_exit(0, 10_000, Duration::from_secs(1)));
+    }
+
+    #[test]
+    fn watchdog_waits_until_timeout() {
+        assert!(!should_exit(10_000, 10_999, Duration::from_secs(1)));
+        assert!(should_exit(10_000, 11_000, Duration::from_secs(1)));
+    }
+
+    #[test]
+    fn watchdog_handles_clock_regression_without_false_positive() {
+        assert!(!should_exit(10_000, 9_000, Duration::from_secs(1)));
+    }
 }

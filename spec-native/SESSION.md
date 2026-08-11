@@ -31,11 +31,12 @@ inverso reconstruible para Pattern R mutable.
 
 ## Next steps
 
-La siguiente acción es validar las reglas de alerta con activaciones
-controladas y reproducir o descartar el atasco MQTT con el watchdog habilitado.
-El baseline durable, crash PUBACK, Pattern R mutable y reconciler ya tienen
-evidencia versionada; `TASK-VAL-0035` sigue abierto hasta contar con una
-reproducción o una prueba negativa suficiente.
+La validación controlada de las 13 alertas ya pasó con `promtool`. El watchdog
+también pasó en Debian ante una pérdida forzada de progreso: código 42,
+reinicio systemd y recuperación durable. La siguiente acción es reproducir o
+descartar el atasco específicamente en MQTT; `TASK-VAL-0035` sigue abierto
+hasta contar con esa evidencia, sin confundirla con el bloqueo SQLite ya
+probado.
 
 ## Context for next agent
 

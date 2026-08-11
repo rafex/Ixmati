@@ -72,7 +72,7 @@ groups:
           description: "Cache miss rate for {{ $labels.store }} (ns={{ $labels.namespace }}) is above 50%."
 
       - alert: IxmatiApiThrottling
-        expr: rate(ixmati_write_requests_total{status="rejected"}[5m]) > 0
+        expr: rate(ixmati_write_errors_total{error_type="queue_full"}[5m]) > 0
         for: 1m
         labels:
           severity: warning

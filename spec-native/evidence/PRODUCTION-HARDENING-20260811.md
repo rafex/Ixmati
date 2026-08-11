@@ -141,8 +141,28 @@ un p99 por segmento.
 
 ## Pendiente de esta evidencia
 
-Esta evidencia ya cubre el baseline durable, crash PUBACK, Pattern R mutable y
-reconciliación remota. Sigue pendiente reproducir o descartar el atasco MQTT
-con el watchdog habilitado en un escenario de pérdida de progreso; mientras no
-exista esa reproducción, `TASK-VAL-0035` no debe marcarse como resuelta por
-inferencia.
+## Alertas y watchdog
+
+`promtool check rules` validó las 13 reglas de `k8s/alerts.yaml`. Además,
+`k8s/alerts.test.yaml` activó cada regla con series sintéticas que usan los
+nombres y labels reales del exporter. Se corrigió `IxmatiApiThrottling`: el
+API no emite `status="rejected"`; el backpressure observable es
+`ixmati_write_errors_total{error_type="queue_full"}`.
+
+El watchdog se probó con el script:
+
+```bash
+CONTAINER_NAME=ixmati-load-test TEST_HOST=192.168.3.175 API_PORT=30300 \
+  WATCHDOG_TIMEOUT_MS=2500 LOCK_HOLD_SECONDS=7 \
+  helpers/shell/test_watchdog_debian.sh
+```
+
+La prueba bloqueó deliberadamente SQLite para crear tráfico pendiente sin
+progreso durable. Resultado: `watchdog=triggered`, salida del writer con código
+42, reinicio systemd `NRestarts 0→1` y la escritura terminó `status=APPLIED`.
+El script elimina el override y restaura el writer antes de terminar.
+
+Esta prueba demuestra el mecanismo de recuperación ante pérdida forzada de
+progreso; no demuestra que la causa sea MQTT. Sigue pendiente reproducir o
+descartar el atasco específicamente en el event loop/sesión MQTT. Mientras no
+exista esa evidencia, `TASK-VAL-0035` permanece abierta.
