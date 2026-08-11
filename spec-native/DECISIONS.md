@@ -1118,3 +1118,60 @@ para confirmar escrituras multi-store. El API ahora acepta `SQLITE_PATHS` con
 el mapa explícito `store=path` y el compose multi-store monta cada base; sin
 ese mapa una escritura a un store sin ruta se rechaza en vez de responder un
 éxito no verificable.
+
+### DEC-0060 — Validación final rate-controlled y crash/restart en Debian amd64
+
+- Fecha: 2026-08-11
+- Estado: `accepted`
+- Relacionado con specs: `SPEC-VAL-0001`
+- Relacionado con tareas: `TASK-VAL-0030`, `TASK-VAL-0031`
+- SHA validado: `6eaa80a3e083b0974886e9d6ab1f0172c8303e19`
+
+**Contexto**: se publicó el SHA exacto en `origin/main`, se construyó el
+tarball `linux-amd64` desde ese SHA y se instaló idempotentemente en el host
+Debian remoto. El host no tenía `wrk2`; por ello la escalera usó el generador
+estándar `helpers/python/rate_load.py`, que mantiene una tasa global fija y
+reporta saturación del propio generador. El throttle nominal de producción
+fue `40/s`.
+
+**Resultados de carga**:
+
+| Objetivo | Throughput observado | p50 | p90 | p99 | HTTP 200/202/429 |
+|---:|---:|---:|---:|---:|---:|
+| 20/s | 20.0/s | 145ms | 186ms | 283ms | 572/0/28 |
+| 40/s | 40.0/s | 605ms | 1602ms | 2052ms | 1110/48/42 |
+| 60/s | 60.0/s | 767ms | 1536ms | 1858ms | 1740/0/60 |
+| 80/s | 80.0/s | 892ms | 1428ms | 1601ms | 2294/0/106 |
+| 100/s | 100.0/s | 919ms | 1394ms | 1550ms | 2891/0/109 |
+| 150/s | 119.1/s | 1960ms | 2095ms | 2216ms | 1940/1261/371 |
+| 200/s | 100.0/s | 2066ms | 2101ms | 2161ms | 100/2901/0 |
+
+Los escalones 20–100 mantuvieron la tasa objetivo y son mediciones válidas
+del comportamiento bajo esas tasas. Los escalones 150 y 200 son
+inconclusos para capacidad del servidor: `client_saturated_ticks` fue 1032 y
+2006 respectivamente, por lo que el generador no pudo producir la tasa
+solicitada. `consumer_queue_depth` no mostró acumulación durante la corrida;
+las series ausentes de `outbox_size` se conservaron como `NA`, no como cero.
+El resultado de 40/s contradice la conclusión de zona saludable de DEC-0058
+(`p99`≈2.05s y 48 respuestas `202`) y obliga a investigar la regresión antes
+de usar 40/s como SLO de producción.
+
+**Resultados de crash/restart**: durante la ingestión se publicaron 30 claves
+conocidas, se terminó el writer con `SIGKILL` y se reinició mediante systemd.
+Las 30/30 escrituras quedaron `APPLIED` en la API, las 30/30 claves estuvieron
+presentes en `_idempotency` y se observaron 30/30 eventos en el suscriptor
+MQTT. No se observó pérdida; los duplicados siguen siendo permitidos por el
+contrato at-least-once. Una corrida anterior de 100 mensajes se descartó
+porque el contenedor mínimo no tenía el binario `sqlite3` y, por tanto, no
+verificaba SQLite. La ventana exacta entre PUBACK y `published_at` no se
+forzó determinísticamente y permanece pendiente como prueba específica.
+
+**Consecuencias**: (+) la validación ahora separa throughput sostenible de
+resultados limitados por el cliente y deja evidencia reproducible por SHA;
+(+) el reinicio durante tráfico no mostró pérdida de escrituras ni eventos;
+(-) la capacidad sostenible real y la regresión observada a 40/s siguen
+requiriendo investigación; (-) no se debe extrapolar 150/200 sin `wrk2` o un
+generador equivalente con concurrencia suficiente; (-) la ventana PUBACK→
+`published_at` requiere inyección de fallo controlada.
+- Reemplaza: la interpretación optimista de DEC-0058 sobre 40/s y sus
+  escalones altos basados en `wrk` con concurrencia fija.

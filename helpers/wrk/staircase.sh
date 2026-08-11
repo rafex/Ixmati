@@ -47,12 +47,15 @@ scrape_gauge() {
 if command -v wrk2 >/dev/null 2>&1; then
   LOAD_GENERATOR="wrk2"
   RATE_CONTROLLED=true
+  ALL_STEPS_RATE_CONTROLLED=true
 elif command -v python3 >/dev/null 2>&1; then
   LOAD_GENERATOR="python-rate-load"
   RATE_CONTROLLED=true
+  ALL_STEPS_RATE_CONTROLLED=true
 elif command -v wrk >/dev/null 2>&1; then
   LOAD_GENERATOR="wrk"
   RATE_CONTROLLED=false
+  ALL_STEPS_RATE_CONTROLLED=false
 else
   echo "ERROR: se requiere wrk2, python3 o wrk" >&2
   exit 1
@@ -91,6 +94,15 @@ systemctl restart ixmati-api"
   fi
   echo "$result" | tee -a "$OUT"
   printf '%s\n' "$result" > "${RESULT_DIR}/${rate}-${LOAD_GENERATOR}.txt"
+  step_classification="valid-rate-controlled"
+  if [[ "$LOAD_GENERATOR" == "python-rate-load" && "$result" != *'"client_saturated_ticks": 0'* ]]; then
+    step_classification="inconclusive-client-saturated"
+    ALL_STEPS_RATE_CONTROLLED=false
+  elif [[ "$LOAD_GENERATOR" == "wrk" ]]; then
+    step_classification="inconclusive-concurrency-fallback"
+    ALL_STEPS_RATE_CONTROLLED=false
+  fi
+  echo "step_classification=${step_classification}" | tee -a "$OUT"
 
   sleep 2
   outbox_after=$(scrape_gauge "http://${HOST}:${API_PORT}" "ixmati_outbox_size")
@@ -102,5 +114,12 @@ systemctl restart ixmati-api"
   echo "" | tee -a "$OUT"
 done
 
-echo "classification=$([[ "$RATE_CONTROLLED" == true ]] && echo valid-rate-controlled || echo fallback-concurrency-inconclusive-for-high-rates)" | tee -a "$OUT"
+if [[ "$RATE_CONTROLLED" == true && "$ALL_STEPS_RATE_CONTROLLED" == true ]]; then
+  classification="valid-rate-controlled"
+elif [[ "$RATE_CONTROLLED" == true ]]; then
+  classification="rate-controlled-generator-saturated-at-some-steps"
+else
+  classification="fallback-concurrency-inconclusive-for-high-rates"
+fi
+echo "classification=$classification" | tee -a "$OUT"
 echo "=== listo, resultados en $OUT (snapshots en $RESULT_DIR) ==="

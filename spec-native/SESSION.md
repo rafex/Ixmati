@@ -3,24 +3,26 @@
 state = "waiting_handoff"
 agent = "codex"
 initiative = "validation-durability-hardening"
-task = "TASK-VAL-0027..0029"
-intent = "Endurecer durabilidad de ACKs, outbox y contrato HTTP; dejar gates verdes"
-last_updated = "2026-08-10T23:59:00Z"
+task = "TASK-VAL-0030..0031"
+intent = "Validar carga rate-controlled y recuperación crash/restart en Debian; dejar main publicado"
+last_updated = "2026-08-11T05:20:00Z"
 +++
 
 # Active Session
 
 ## Current state
 
-Cerrar iniciativa: instalador nativo funcionalmente completo, validado en Debian real
+Validación de carga y durabilidad ejecutada en Debian amd64 contra `main`
+(`6eaa80a`). El instalador fue idempotente, los cinco servicios quedaron
+activos y `/health` respondió `OK`.
 
 ## Next steps
 
-Iniciativa cerrada. El próximo agente puede:
+La carga y el crash test están ejecutados. El próximo agente puede:
 1. Ejecutar `just installer-test` para revalidar tras cualquier cambio en installer.py/systemd/*
-2. Considerar reiniciar servicios automáticamente en upgrades de versión (ver DEC-0040, consecuencia pendiente)
-3. Validar el tarball con binarios `linux-amd64` reales (host remoto amd64, ver DEC-0033) — esta iniciativa validó con binarios `linux/arm64` locales
-4. Continuar con `Fase 5 — Observabilidad, consistencia y hardening` del ROADMAP.md
+2. Investigar el 61.3% del ciclo no explicado y la degradación de `ack_mode=committed` desde 40/s (TASK-VAL-0025)
+3. Forzar de forma determinista el crash entre PUBACK y `published_at` con una inyección de fallo controlada
+4. Considerar reiniciar servicios automáticamente en upgrades de versión (ver DEC-0040, consecuencia pendiente)
 
 ## Context for next agent
 
@@ -42,12 +44,15 @@ Implementado y validado localmente:
 - Se corrigió el contexto de COPY del Containerfile de Litestream y se
   actualizaron los compose para rutas SQLite single/multi-store.
 
-Pendiente para el siguiente ciclo:
-1. Ejecutar la escalera en Debian nativo con wrk2/vegeta y registrar números
-   nuevos; los resultados de DEC-0058 no deben reutilizarse para afirmar un
-   punto de quiebre.
-2. Ejecutar crash/restart durante ingestión y entre PUBACK/mark del outbox.
-3. Continuar TASK-VAL-0025: aislar el tiempo del 61.3% no explicado.
+Resultados del ciclo actual:
+1. La escalera rate-controlled entregó exactamente la tasa objetivo en
+   20/40/60/80/100/s; 150/200 quedaron limitados por concurrencia del
+   generador y no son conclusiones de capacidad del servidor.
+2. El punto de producción de 40/s mostró p50=605ms, p99=2052ms y 48 respuestas
+   `202 PENDING`; no debe seguir describiéndose como zona saludable sin
+   investigar la regresión respecto a DEC-0058.
+3. El crash/restart validó 30/30 escrituras y 30/30 eventos sin pérdida
+   observada; la ventana PUBACK→marca permanece pendiente de prueba forzada.
 
 Motivo: el usuario preguntó si Ixmati ya tenía un instalador "listo para usar"
 estilo PostgreSQL/MongoDB para Linux Debian. El instalador nativo existía

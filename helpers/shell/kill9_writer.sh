@@ -6,7 +6,8 @@
 #     helpers/shell/kill9_writer.sh default 100
 #
 # MQTT QoS 1 y el outbox hacen que los duplicados sean posibles y aceptables;
-# una escritura o evento perdido es fallo.
+# una escritura o evento perdido es fallo. El contenedor Debian mínimo no
+# necesita el binario sqlite3: la verificación usa el módulo sqlite3 de Python.
 
 set -euo pipefail
 
@@ -47,6 +48,18 @@ printf 'idempotency_key\tentity_key\tapi_status\tsqlite_present\tevent_id\n' > "
 
 run_in_container() {
     podman exec "$CONTAINER" "$@"
+}
+
+sqlite_query() {
+    local query="$1"
+    run_in_container python3 -c '
+import sqlite3
+import sys
+
+db = sqlite3.connect(f"file:{sys.argv[1]}?mode=ro", uri=True)
+row = db.execute(sys.argv[2]).fetchone()
+print("" if row is None or row[0] is None else row[0])
+' "$DB_PATH" "$query"
 }
 
 log "crash durability: store=$STORE mensajes=$N_MESSAGES container=$CONTAINER"
@@ -140,20 +153,20 @@ while IFS=$'\t' read -r key entity_key; do
         api_status=PENDING
         pending=$((pending + 1))
     fi
-    sqlite_present="$(run_in_container sqlite3 -readonly "$DB_PATH" \
+    sqlite_present="$(sqlite_query \
         "SELECT COUNT(*) FROM _idempotency WHERE store='${STORE}' AND idempotency_key='${key}';" 2>/dev/null || echo 0)"
     sqlite_present="${sqlite_present//$'\n'/}"
     if [[ "$sqlite_present" == "1" ]]; then
         sqlite_count=$((sqlite_count + 1))
     fi
-    event_id="$(run_in_container sqlite3 -readonly -separator $'\t' "$DB_PATH" \
+    event_id="$(sqlite_query \
         "SELECT o.event_id FROM _outbox o JOIN _idempotency i ON i.store=o.store AND i.entity=o.entity AND i.key=o.key WHERE i.store='${STORE}' AND i.idempotency_key='${key}' ORDER BY o.id DESC LIMIT 1;" 2>/dev/null || true)"
     event_id="${event_id//$'\n'/}"
     printf '%s\t%s\t%s\t%s\t%s\n' "$key" "$entity_key" "$api_status" \
         "$sqlite_present" "$event_id" >> "$OUT"
 done < "$REQUESTS"
 
-outbox_pending="$(run_in_container sqlite3 -readonly "$DB_PATH" \
+outbox_pending="$(sqlite_query \
     "SELECT COUNT(*) FROM _outbox o JOIN _idempotency i ON i.store=o.store AND i.entity=o.entity AND i.key=o.key WHERE i.store='${STORE}' AND i.idempotency_key LIKE '${run_id}-%' AND o.published_at IS NULL;" 2>/dev/null || echo 0)"
 outbox_pending="${outbox_pending//$'\n'/}"
 
@@ -177,7 +190,7 @@ if (( missing_events != 0 )); then
     exit 1
 fi
 
-outbox_pending_after="$(run_in_container sqlite3 -readonly "$DB_PATH" \
+outbox_pending_after="$(sqlite_query \
     "SELECT COUNT(*) FROM _outbox o JOIN _idempotency i ON i.store=o.store AND i.entity=o.entity AND i.key=o.key WHERE i.store='${STORE}' AND i.idempotency_key LIKE '${run_id}-%' AND o.published_at IS NULL;")"
 outbox_pending_after="${outbox_pending_after//$'\n'/}"
 ok "durabilidad verificada: $N_MESSAGES escrituras, $N_MESSAGES eventos, outbox pendiente=$outbox_pending_after"

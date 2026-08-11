@@ -628,7 +628,19 @@ Tablero de tareas activo. Persiste entre sesiones.
 - [x] `TASK-VAL-0029` (P1) — Observabilidad y metodología de carga: profundidad
       de cola, comandos encolados/deferidos/confirmados, último commit y
       errores de cache instrumentados; `staircase.sh` reporta `NA` para series
-      ausentes y usa wrk2 rate-controlled cuando está disponible.
+      ausentes y usa `wrk2` o `helpers/python/rate_load.py` rate-controlled.
+- [x] `TASK-VAL-0030` — Validación final en `main` (`6eaa80a`) contra Debian
+      amd64: instalación idempotente desde el tarball, cinco servicios activos,
+      `/health` OK y escalera con tasa global exacta a 20/40/60/80/100/s.
+      Resultado: p50=145/605/767/892/919ms y p99=283/2052/1858/1601/1550ms;
+      150/200 quedaron limitados por concurrencia del generador (119/100
+      requests/s observadas) y se marcan inconclusos para capacidad del
+      servidor. Ver DEC-0060.
+- [x] `TASK-VAL-0031` — Crash/restart durante ingestión MQTT: 30/30 claves
+      confirmadas por API y SQLite, 30/30 eventos observados en MQTT después
+      de `SIGKILL` y reinicio systemd, sin pérdida observada. El intervalo
+      PUBACK→marca del outbox sigue siendo at-least-once y no se forzó de forma
+      determinista en esta corrida. Ver DEC-0060.
 
 ## Cancelled / Replaced
 
