@@ -25,8 +25,8 @@ Vínculos entre artefactos del proyecto.
 | Tarea | Implementación | Evidencia | Decisión |
 |---|---|---|---|
 | `TASK-VAL-0037` | `benchmarks/`, `just benchmark-db` | `spec-native/evidence/DB-COMPARISON-20260811.md` | `DEC-0063`, `DEC-0064` |
-| `TASK-VAL-0034` | writer/projector progress metrics, `k8s/alerts.yaml` | pending controlled alert run | pending |
-| `TASK-VAL-0025` | writer queue/SQLite/ACK/cache histograms | pending Debian baseline | pending |
-| `TASK-VAL-0033` | `crash_puback_window.sh`, atomic PUBACK barrier | pending Debian crash evidence | pending |
+| `TASK-VAL-0034` | writer/projector progress metrics, `k8s/alerts.yaml` | promtool passed; controlled alert activation pending | pending |
+| `TASK-VAL-0025` | writer queue/SQLite/ACK/cache histograms | `spec-native/evidence/PRODUCTION-HARDENING-20260811.md` | done |
+| `TASK-VAL-0033` | `crash_puback_window.sh`, atomic PUBACK barrier | `spec-native/evidence/PRODUCTION-HARDENING-20260811.md` | done |
 | `TASK-VAL-0035` | opt-in progress watchdog and MQTT diagnostics | pending stall reproduction | pending |
-| `TASK-VAL-0036` | Pattern R reverse index + reconciler rebuild | pending Debian mutable-view matrix | `DEC-0065` |
+| `TASK-VAL-0036` | Pattern R reverse index + reconciler rebuild | `spec-native/evidence/PRODUCTION-HARDENING-20260811.md` | `DEC-0065` |

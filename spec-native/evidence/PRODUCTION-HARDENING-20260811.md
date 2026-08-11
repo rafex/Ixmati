@@ -3,7 +3,7 @@
 ## Identidad
 
 - Repositorio: `rafex/Ixmati`
-- SHA del árbol documentado: `02e02d450ffe52e177c54bf7b226c5ca44638021`
+- SHA del árbol documentado: `85aabba`
 - Host de validación: Debian amd64 mediante conexión Podman `debian-server`
 - Contenedor: `ixmati-load-test`
 - Artefacto: `dist/ixmati-0.1.0-linux-amd64.tar.gz`
@@ -68,10 +68,81 @@ de barrera y el log del suscriptor MQTT en `/tmp` durante la corrida. La
 prueba valida la ventana de confirmación; no convierte at-least-once en
 exactly-once.
 
+## Pattern R mutable
+
+La prueba se ejecutó contra el compose multi-store en Debian amd64 con API en
+`http://192.168.3.175:30000`, autenticación `ApiKey ix-default-key` y un
+proyector reconstruido desde `85aabba`. Se usaron claves nuevas por ejecución.
+
+Resultado observado para una relación `pedidos -> usuarios`:
+
+| Caso | Resultado |
+|---|---|
+| creación de usuario + pedido | proyección inicial contenía ambos payloads |
+| actualización de usuario v2 | la proyección cambió de `Antes-*` a `Despues-*` |
+| eliminación de usuario v3 | la proyección desapareció (`found=false`) |
+| publicación duplicada de evento v2 | no duplicó ni alteró el resultado |
+| evento fuera de orden v1 después de v2 | el valor v1 obsoleto no regresó a la vista |
+
+La propagación utilizó el índice inverso `ridx` y el payload del evento
+secundario. La prueba confirma la consistencia eventual del proyector, no
+consistencia síncrona entre stores.
+
+La reconstrucción remota se validó usando los volúmenes Podman del stack y la
+configuración copiada dentro de un contenedor temporal, evitando el bind mount
+local del compose. `ixmati-reconciler` terminó con código 0, reconstruyó
+`pedidos_con_usuario` con 4 entidades y `usuarios_materializados` con 1, sin
+errores; la lectura posterior de una proyección conservó el valor v2.
+
+El primer intento mediante el profile `reconciler` del compose falló antes de
+iniciar el binario porque Podman remoto intentó resolver
+`config/projections.toml` en el filesystem local del cliente. Ese fallo es una
+limitación del harness, no del reconciler; el procedimiento reproducible es
+copiar la configuración al host/contenedor remoto y montar los volúmenes por
+directorio.
+
+## Baseline durable y atribución del writer
+
+Comando ejecutado contra el artefacto amd64 generado desde `85aabba`:
+
+```bash
+DURATION=10s CONCURRENCY=200 CONTAINER_NAME=ixmati-load-test \
+  RESULT_DIR=/tmp/ixmati-staircase-85aabba \
+  helpers/wrk/staircase.sh 192.168.3.175 30300 30301
+```
+
+El generador fue `python-rate-load`, con control de tasa y
+`client_saturated_ticks=0` en los siete escalones. La tasa listada como
+throughput es la tasa objetivo; la columna durable cuenta respuestas `200`.
+No hubo respuestas `202` ni errores del generador.
+
+| Objetivo/s | Durable/s | p50 ms | p90 ms | p99 ms | 429 | cola MQTT final | outbox tras drenado |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 20 | 19.1 | 71.1 | 77.1 | 135.5 | 9 | 0 | 0 |
+| 40 | 39.1 | 74.3 | 108.2 | 136.7 | 9 | 0 | 0 |
+| 60 | 58.7 | 102.8 | 135.4 | 146.8 | 13 | 0 | 0 |
+| 80 | 78.5 | 105.6 | 141.7 | 156.9 | 15 | 0 | 0 |
+| 100 | 96.7 | 109.4 | 150.2 | 184.7 | 33 | 0 | 0 |
+| 150 | 143.9 | 171.7 | 243.2 | 312.8 | 61 | 0 | 0 |
+| 200 | 194.3 | 229.7 | 328.2 | 442.2 | 57 | 0 | 0 |
+
+La configuración productiva de 40/s queda por debajo del guardrail de 250 ms
+de p99 y no mostró `202`, cola MQTT ni outbox pendiente después del drenado.
+Desde 150/s la latencia y el backpressure aumentan; esos escalones son válidos
+como capacidad bajo tasa controlada, pero no como capacidad sostenible
+productiva sin aceptar el mayor porcentaje de `429`.
+
+En el snapshot final del writer, acumulado durante la corrida, el ciclo de
+batch promedió 22.3 ms: SQLite 13.7 ms, sincronización de cache 8.5 ms y
+espera de la cola del hilo 0.05 ms. La suma explica aproximadamente 99% del
+ciclo observado; la publicación MQTT continuó con conexión activa, sin
+timeouts ni errores del event loop. Es atribución de la corrida completa, no
+un p99 por segmento.
+
 ## Pendiente de esta evidencia
 
-Esta ejecución no cierra por sí sola el baseline de latencia a 40/s, la
-reproducción del atasco MQTT ni la matriz multi-store de Pattern R. Esas
-corridas deben registrar sus propios snapshots de métricas, logs, estado de
-servicios y SHA antes de marcar `TASK-VAL-0025`, `TASK-VAL-0035` o
-`TASK-VAL-0036` como `done`.
+Esta evidencia ya cubre el baseline durable, crash PUBACK, Pattern R mutable y
+reconciliación remota. Sigue pendiente reproducir o descartar el atasco MQTT
+con el watchdog habilitado en un escenario de pérdida de progreso; mientras no
+exista esa reproducción, `TASK-VAL-0035` no debe marcarse como resuelta por
+inferencia.

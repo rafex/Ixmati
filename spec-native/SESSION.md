@@ -16,10 +16,12 @@ Validación de cache y proyecciones ejecutada en Debian amd64. El compose
 multi-store fue corregido para montar cada SQLite como directorio de store;
 cache-aside, Pattern M, Pattern R inicial, idempotencia y concurrencia pasan.
 Se agregó reconexión del CacheClient después de reiniciar cache-server y
-resolución de hostnames en `/health`. Pattern R no refresca automáticamente
-referencias existentes cuando cambia el store relacionado; queda como
-TASK-VAL-0036. El build/check de mdBook sigue pendiente porque `mdbook` no está
-instalado en el entorno local.
+resolución de hostnames en `/health`. Pattern R mutable ya actualiza y elimina
+vistas mediante índice inverso; la prueba remota de creación, actualización,
+borrado, duplicado y fuera de orden pasó con `85aabba`. La reconstrucción
+remota mediante reconciler también pasó usando volúmenes Podman explícitos y
+configuración copiada al contenedor. El build/check de mdBook sigue pendiente
+porque `mdbook` no está instalado en el entorno local.
 
 La suite de comparativa de capacidad permanece como baseline publicado en
 Debian amd64. Este ciclo alineó el contrato durable (`accepted` es alias de
@@ -29,11 +31,11 @@ inverso reconstruible para Pattern R mutable.
 
 ## Next steps
 
-La siguiente acción es ejecutar los gates y la matriz Debian desde el SHA
-actual: baseline 40/s, prueba controlada de crash, pérdida de progreso MQTT y
-actualizaciones/deletes/out-of-order de Pattern R con reconstrucción mediante
-reconciler. No se debe marcar el backlog como cerrado hasta guardar esa
-evidencia.
+La siguiente acción es validar las reglas de alerta con activaciones
+controladas y reproducir o descartar el atasco MQTT con el watchdog habilitado.
+El baseline durable, crash PUBACK, Pattern R mutable y reconciler ya tienen
+evidencia versionada; `TASK-VAL-0035` sigue abierto hasta contar con una
+reproducción o una prueba negativa suficiente.
 
 ## Context for next agent
 
