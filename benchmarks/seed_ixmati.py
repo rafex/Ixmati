@@ -22,13 +22,17 @@ def write(url: str, api_key: str, store: str, entity: str, key: str, payload: di
         f"{url}/write", data=body, method="POST",
         headers={"Authorization": f"ApiKey {api_key}", "Content-Type": "application/json"},
     )
-    try:
-        with urllib.request.urlopen(request, timeout=30) as response:
-            response.read()
-            return str(response.status)
-    except urllib.error.HTTPError as error:
-        error.read()
-        return str(error.code)
+    for attempt in range(10):
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                response.read()
+                return str(response.status)
+        except urllib.error.HTTPError as error:
+            error.read()
+            if error.code != 429 or attempt == 9:
+                return str(error.code)
+            time.sleep(0.1 * (attempt + 1))
+    return "429"
 
 
 def main() -> int:
