@@ -45,11 +45,47 @@ pub struct AppState {
     outbox_backlog: Arc<crate::backpressure::OutboxBacklog>,
 }
 
+// DEC-0054/TASK-VAL-0020: los defaults de abajo reflejan la capacidad real
+// medida del writer (~30-40 commits/s sostenidos a SQLite, confirmado dos
+// veces en el contenedor Debian de producción — DEC-0049/0050 y DEC-0053),
+// no el número arbitrario original (1000/s, ~25x la capacidad real).
+//
+// `MAX_WRITES_PER_WINDOW` es la defensa que puede actuar a tiempo: rechaza
+// con 429 antes de que nada se encole. `OUTBOX_BACKPRESSURE_THRESHOLD`
+// (`backpressure.rs`/`self_monitor.rs`) mide un backlog distinto — filas ya
+// comprometidas a SQLite esperando publicarse a MQTT (`_outbox WHERE
+// published_at IS NULL`), NO la cola de comandos aceptados por la API pero
+// aún sin comprometer. Confirmado con evidencia real (DEC-0054): bajo una
+// carga de 3 minutos que superó la capacidad del writer por ~13x con el
+// throttle deshabilitado a propósito, `_outbox` se mantuvo casi vacío en
+// todo momento (el publicador drena mucho más rápido que el writer
+// compromete) y el backpressure basada en outbox NUNCA se disparó — es
+// ciega a este modo de falla específico. Bajarla ayuda solo al modo de
+// falla que sí detecta (el publicador de eventos atascado), no al de
+// ingestión superando la capacidad de escritura.
+const DEFAULT_MAX_WRITES_PER_WINDOW: usize = 40;
+const DEFAULT_THROTTLE_WINDOW_SECS: u64 = 1;
+const DEFAULT_OUTBOX_BACKPRESSURE_THRESHOLD: i64 = 500;
+
+fn max_writes_per_window_from_env() -> usize {
+    std::env::var("MAX_WRITES_PER_WINDOW")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(DEFAULT_MAX_WRITES_PER_WINDOW)
+}
+
+fn throttle_window_secs_from_env() -> u64 {
+    std::env::var("THROTTLE_WINDOW_SECS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(DEFAULT_THROTTLE_WINDOW_SECS)
+}
+
 fn outbox_backpressure_threshold_from_env() -> i64 {
     std::env::var("OUTBOX_BACKPRESSURE_THRESHOLD")
         .ok()
         .and_then(|v| v.parse().ok())
-        .unwrap_or(5000)
+        .unwrap_or(DEFAULT_OUTBOX_BACKPRESSURE_THRESHOLD)
 }
 
 impl AppState {
@@ -74,14 +110,8 @@ impl AppState {
             }
         });
 
-        let max_writes: usize = std::env::var("MAX_WRITES_PER_WINDOW")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(1000);
-        let window_secs: u64 = std::env::var("THROTTLE_WINDOW_SECS")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(1);
+        let max_writes = max_writes_per_window_from_env();
+        let window_secs = throttle_window_secs_from_env();
 
         let cache_read_mode = if let Some(proxy) = cache_proxy {
             CacheReadMode::Mqtt(proxy)
@@ -130,14 +160,8 @@ impl AppState {
             }
         });
 
-        let max_writes: usize = std::env::var("MAX_WRITES_PER_WINDOW")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(1000);
-        let window_secs: u64 = std::env::var("THROTTLE_WINDOW_SECS")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(1);
+        let max_writes = max_writes_per_window_from_env();
+        let window_secs = throttle_window_secs_from_env();
 
         let cache_read_mode = if let Some(socket) = cache_socket {
             CacheReadMode::Socket(socket)
@@ -804,5 +828,32 @@ mod tests {
         }
 
         let _ = std::fs::remove_file(&db_path);
+    }
+
+    // DEC-0054/TASK-VAL-0020: los defaults dejaron de ser un número
+    // arbitrario (1000/s, 5000 filas) — reflejan la capacidad real medida
+    // del writer (~30-40 commits/s, confirmada dos veces en el contenedor
+    // Debian de producción). Esta prueba no toca env vars (evita el
+    // problema clásico de tests que mutan estado de proceso compartido en
+    // paralelo) — solo fija con datos las constantes que usan
+    // `max_writes_per_window_from_env`/`outbox_backpressure_threshold_from_env`,
+    // para que un cambio accidental de valor se note en el diff de una
+    // prueba, no solo en el código de producción.
+    #[test]
+    fn recalibrated_defaults_match_measured_writer_capacity() {
+        assert_eq!(
+            DEFAULT_MAX_WRITES_PER_WINDOW, 40,
+            "el rate-limiter debe rechazar cerca de la capacidad real del \
+             writer (~30-40 commits/s medidos en DEC-0049/0053), no muy por \
+             encima (el default original, 1000, era ~25x mayor)"
+        );
+        assert_eq!(DEFAULT_THROTTLE_WINDOW_SECS, 1);
+        assert_eq!(
+            DEFAULT_OUTBOX_BACKPRESSURE_THRESHOLD, 500,
+            "el backlog del outbox (filas comprometidas sin publicar) debe \
+             disparar backpressure mucho antes que el default original \
+             (5000) — a la tasa máxima de drenado eso tardaba minutos en \
+             notarse"
+        );
     }
 }

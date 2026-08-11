@@ -310,16 +310,15 @@ Tablero de tareas activo. Persiste entre sesiones.
       puede separar limpiamente "capacidad del servidor" de "contención con
       el harness" en este entorno. Un número de capacidad limpio requeriría
       correr `wrk` en una máquina/contenedor separado del target.
-- [ ] `TASK-VAL-0013` (nuevo, descubierto durante P3) — El rate-limiter
+- [x] `TASK-VAL-0013` (nuevo, descubierto durante P3) — El rate-limiter
       default (`MAX_WRITES_PER_WINDOW=1000` escrituras/s por store,
-      `throttle.rs`) rechaza con `429 QueueFull` cualquier carga sostenida
-      por encima de ese umbral, independientemente de la capacidad real del
-      servidor (que P3 mostró ser ~44 veces mayor). Es una decisión de
-      producto pendiente, no un bug: ¿1000/s/store es el límite deseado por
-      defecto para el instalador nativo, o debería ser más alto/configurable
-      de forma más visible? Hoy solo se puede cambiar vía env var
-      `MAX_WRITES_PER_WINDOW` sin que el instalador lo exponga ni lo
-      documente.
+      `throttle.rs`) rechazaba con `429 QueueFull` cualquier carga
+      sostenida por encima de ese umbral, independientemente de la
+      capacidad real del servidor. Resuelto en `TASK-VAL-0020`/DEC-0054:
+      default recalibrado a 40/s (capacidad real medida) y documentado
+      explícitamente en `systemd/ixmati-api.service` con las líneas
+      `Environment=` comentadas listas para ajustar — ya no es una decisión
+      de producto implícita y sin visibilidad.
 - [x] `TASK-VAL-0014` (limpieza del load test) — `wrk` instalado en el host
       macOS (10 cores) vía Homebrew, contenedor con puerto 30000 publicado
       (`podman run -p 30000:30000`), carga sostenida de 3 min desde fuera de
@@ -542,17 +541,25 @@ Tablero de tareas activo. Persiste entre sesiones.
       commit/fsync de SQLite en sí, no el scheduling de tokio. El 41% de
       ciclo sin explicar de DEC-0050 sigue sin cerrar. Ver DEC-0053
       (actualización).
-- [ ] `TASK-VAL-0020` (seguimiento, ahora más urgente — confirmado de nuevo
-      a escala real) — Recalibrar `OUTBOX_BACKPRESSURE_THRESHOLD` (default
-      5000, DEC-0045) y el rate-limiter default
-      (`MAX_WRITES_PER_WINDOW=1000/s`, TASK-VAL-0013) contra la capacidad
-      real medida (~36 commits/s, confirmada de nuevo con DEC-0053) — hoy
-      el rate-limiter default es ~25x mayor que lo que el writer puede
-      sostener, por lo que nunca actúa antes de que el verdadero cuello de
-      botella (SQLite) se sature. Bajo esa sobrecarga en la prueba de
-      DEC-0053, Mosquitto llegó a su tope de mensajes en cola
-      (`$SYS/broker/messages/stored`≈100,093) — no se investigó a fondo qué
-      pasó con el resto del backlog, queda para esta tarea.
+- [x] `TASK-VAL-0020` — Recalibrados a la capacidad real medida:
+      `MAX_WRITES_PER_WINDOW` 1000→**40**/s, `OUTBOX_BACKPRESSURE_THRESHOLD`
+      5000→**500** (`crates/ixmati-api/src/rest.rs`, ahora constantes
+      `DEFAULT_*` con test de regresión). **Hallazgo de código**:
+      `OutboxBacklog`/`self_monitor.rs` mide `_outbox WHERE published_at IS
+      NULL` (filas ya comprometidas, esperando publicarse) — NO la cola de
+      ingestión (comandos aceptados, aún sin comprometer). Por eso en la
+      carga de DEC-0053 (464K aceptadas, throttle deshabilitado) el
+      backpressure de outbox nunca se disparó ni un solo 429: es ciego a
+      ese modo de falla concreto. El mecanismo que sí puede actuar a
+      tiempo es el rate-limiter, ahora calibrado cerca del límite real.
+      **Validado en el mismo contenedor Debian real de DEC-0053, sin
+      overrides esta vez**: carga de 1 min con `wrk` → 134,544 requests,
+      132,144 rechazadas con backpressure, solo 2,400 aceptadas (≈40/s
+      exacto). Lado del writer: **2,400 comprometidos — igual a las 2,400
+      aceptadas**, por primera vez en esta investigación `aceptadas ==
+      comprometidas`, sin backlog oculto. 0 reinicios, 0 errores. También
+      cierra `TASK-VAL-0013` (el default ahora es visible/documentado en
+      `systemd/ixmati-api.service`). Ver DEC-0054.
 
 ## Cancelled / Replaced
 
