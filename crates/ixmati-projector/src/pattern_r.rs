@@ -202,7 +202,7 @@ async fn register_dependencies(
 }
 
 fn is_deleted(event: &EventEnvelope) -> bool {
-    event.event_type.ends_with(".deleted")
+    event.event_type.ends_with(".deleted") || event.event_type.ends_with(".eliminado")
 }
 
 fn resolve_lookup_key(event: &EventEnvelope, store_name: &str) -> String {
