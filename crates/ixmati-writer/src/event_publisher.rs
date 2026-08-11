@@ -197,6 +197,9 @@ impl EventPublisher {
             );
         }
         if !published_ids.is_empty() {
+            if published_ids.len() == queued_ids.len() {
+                pause_after_puback_for_test(&self.store, &published_ids);
+            }
             let conn = crate::db::open_with_pragmas(&self.db_path)?;
             Outbox::mark_published_batch(&conn, &published_ids)?;
         }
@@ -262,6 +265,42 @@ impl EventPublisher {
                 }
             }
         }
+    }
+}
+
+/// Deterministic crash barrier for the PUBACK -> `published_at` window.
+///
+/// This is deliberately inert unless both environment variables are present:
+/// a production process cannot be paused merely because a stale path exists.
+/// The manifest is renamed atomically so an external harness can safely wait
+/// until every row in the batch has received PUBACK, then send SIGKILL.
+fn pause_after_puback_for_test(store: &str, outbox_ids: &[i64]) {
+    if std::env::var("IXMATI_TEST_MODE").as_deref() != Ok("1") {
+        return;
+    }
+    let Ok(path) = std::env::var("IXMATI_TEST_PUBACK_BARRIER") else {
+        return;
+    };
+
+    let manifest = serde_json::json!({
+        "pid": std::process::id(),
+        "store": store,
+        "outbox_ids": outbox_ids,
+        "phase": "puback_received_before_published_at",
+        "created_at": chrono::Utc::now().to_rfc3339(),
+    });
+    let path = std::path::PathBuf::from(path);
+    let temporary = path.with_extension(format!("tmp.{}", std::process::id()));
+    if let Err(error) = std::fs::write(&temporary, manifest.to_string())
+        .and_then(|_| std::fs::rename(&temporary, &path))
+    {
+        tracing::error!(error = %error, path = %path.display(), "failed to write PUBACK test barrier");
+        return;
+    }
+
+    tracing::warn!(path = %path.display(), rows = outbox_ids.len(), "test barrier reached after PUBACK and before published_at");
+    while path.exists() {
+        std::thread::sleep(std::time::Duration::from_millis(50));
     }
 }
 
