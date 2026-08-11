@@ -40,7 +40,7 @@ print(db.execute(sys.argv[2]).fetchone()[0] or 0)
 
 mkdir -p "$(dirname "$OUT")"
 : > "$EVENTS"
-printf 'idempotency_key\tentity_key\tapi_status\tidempotency_status\tevent_id\tevent_occurrences\n' > "$OUT"
+printf 'idempotency_key\tentity_key\tapi_status\tidempotency_applied_at\tevent_id\tevent_occurrences\n' > "$OUT"
 
 cleanup() {
     kill "${subscriber_pid:-}" 2>/dev/null || true
@@ -116,11 +116,11 @@ missing=0
 while IFS=$'\t' read -r key entity_key; do
     api_status="$(curl -fsS --max-time 5 "http://${TEST_HOST}:${API_PORT}/writes/${STORE}/${key}" || true)"
     if grep -q '"status":"APPLIED"' <<< "$api_status"; then api=APPLIED; else api=PENDING; fi
-    idem="$(sqlite_query "SELECT status FROM _idempotency WHERE store='${STORE}' AND idempotency_key='${key}';")"
+    idem="$(sqlite_query "SELECT applied_at FROM _idempotency WHERE store='${STORE}' AND idempotency_key='${key}';")"
     event_id="$(sqlite_query "SELECT event_id FROM _outbox WHERE store='${STORE}' AND entity='puback_window' AND key='${entity_key}' ORDER BY id DESC LIMIT 1;")"
     occurrences="$(grep -F -o "$event_id" "$EVENTS" 2>/dev/null | wc -l | tr -d ' ')"
     printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$key" "$entity_key" "$api" "$idem" "$event_id" "$occurrences" >> "$OUT"
-    if [[ "$api" != APPLIED || "$idem" != APPLIED || -z "$event_id" || "$occurrences" -lt 1 ]]; then
+    if [[ "$api" != APPLIED || -z "$idem" || "$idem" == 0 || -z "$event_id" || "$occurrences" -lt 1 ]]; then
         missing=$((missing + 1))
     fi
 done < "${OUT%.tsv}.requests"
