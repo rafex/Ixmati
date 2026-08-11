@@ -62,7 +62,14 @@ fn main() -> std::io::Result<()> {
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(5000);
-    let client_id = format!("writer-{}", uuid::Uuid::new_v4());
+    // DEC-0055/TASK-VAL-0024: antes un UUID aleatorio en cada arranque — con
+    // `clean_session=false` (ver consumer.rs/event_publisher.rs) hace falta
+    // un id ESTABLE para que Mosquitto reconozca un reinicio como la misma
+    // sesión y reentregue el backlog QoS1 pendiente en vez de descartarlo.
+    // Un `client_id` aleatorio nuevo cada vez era, en la práctica, siempre
+    // "otro cliente" para el broker — la causa raíz de la pérdida de
+    // backlog confirmada en DEC-0055.
+    let client_id = format!("ixmati-writer-{}", store_name);
 
     tracing::info!(
         store = %store_name,

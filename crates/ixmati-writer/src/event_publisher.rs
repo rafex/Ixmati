@@ -21,6 +21,13 @@ impl EventPublisher {
         let (host, port) = ixmati_core::mqtt::parse_mqtt_broker(broker);
         let mut mqtt_options = MqttOptions::new(format!("{}-publisher", client_id), &host, port);
         mqtt_options.set_keep_alive(std::time::Duration::from_secs(5));
+        // DEC-0055/TASK-VAL-0024: mismo motivo que en consumer.rs — sesión
+        // estable en vez de `clean_session=true` (default). Este cliente solo
+        // publica (no se suscribe a nada), así que no tiene una cola QoS1
+        // propia que perder, pero mantener la sesión consistente con el
+        // consumidor evita sorpresas y deja la identidad MQTT del writer
+        // completa (consumer + publisher) alineada con `client_id` estable.
+        mqtt_options.set_clean_session(false);
 
         let (client, connection) = Client::new(mqtt_options, 100);
 

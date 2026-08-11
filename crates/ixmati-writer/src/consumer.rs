@@ -45,6 +45,15 @@ impl MqttConsumer {
         let mut mqtt_options = MqttOptions::new(client_id, &host, port);
         mqtt_options.set_keep_alive(std::time::Duration::from_secs(5));
         mqtt_options.set_manual_acks(true);
+        // DEC-0055/TASK-VAL-0024: `clean_session=true` (default de rumqttc)
+        // hace que Mosquitto descarte toda la cola QoS1 pendiente de esta
+        // sesión en cada reconexión — confirmado como la causa de que un
+        // reinicio del writer bajo sobrecarga pierda el backlog completo en
+        // silencio en vez de recuperarlo. Con sesión persistente, el broker
+        // retiene los mensajes QoS1 no confirmados mientras el writer está
+        // desconectado y los reentrega al volver — siempre que `client_id`
+        // sea estable entre reinicios (ver `main.rs`), no aleatorio.
+        mqtt_options.set_clean_session(false);
 
         let (client, mut connection) = Client::new(mqtt_options, 100);
 
@@ -66,6 +75,7 @@ impl MqttConsumer {
                                     Ok(()) => {
                                         if let Err(e) = client.ack(&publish) {
                                             tracing::warn!(error = %e, "failed to ack MQTT publish");
+                                            crate::metrics::MQTT_ACK_FAILURES.add(1, &[]);
                                         }
                                     }
                                     Err(mpsc::TrySendError::Full(_)) => {
@@ -96,6 +106,7 @@ impl MqttConsumer {
                                     // redistribuirlo por siempre.
                                     if let Err(e) = client.ack(&publish) {
                                         tracing::warn!(error = %e, "failed to ack malformed publish");
+                                        crate::metrics::MQTT_ACK_FAILURES.add(1, &[]);
                                     }
                                 }
                             }

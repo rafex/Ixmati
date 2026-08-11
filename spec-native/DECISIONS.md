@@ -943,3 +943,56 @@ Al ejecutar la Parte 3 justo después de la Parte 1 (que dejó a Mosquitto con ~
 - Archivos: `helpers/wrk/write_committed.lua` (nuevo). Ningún cambio de código de producción en esta decisión — el fix queda propuesto, no aplicado.
 - Consecuencias: (+) corrige un error de etiquetado propio (filas vs. commits) que venía arrastrándose desde DEC-0049. (+) primera medición honesta de latencia end-to-end real (p50=14.55ms, p90=121.67ms, p99=185.20ms) — útil para SLOs futuros. (+) refuta una hipótesis propia con datos en vez de asumir que estaba confirmada — evita una optimización mal dirigida en `cache_sync.rs`. (+) descubre un hallazgo de durabilidad real y no trivial: bajo sobrecarga extrema sostenida (el mismo escenario que DEC-0053/0054 usaron deliberadamente para medir el techo), un reinicio del writer puede perder en silencio un backlog completo de comandos ya aceptados por la API — sin ningún error visible salvo métricas de Mosquitto que hoy nadie scrapea. (-) el 61.3% del ciclo sin explicar sigue abierto, ahora con un candidato concreto a investigar (logging síncrono) pero sin confirmar. (-) el fix del `client_id`/`clean_session` no se implementó — queda como decisión pendiente del usuario, dado que toca comportamiento de reconexión que vale la pena confirmar antes de tocar.
 - Reemplaza: none (corrige el etiquetado de DEC-0053/0054, no cambia sus veredictos de capacidad; abre un hallazgo nuevo no cubierto por ninguna decisión anterior)
+
+### DEC-0056 — P0: sesión MQTT persistente (client_id estable + clean_session=false) — reduce la pérdida de backlog, no cierra el atasco de raíz
+
+- Fecha: 2026-08-10
+- Estado: `accepted` e implementado (parcial — ver hallazgo de validación)
+- Relacionado con specs: `SPEC-VAL-0001`
+- Contexto: primera prioridad del plan de priorización de DEC-0055 (`TASK-VAL-0024`) — pérdida de datos silenciosa es la categoría de severidad más alta, se ataca primero.
+
+**Cambios de código**:
+- `crates/ixmati-writer/src/main.rs` — `client_id` pasó de
+  `format!("writer-{}", uuid::Uuid::new_v4())` (aleatorio en cada
+  arranque) a `format!("ixmati-writer-{}", store_name)` (estable).
+- `crates/ixmati-writer/src/consumer.rs` y
+  `crates/ixmati-writer/src/event_publisher.rs` — `mqtt_options
+  .set_clean_session(false)` en ambos (default de `rumqttc` era `true`,
+  nunca sobreescrito).
+- `crates/ixmati-writer/src/metrics.rs` — nuevo `Counter`
+  `mqtt_ack_failures_total`, incrementado en los 2 sitios de
+  `consumer.rs` donde un `client.ack()` fallido antes solo dejaba un
+  `tracing::warn!` fácil de perder entre miles de líneas bajo carga.
+- `config/mosquitto/mosquitto.conf` — `persistent_client_expiration 7d`,
+  para que una sesión persistente de un `client_id` que deja de usarse
+  (ej. tras renombrar un store) no quede retenida por Mosquitto para
+  siempre — mismo efecto práctico que el `Session Expiry Interval` de
+  MQTT v5, sin migrar de protocolo (evaluado y descartado por ahora:
+  `rumqttc` sí trae un módulo `v5`, pero cambiar de protocolo es un riesgo
+  mayor que no se justifica solo para esto).
+- Verificado antes de implementar (no eran gaps): el camino de escritura
+  ya usa `QoS::AtLeastOnce` de punta a punta, y `_idempotency` ya
+  deduplica reentregas — sesión persistente + QoS1 + dedup es el modelo
+  correcto sin necesitar QoS2/exactly-once.
+
+**Verificación — mismo contenedor Debian real, mismo escenario de sobrecarga que DEC-0055** (throttle deshabilitado, `wrk` 90s, Mosquitto hasta su tope de cola):
+- `cargo test --workspace --lib`: 8/8 crates en verde.
+- Sobrecarga reproducida: 228,768 requests aceptadas, Mosquitto en 100,097
+  mensajes almacenados, writer en su ritmo habitual (63 batches/6,300
+  comprometidos antes de reiniciar).
+- **Al reiniciar `ixmati-writer@default`: recuperación real, inmediata**
+  — de 63 a 72 batches en 3 segundos, y siguió subiendo hasta 114 batches
+  (Mosquitto bajó de 100,097 a 94,997 mensajes almacenados, ~5,100
+  recuperados). **Antes de este fix (DEC-0055): 0 recuperados, backlog
+  completo abandonado.** Esto por sí solo confirma que el mecanismo
+  funciona — sesión persistente + `client_id` estable sí permite
+  reentrega tras un reinicio.
+- **Hallazgo honesto — el atasco volvió a ocurrir** a mitad del drenado:
+  tras esos ~42 batches recuperados, el writer volvió a quedar en 0% CPU
+  real (confirmado con 2 muestras de `/proc/<pid>/stat` separadas 3s,
+  `ticks_delta=0`) y Mosquitto dejó de bajar (`94,997` estable en 2
+  muestras separadas 3s) — el mismo patrón de atasco de DEC-0055, ahora
+  ocurriendo *de nuevo* dentro de la misma sesión persistente.
+
+- Consecuencias: (+) el fix cumple lo que promete — reduce drásticamente el blast radius de un reinicio bajo sobrecarga (de "pierde todo" a "recupera lo que puede hasta que se vuelve a atascar"), con evidencia real, no solo teórica. (+) confirma indirectamente que el mecanismo de sesión persistente de Mosquitto funciona como se esperaba con esta combinación de `client_id` estable + `clean_session=false`. (-) **no cierra el problema de raíz** — la causa de que la sesión se atasque en primer lugar (hipótesis de DEC-0055: `client.ack()` bloqueante compitiendo con el mismo hilo que debe drenar el canal interno de `rumqttc`, más `max_inflight_messages` de Mosquitto en su default de 20) sigue sin corregirse. Sin `P1`, un writer bajo sobrecarga sostenida puede seguir quedando indefinidamente atascado — ya no pierde lo ya atascado en el próximo reinicio, pero tampoco avanza solo. `P1` es indispensable, no opcional, y se implementa a continuación en esta misma sesión.
+- Reemplaza: none (implementa P0 del plan de priorización de DEC-0055; el hallazgo de "atasco recurrente" motiva directamente P1)

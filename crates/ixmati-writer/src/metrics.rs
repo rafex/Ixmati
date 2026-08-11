@@ -8,7 +8,7 @@
 //! operador que quiera scrapear cada store por separado debe asignar un
 //! `METRICS_PORT` único por instancia (drop-in de systemd).
 
-use opentelemetry::metrics::{Gauge, Histogram, Meter, MeterProvider};
+use opentelemetry::metrics::{Counter, Gauge, Histogram, Meter, MeterProvider};
 use opentelemetry_sdk::metrics::SdkMeterProvider;
 use std::sync::LazyLock;
 
@@ -52,6 +52,19 @@ pub static CONSUMER_QUEUE_DEPTH: LazyLock<Gauge<u64>> = LazyLock::new(|| {
 // cache-server real — para confirmar o descartar de una vez si ahí está el
 // tiempo que ninguno de los benchmarks sintéticos (que no incluyen esta
 // llamada) logró reproducir.
+// DEC-0055/TASK-VAL-0024: antes un ack fallido solo dejaba un
+// `tracing::warn!` que se pierde entre miles de líneas bajo carga — este
+// contador lo hace visible sin tener que grepear logs. Un fallo de ack
+// persistente (crece sin parar) es la señal más temprana de que la sesión
+// MQTT puede estar por atascarse (ver el hallazgo del atasco de sesión en
+// DEC-0055).
+pub static MQTT_ACK_FAILURES: LazyLock<Counter<u64>> = LazyLock::new(|| {
+    METER
+        .u64_counter("mqtt_ack_failures_total")
+        .with_description("MQTT publish acks that failed to send")
+        .build()
+});
+
 pub static CACHE_SYNC_DURATION: LazyLock<Histogram<f64>> = LazyLock::new(|| {
     METER
         .f64_histogram("cache_sync_duration_seconds")

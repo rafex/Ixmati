@@ -565,23 +565,20 @@ Tablero de tareas activo. Persiste entre sesiones.
       del `cache_sync` secuencial REFUTADA, solo 10.3% del ciclo), y
       primera latencia end-to-end honesta con `ack_mode: committed`
       (p50=14.55ms, p90=121.67ms, p99=185.20ms). Ver DEC-0055.
-- [ ] `TASK-VAL-0024` (**hallazgo grave, decisión pendiente**) — Bajo
-      sobrecarga extrema sostenida, una sesión MQTT del writer puede
-      quedar atascada del lado de Mosquitto (sin enviar más mensajes a esa
-      sesión, aunque el proceso del writer siga sano) y, al reiniciar el
-      writer, **el backlog completo se pierde en silencio** —
-      `client_id` aleatorio por arranque + `clean_session: true` (default
-      de `rumqttc`, nunca sobreescrito) hacen que Mosquitto descarte la
-      cola de la sesión vieja. Confirmado con evidencia real: 7+ minutos
-      sin procesar nada, `messages/dropped` de Mosquitto saltó a 121,591,
-      reinicio no recuperó el backlog pero sí procesó tráfico nuevo al
-      instante. Fix propuesto (no implementado): `client_id` estable por
-      store + `set_clean_session(false)` en `consumer.rs` (evaluar
-      también `event_publisher.rs`). Causa raíz exacta del atasco inicial
-      no confirmada al 100% (candidato: `max_inflight_messages` de
-      Mosquitto, default 20, combinado con que `client.ack()` de rumqttc
-      puede bloquear sobre un canal interno compartido con el mismo hilo
-      del eventloop). Ver DEC-0055.
+- [x] `TASK-VAL-0024` (P0, **parcial — ver P1**) — `client_id` estable
+      (`ixmati-writer-{store}`, antes UUID aleatorio) +
+      `set_clean_session(false)` en `consumer.rs`/`event_publisher.rs` +
+      `persistent_client_expiration 7d` en `mosquitto.conf` +
+      contador `mqtt_ack_failures_total` nuevo. **Validado en el mismo
+      contenedor Debian real, mismo escenario de sobrecarga de DEC-0055**:
+      al reiniciar el writer tras saturar la cola de Mosquitto, esta vez
+      **sí recuperó backlog** (63→114 batches, Mosquitto bajó de 100,097 a
+      94,997 mensajes) — antes: 0 recuperado, pérdida total. **Pero el
+      atasco volvió a ocurrir a mitad del drenado** (0% CPU real
+      confirmado, cola de Mosquitto sin bajar en 2 muestras separadas 3s)
+      — el fix reduce el blast radius de un reinicio, no corrige la causa
+      de que la sesión se atasque. `P1` (a continuación) ataca eso. Ver
+      DEC-0056.
 - [ ] `TASK-VAL-0025` — El 61.3% del ciclo por batch sin explicar
       (DEC-0055, empeora el 41% de DEC-0050) sigue abierto. Candidato no
       probado: `tracing::info!` con formato JSON hace I/O de escritura
