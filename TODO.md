@@ -522,24 +522,37 @@ Tablero de tareas activo. Persiste entre sesiones.
       3,030 batches, 15,150 comandos comprometidos, 0 errores, outbox
       drenado a 0 al final, sin ningún signo del cuelgue silencioso de
       `WriteActor` (DEC-0051, que se congelaba a los ~90-95 batches). Ver
-      DEC-0053. **Pendiente**: validar en el contenedor Debian real de
-      producción con la misma carga de `wrk` de sesiones anteriores — el
-      smoke test fue en macOS local, no mide el throughput bajo la carga
-      HTTP completa ni confirma si cierra el 41% de ciclo sin explicar de
-      DEC-0050.
-- [ ] `TASK-VAL-0020` (seguimiento) — Recalibrar `OUTBOX_BACKPRESSURE_THRESHOLD`
-      (default 5000, DEC-0045) y el rate-limiter default
+      DEC-0053. Ver actualización abajo — **ya validado en el contenedor
+      Debian real de producción**.
+- [x] Validar el motor síncrono (DEC-0053) en el contenedor Debian real de
+      producción (mismo host amd64 remoto de toda la investigación previa,
+      systemd real, `--privileged`). **Instalador completo 7/7 en verde**
+      (de paso se encontró y corrigió un bug preexistente no relacionado:
+      `systemd/ixmati-api.service` nunca seteaba `SQLITE_PATH`, rompía
+      `ack_mode: committed` desde DEC-0049). **Carga sostenida de 3 min con
+      `wrk`** (mismo script/metodología de DEC-0046/0049): 464,474 requests
+      aceptadas, 0 errores. Lado del writer: 6,500 comandos comprometidos
+      (confirmado en SQLite real), 0 reinicios, 0 errores/panics, memoria
+      estable, outbox drenado a 0. **Hallazgo honesto**: el throughput NO
+      mejoró — 36.1 commits/s, dentro del mismo rango de ~30-40/s medido en
+      DEC-0049/0050 con la implementación anterior. El motor síncrono
+      resuelve la fragilidad arquitectónica (elimina la clase de bug
+      async/sync, evita el cuelgue de `WriteActor`) pero no el techo de
+      comandos/s — consistente con que el costo dominante sea el
+      commit/fsync de SQLite en sí, no el scheduling de tokio. El 41% de
+      ciclo sin explicar de DEC-0050 sigue sin cerrar. Ver DEC-0053
+      (actualización).
+- [ ] `TASK-VAL-0020` (seguimiento, ahora más urgente — confirmado de nuevo
+      a escala real) — Recalibrar `OUTBOX_BACKPRESSURE_THRESHOLD` (default
+      5000, DEC-0045) y el rate-limiter default
       (`MAX_WRITES_PER_WINDOW=1000/s`, TASK-VAL-0013) contra la capacidad
-      real medida (~30-40 commits/s) — hoy el rate-limiter default es ~25x
-      mayor que lo que el writer puede sostener, por lo que nunca actúa
-      antes de que el verdadero cuello de botella (SQLite) se sature.
-      Remedir con el motor síncrono nuevo (DEC-0053) antes de fijar el
-      número, puede haber cambiado.
-- [ ] Validar el motor síncrono (DEC-0053) en el contenedor Debian real de
-      producción con la misma metodología de `wrk` de sesiones anteriores
-      — confirmar throughput sostenido bajo la carga HTTP completa (no solo
-      publicación MQTT directa) y si cierra el 41% de ciclo sin explicar de
-      DEC-0050.
+      real medida (~36 commits/s, confirmada de nuevo con DEC-0053) — hoy
+      el rate-limiter default es ~25x mayor que lo que el writer puede
+      sostener, por lo que nunca actúa antes de que el verdadero cuello de
+      botella (SQLite) se sature. Bajo esa sobrecarga en la prueba de
+      DEC-0053, Mosquitto llegó a su tope de mensajes en cola
+      (`$SYS/broker/messages/stored`≈100,093) — no se investigó a fondo qué
+      pasó con el resto del backlog, queda para esta tarea.
 
 ## Cancelled / Replaced
 

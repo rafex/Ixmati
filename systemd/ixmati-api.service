@@ -15,6 +15,7 @@ Environment=API_PORT=30000
 Environment=IXMATI_API_KEYS=ix-default-key
 Environment=CACHE_READ_MODE=socket
 Environment=CACHE_SOCKET_PATH=/var/run/ixmati/cache.sock
+Environment=SQLITE_PATH=/var/lib/ixmati/stores/default.db
 Restart=always
 RestartSec=5
 StandardOutput=journal
