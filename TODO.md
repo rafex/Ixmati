@@ -560,6 +560,35 @@ Tablero de tareas activo. Persiste entre sesiones.
       comprometidas`, sin backlog oculto. 0 reinicios, 0 errores. También
       cierra `TASK-VAL-0013` (el default ahora es visible/documentado en
       `systemd/ixmati-api.service`). Ver DEC-0054.
+- [x] `TASK-VAL-0023` — Corrección de métricas (filas vs. commits reales),
+      descomposición del ciclo con datos (61.3% sin explicar — hipótesis
+      del `cache_sync` secuencial REFUTADA, solo 10.3% del ciclo), y
+      primera latencia end-to-end honesta con `ack_mode: committed`
+      (p50=14.55ms, p90=121.67ms, p99=185.20ms). Ver DEC-0055.
+- [ ] `TASK-VAL-0024` (**hallazgo grave, decisión pendiente**) — Bajo
+      sobrecarga extrema sostenida, una sesión MQTT del writer puede
+      quedar atascada del lado de Mosquitto (sin enviar más mensajes a esa
+      sesión, aunque el proceso del writer siga sano) y, al reiniciar el
+      writer, **el backlog completo se pierde en silencio** —
+      `client_id` aleatorio por arranque + `clean_session: true` (default
+      de `rumqttc`, nunca sobreescrito) hacen que Mosquitto descarte la
+      cola de la sesión vieja. Confirmado con evidencia real: 7+ minutos
+      sin procesar nada, `messages/dropped` de Mosquitto saltó a 121,591,
+      reinicio no recuperó el backlog pero sí procesó tráfico nuevo al
+      instante. Fix propuesto (no implementado): `client_id` estable por
+      store + `set_clean_session(false)` en `consumer.rs` (evaluar
+      también `event_publisher.rs`). Causa raíz exacta del atasco inicial
+      no confirmada al 100% (candidato: `max_inflight_messages` de
+      Mosquitto, default 20, combinado con que `client.ack()` de rumqttc
+      puede bloquear sobre un canal interno compartido con el mismo hilo
+      del eventloop). Ver DEC-0055.
+- [ ] `TASK-VAL-0025` — El 61.3% del ciclo por batch sin explicar
+      (DEC-0055, empeora el 41% de DEC-0050) sigue abierto. Candidato no
+      probado: `tracing::info!` con formato JSON hace I/O de escritura
+      síncrona por línea de log, que bajo journald puede bloquear.
+      Instrumentar el propio loop de `main.rs` con mediciones más finas
+      (tiempo entre que `process_batch()` retorna y el próximo
+      `fill_started` se resetea) para aislarlo.
 
 ## Cancelled / Replaced
 
