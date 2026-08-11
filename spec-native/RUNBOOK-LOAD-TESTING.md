@@ -294,6 +294,28 @@ reiniciado por systemd. Comparar los reinicios con
 `outbox_puback_timeouts_total` y `last_batch_commit_unix_seconds`; el watchdog
 es recuperación, no diagnóstico de causa raíz.
 
+Para capturar todas esas señales durante una sobrecarga sin reiniciar el
+writer, usar el probe reproducible del repositorio:
+
+```bash
+CONTAINER_NAME=ixmati-load-test TEST_HOST=192.168.3.175 \
+  RATE=1000 DURATION=90 CONCURRENCY=500 TIMEOUT=5 \
+  helpers/shell/mqtt_stall_probe.sh
+```
+
+El probe guarda el JSON y stderr del generador, un TSV de snapshots y el
+journal del writer bajo `/tmp/ixmati-mqtt-stall-<UTC>`. Si
+`client_saturated_ticks` es mayor que cero, el resultado no es una medición
+de capacidad y no debe usarse para afirmar el punto de saturación; sólo puede
+servir como diagnóstico auxiliar. La ausencia de un snapshot de una métrica
+de contador significa que no hubo muestra/exportación de ese contador, no que
+su valor sea cero.
+
+Los contadores se declaran en OpenTelemetry sin el sufijo `_total`; el
+exporter Prometheus lo añade. Si aparece un nombre `*_total_total`, la corrida
+debe detenerse y corregirse la instrumentación antes de interpretar alertas o
+snapshots.
+
 Para validar sólo el mecanismo de recuperación, sin afirmar una causa MQTT,
 ejecutar el escenario controlado que bloquea SQLite:
 

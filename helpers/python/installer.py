@@ -270,7 +270,10 @@ def start_services() -> None:
 
     for svc in SERVICE_START_ORDER:
         run(["systemctl", "enable", svc], check=False, quiet=True)
-        run(["systemctl", "start", svc], check=False, quiet=True)
+        # A plain `start` leaves an already-running process on the previous
+        # binary after an upgrade. Restart in dependency order so an
+        # idempotent reinstall actually activates the artifact just copied.
+        run(["systemctl", "restart", svc], check=False, quiet=True)
         if svc == "ixmati-cache-server":
             wait_for_cache_socket()
 

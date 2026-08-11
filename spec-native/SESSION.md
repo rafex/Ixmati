@@ -33,10 +33,12 @@ inverso reconstruible para Pattern R mutable.
 
 La validación controlada de las 13 alertas ya pasó con `promtool`. El watchdog
 también pasó en Debian ante una pérdida forzada de progreso: código 42,
-reinicio systemd y recuperación durable. La siguiente acción es reproducir o
-descartar el atasco específicamente en MQTT; `TASK-VAL-0035` sigue abierto
-hasta contar con esa evidencia, sin confundirla con el bloqueo SQLite ya
-probado.
+reinicio systemd y recuperación durable. Se ejecutó el probe MQTT con dos
+perfiles extremos; ambos saturaron al generador antes de producir una medición
+de capacidad válida, mientras el writer continuó avanzando. El diagnóstico no
+reproduce ni descarta el atasco histórico, por lo que `TASK-VAL-0035` sigue
+abierto. Se corrigió además la duplicación `_total_total` del exporter y se
+añadió una regresión unitaria.
 
 ## Context for next agent
 

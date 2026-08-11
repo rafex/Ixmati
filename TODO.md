@@ -476,7 +476,13 @@ Tablero de tareas activo. Persiste entre sesiones.
       El watchdog opt-in ya reinicia de forma segura ante tráfico pendiente sin
       progreso: una prueba Debian bloqueando SQLite confirmó salida 42,
       reinicio systemd y recuperación `APPLIED`. Falta reproducir y atribuir la
-      causa específicamente en MQTT.
+      causa específicamente en MQTT. El probe `helpers/shell/mqtt_stall_probe.sh`
+      ejecutó dos corridas de diagnóstico, pero el generador se saturó
+      (`client_saturated_ticks>0`) antes de una medición válida; el writer sí
+      mantuvo progreso y el watchdog no se activó. La evidencia queda en
+      `spec-native/evidence/MQTT-STALL-DIAGNOSTIC-20260811.md`. También se
+      corrigió el bug de nombres `*_total_total` del exporter y se añadió una
+      regresión de métricas.
 - [x] `TASK-VAL-0036` — Resolver la actualización de Pattern R cuando cambia
       una entidad referenciada. DEC-0065 implementa índice inverso
       reconstruible y fan-out limitado. La matriz Debian cubrió creación,

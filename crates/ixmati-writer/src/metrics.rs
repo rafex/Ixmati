@@ -80,7 +80,7 @@ pub static CONSUMER_QUEUE_DEPTH: LazyLock<Gauge<u64>> = LazyLock::new(|| {
 // DEC-0055).
 pub static MQTT_ACK_FAILURES: LazyLock<Counter<u64>> = LazyLock::new(|| {
     METER
-        .u64_counter("mqtt_ack_failures_total")
+        .u64_counter("mqtt_ack_failures")
         .with_description("MQTT publish acks that failed to send")
         .build()
 });
@@ -115,28 +115,28 @@ pub static MQTT_EVENTLOOP_ERRORS: LazyLock<Counter<u64>> = LazyLock::new(|| {
 
 pub static MQTT_COMMANDS_ENQUEUED: LazyLock<Counter<u64>> = LazyLock::new(|| {
     METER
-        .u64_counter("mqtt_commands_enqueued_total")
+        .u64_counter("mqtt_commands_enqueued")
         .with_description("Valid MQTT commands accepted into the bounded writer queue")
         .build()
 });
 
 pub static MQTT_COMMANDS_DEFERRED: LazyLock<Counter<u64>> = LazyLock::new(|| {
     METER
-        .u64_counter("mqtt_commands_deferred_total")
+        .u64_counter("mqtt_commands_deferred")
         .with_description("Valid MQTT commands deferred because the writer queue was full")
         .build()
 });
 
 pub static MQTT_COMMANDS_ACKED: LazyLock<Counter<u64>> = LazyLock::new(|| {
     METER
-        .u64_counter("mqtt_commands_acked_total")
+        .u64_counter("mqtt_commands_acked")
         .with_description("MQTT commands acknowledged after a successful SQLite commit")
         .build()
 });
 
 pub static CACHE_SYNC_ERRORS: LazyLock<Counter<u64>> = LazyLock::new(|| {
     METER
-        .u64_counter("cache_sync_errors_total")
+        .u64_counter("cache_sync_errors")
         .with_description("Cache synchronization operations that failed after SQLite commit")
         .build()
 });
@@ -284,8 +284,21 @@ mod tests {
     #[test]
     fn encode_metrics_reports_write_batch_duration() {
         WRITE_BATCH_DURATION.record(0.02, &[opentelemetry::KeyValue::new("store", "default")]);
+        MQTT_ACK_FAILURES.add(1, &[]);
+        MQTT_COMMANDS_ENQUEUED.add(1, &[]);
+        MQTT_COMMANDS_DEFERRED.add(1, &[]);
+        MQTT_COMMANDS_ACKED.add(1, &[]);
+        CACHE_SYNC_ERRORS.add(1, &[]);
+        OUTBOX_PUBACK_TIMEOUTS.add(1, &[]);
         let out = encode_metrics();
         assert!(out.contains("ixmati_write_batch_duration_seconds_bucket"));
+        assert!(out.contains("ixmati_mqtt_ack_failures_total"));
+        assert!(out.contains("ixmati_mqtt_commands_enqueued_total"));
+        assert!(out.contains("ixmati_mqtt_commands_deferred_total"));
+        assert!(out.contains("ixmati_mqtt_commands_acked_total"));
+        assert!(out.contains("ixmati_cache_sync_errors_total"));
+        assert!(out.contains("ixmati_outbox_puback_timeouts_total"));
         assert!(!out.contains("ixmati_ixmati_"));
+        assert!(!out.contains("_total_total"));
     }
 }
