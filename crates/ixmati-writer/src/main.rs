@@ -1,15 +1,31 @@
-use ixmati_cache::CacheClient;
+use ixmati_cache::SyncCacheClient;
 use ixmati_writer::batcher::Batcher;
 use ixmati_writer::cache_sync::CacheSync;
 use ixmati_writer::consumer::MqttConsumer;
 use ixmati_writer::event_publisher::EventPublisher;
-use ixmati_writer::write_engine::WriteEngine;
-use rusqlite::Connection;
+use ixmati_writer::write_thread::WriteHandle;
+use std::sync::mpsc::RecvTimeoutError;
 use std::sync::Arc;
-use tokio::sync::Mutex;
 
-#[tokio::main]
-async fn main() -> std::io::Result<()> {
+/// DEC-0052: motor de escritura sin tokio. `fn main()` normal, sin
+/// `#[tokio::main]` — no hay ningún runtime async compartido en el
+/// proceso. Cada componente que necesita I/O concurrente (MQTT, el
+/// servidor de métricas) corre en su propio hilo de SO dedicado, con su
+/// propio mecanismo interno si lo necesita (rumqttc trae su propio runtime
+/// de tokio confinado a un solo hilo; el servidor de métricas hace lo
+/// mismo, ver `metrics.rs`) — pero ninguno de esos runtimes cruza jamás
+/// hacia el camino de escritura a SQLite. La comunicación entre hilos usa
+/// únicamente primitivas de `std::sync` (mpsc), nunca `tokio::sync`.
+///
+/// Esto resuelve de raíz la clase de bug de DEC-0050 (`process_batch`) y
+/// DEC-0052 (`event_publisher.rs`): código síncrono/bloqueante llamado
+/// directo dentro de una `async fn`, compitiendo por los mismos hilos
+/// worker de tokio que el resto del pipeline — no puede volver a ocurrir
+/// porque no existe ningún hilo worker de tokio compartido. También evita
+/// el modo de falla del `WriteActor` de DEC-0051: la comunicación con el
+/// hilo de escritura (`write_thread.rs`) usa `std::sync::mpsc` puro en
+/// ambas direcciones, nunca `tokio::sync::oneshot`.
+fn main() -> std::io::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -32,11 +48,6 @@ async fn main() -> std::io::Result<()> {
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(50);
-    // Antes hardcodeado a 1000ms/100 eventos en el propio código (ver
-    // DEC-0043): a 448 writes/s de entrada esto topeaba el drenado del
-    // outbox a ~100 eventos/s y generaba un backlog sin límite. Ahora
-    // configurable, y publish_unpublished publica en paralelo en vez de
-    // secuencial, así que el límite ya no es un techo de "1 por await".
     let publish_interval_ms: u64 = std::env::var("PUBLISH_INTERVAL_MS")
         .ok()
         .and_then(|v| v.parse().ok())
@@ -68,7 +79,7 @@ async fn main() -> std::io::Result<()> {
     {
         let conn = ixmati_writer::db::open_with_pragmas(&db_path)
             .map_err(|e| std::io::Error::other(format!("SQLite: {}", e)))?;
-        WriteEngine::ensure_schema(&conn, &store_name)
+        ixmati_writer::write_engine::WriteEngine::ensure_schema(&conn, &store_name)
             .map_err(|e| std::io::Error::other(format!("Schema: {}", e)))?;
     }
 
@@ -77,97 +88,74 @@ async fn main() -> std::io::Result<()> {
     let (mut consumer, _tx) =
         MqttConsumer::with_capacity(&mqtt_broker, &client_id, &topic, consumer_channel_capacity);
     let mut batcher = Batcher::new(batch_size, batch_interval_ms);
-    let publisher = Arc::new(EventPublisher::new(&mqtt_broker, &client_id, &db_path));
-    let publisher_clone = Arc::clone(&publisher);
-    let store_clone = store_name.clone();
 
-    tokio::spawn(async move {
-        EventPublisher::publish_loop(
-            publisher_clone,
-            store_clone,
-            publish_interval_ms,
-            publish_batch_limit,
-        )
-        .await;
-    });
+    let publisher = Arc::new(EventPublisher::new(&mqtt_broker, &client_id, &db_path));
+    {
+        let publisher = Arc::clone(&publisher);
+        let store_clone = store_name.clone();
+        std::thread::Builder::new()
+            .name("ixmati-publish-loop".into())
+            .spawn(move || {
+                EventPublisher::publish_loop(publisher, store_clone, publish_interval_ms, publish_batch_limit);
+            })
+            .expect("failed to spawn publish loop thread");
+    }
 
     let cache_socket_path = std::env::var("CACHE_SOCKET_PATH")
         .unwrap_or_else(|_| "/var/run/ixmati/cache.sock".into());
 
-    let cache_client = Arc::new(
-        CacheClient::connect(&cache_socket_path)
-            .await
-            .map_err(|e| {
-                tracing::error!(error = %e, socket = %cache_socket_path, "failed to connect to cache-server");
-                std::io::Error::other(format!("CacheClient connect: {e}"))
-            })?,
-    );
+    let cache_client = Arc::new(SyncCacheClient::connect(&cache_socket_path).map_err(|e| {
+        tracing::error!(error = %e, socket = %cache_socket_path, "failed to connect to cache-server");
+        std::io::Error::other(format!("SyncCacheClient connect: {e}"))
+    })?);
 
-    let cache_sync = Arc::new(CacheSync::new(Arc::clone(&cache_client)));
+    let cache_sync = Arc::new(CacheSync::new(cache_client));
 
-    let conn = Arc::new(Mutex::new(
-        ixmati_writer::db::open_with_pragmas(&db_path)
-            .map_err(|e| std::io::Error::other(format!("SQLite: {}", e)))?,
-    ));
+    let write_handle = WriteHandle::spawn(db_path.clone());
 
-    // DEC-0050/Opción G: antes se creaba un `tokio::time::sleep(50ms)` nuevo
-    // en CADA iteración del loop, incluso aunque casi siempre pierde la
-    // carrera contra `recv()`. Registrar/desregistrar un timer en el driver
-    // de tokio tiene overhead real; para llenar un solo batch de 100
-    // comandos hacen falta 100 iteraciones, cada una pagando ese costo.
-    // Medido: con A (`synchronous=NORMAL`), F (`cache_sync` concurrente) y
-    // hasta triplicar CPU o cambiar de entorno por completo (Mac emulado →
-    // Debian real 8 cores nativo), el throughput se mantuvo fijo en
-    // ~30-34 commits/s — la firma de un costo por iteración, no de
-    // saturación de recursos. Un `interval` creado una sola vez fuera del
-    // loop reutiliza el mismo timer en cada `tick()` en vez de registrar
-    // uno nuevo por vuelta.
-    let mut flush_interval = tokio::time::interval(tokio::time::Duration::from_millis(50));
-    flush_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    // Cada iteración espera un comando hasta `batch_interval_ms` — mismo rol
+    // que el `flush_interval`/`select!` de la versión con tokio, pero con
+    // `recv_timeout` bloqueante sobre un hilo de SO normal.
+    let flush_check = std::time::Duration::from_millis(batch_interval_ms.max(1));
 
-    // Mapeo de puntos calientes: aísla el tiempo de "llenar" un batch (las
-    // hasta 100 llamadas a `recv()` vía select!) bajo carga real, separado
-    // del tiempo de procesarlo (WRITE_BATCH_DURATION/CACHE_SYNC_DURATION).
+    // Mapeo de puntos calientes: aísla el tiempo de "llenar" un batch bajo
+    // carga real, separado del tiempo de procesarlo.
     let mut fill_started = std::time::Instant::now();
 
     loop {
-        tokio::select! {
-            cmd = consumer.receiver().recv() => {
-                match cmd {
-                    Some(cmd) => {
-                        tracing::debug!(
-                            store = %cmd.store,
-                            entity = %cmd.entity,
-                            key = %cmd.key,
-                            version = cmd.version,
-                            "received command"
-                        );
+        match consumer.receiver().recv_timeout(flush_check) {
+            Ok(cmd) => {
+                tracing::debug!(
+                    store = %cmd.store,
+                    entity = %cmd.entity,
+                    key = %cmd.key,
+                    version = cmd.version,
+                    "received command"
+                );
 
-                        if let Some(batch) = batcher.push(cmd) {
-                            ixmati_writer::metrics::BATCH_FILL_DURATION.record(
-                                fill_started.elapsed().as_secs_f64(),
-                                &[opentelemetry::KeyValue::new("store", store_name.clone())],
-                            );
-                            process_batch(&conn, &batch, &store_name, &cache_sync).await;
-                            fill_started = std::time::Instant::now();
-                        }
-                    }
-                    None => {
-                        tracing::warn!("MQTT consumer channel closed");
-                        break;
-                    }
+                if let Some(batch) = batcher.push(cmd) {
+                    ixmati_writer::metrics::BATCH_FILL_DURATION.record(
+                        fill_started.elapsed().as_secs_f64(),
+                        &[opentelemetry::KeyValue::new("store", store_name.clone())],
+                    );
+                    process_batch(&write_handle, &batch, &store_name, &cache_sync);
+                    fill_started = std::time::Instant::now();
                 }
             }
-            _ = flush_interval.tick() => {
+            Err(RecvTimeoutError::Timeout) => {
                 if batcher.should_flush() && !batcher.is_empty() {
                     ixmati_writer::metrics::BATCH_FILL_DURATION.record(
                         fill_started.elapsed().as_secs_f64(),
                         &[opentelemetry::KeyValue::new("store", store_name.clone())],
                     );
                     let batch = batcher.flush();
-                    process_batch(&conn, &batch, &store_name, &cache_sync).await;
+                    process_batch(&write_handle, &batch, &store_name, &cache_sync);
                     fill_started = std::time::Instant::now();
                 }
+            }
+            Err(RecvTimeoutError::Disconnected) => {
+                tracing::warn!("MQTT consumer channel closed");
+                break;
             }
         }
     }
@@ -175,35 +163,14 @@ async fn main() -> std::io::Result<()> {
     Ok(())
 }
 
-async fn process_batch(
-    conn: &Arc<Mutex<Connection>>,
+fn process_batch(
+    write_handle: &WriteHandle,
     batch: &ixmati_writer::Batch,
     store_name: &str,
     cache_sync: &Arc<CacheSync>,
 ) {
-    // Opción H (mapeo de puntos calientes): `WriteEngine::process_batch` es
-    // síncrono/bloqueante y antes se llamaba directo dentro de esta `async
-    // fn`, sobre un hilo del runtime de tokio — el mismo patrón que ya se
-    // había identificado y corregido en `cache_server.rs` (DEC-0045). Los
-    // benchmarks aislados (`examples/bench_disk.rs`) descartaron que SQLite
-    // en sí sea el cuello de botella (3900+ writes/s incluso en el disco
-    // más lento del contenedor, contra ~30-35 commits/s del sistema
-    // completo en vivo) — la sospecha recae en la contención por hilos del
-    // runtime entre esta llamada bloqueante y las hasta 100 tareas
-    // concurrentes que `cache_sync.sync_batch` lanza por batch.
-    // `blocking_lock()` es la forma correcta de tomar un `tokio::sync::
-    // Mutex` desde dentro de una closure no-async ejecutada en
-    // `spawn_blocking`.
-    let conn = Arc::clone(conn);
-    let cmds = batch.commands.clone();
-
     let started = std::time::Instant::now();
-    let result = tokio::task::spawn_blocking(move || {
-        let mut guard = conn.blocking_lock();
-        WriteEngine::process_batch(&mut guard, &cmds)
-    })
-    .await
-    .expect("process_batch blocking task panicked");
+    let result = write_handle.process_batch(batch.commands.clone());
     ixmati_writer::metrics::WRITE_BATCH_DURATION.record(
         started.elapsed().as_secs_f64(),
         &[opentelemetry::KeyValue::new("store", store_name.to_string())],
@@ -212,21 +179,23 @@ async fn process_batch(
     match result {
         Ok(result) => {
             let cache_sync_started = std::time::Instant::now();
-            cache_sync.sync_batch(&result.events
-                .iter()
-                .map(|e| ixmati_core::WriteEnvelope {
-                    op: "upsert".into(),
-                    store: e.store.clone(),
-                    entity: e.entity.clone(),
-                    key: e.key.clone(),
-                    version: e.version,
-                    ts: e.occurred_at.clone(),
-                    idempotency_key: String::new(),
-                    ack_mode: "accepted".into(),
-                    payload: e.payload.clone(),
-                })
-                .collect::<Vec<_>>())
-                .await;
+            cache_sync.sync_batch(
+                &result
+                    .events
+                    .iter()
+                    .map(|e| ixmati_core::WriteEnvelope {
+                        op: "upsert".into(),
+                        store: e.store.clone(),
+                        entity: e.entity.clone(),
+                        key: e.key.clone(),
+                        version: e.version,
+                        ts: e.occurred_at.clone(),
+                        idempotency_key: String::new(),
+                        ack_mode: "accepted".into(),
+                        payload: e.payload.clone(),
+                    })
+                    .collect::<Vec<_>>(),
+            );
             ixmati_writer::metrics::CACHE_SYNC_DURATION.record(
                 cache_sync_started.elapsed().as_secs_f64(),
                 &[opentelemetry::KeyValue::new("store", store_name.to_string())],

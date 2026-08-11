@@ -1,5 +1,6 @@
 pub mod backend;
 pub mod cache_client;
+pub mod cache_client_sync;
 pub mod cache_server;
 pub mod noop;
 pub mod readonly;
@@ -11,6 +12,7 @@ pub mod flashdb_store;
 
 pub use backend::CacheBackend;
 pub use cache_client::CacheClient;
+pub use cache_client_sync::SyncCacheClient;
 pub use cache_server::CacheServer;
 pub use noop::NoOpBackend;
 pub use readonly::ReadOnlyCache;

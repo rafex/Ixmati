@@ -507,24 +507,39 @@ Tablero de tareas activo. Persiste entre sesiones.
       regresiones. Ver DEC-0052. **Pendiente**: revalidar en Debian real con
       `wrk` para medir cuánto del 41% no explicado de DEC-0050 cierra esto
       — no se hizo en esta sesión (sin acceso a la infra remota).
-- [ ] `DEC-0052` (decisión pendiente del usuario) — Propuesta de motor de
-      escritura 100% síncrono para `ixmati-writer` (sin tokio en el proceso,
-      un hilo de SO dueño exclusivo de SQLite con colas bloqueantes
-      explícitas, MQTT vía `rumqttc::Client` síncrono). Documentada en
-      DECISIONS.md como `PROPUESTA — no implementada`; resolvería de raíz
-      la clase de bug de `TASK-VAL-0019`/`TASK-VAL-0021` (frontera
-      async/sync frágil) en vez de seguir parcheándola caso por caso. No
-      implementar sin decisión explícita — es un cambio grande.
+- [x] `DEC-0052`/`DEC-0053` — Motor de escritura 100% síncrono para
+      `ixmati-writer`, implementado: sin tokio en el proceso (`main.rs` es
+      `fn main()` normal), hilo de SO dedicado dueño exclusivo de SQLite
+      (`write_thread.rs`, comunicación 100% `std::sync::mpsc`, sin
+      `tokio::sync::oneshot`), MQTT vía `rumqttc::Client` síncrono
+      (`consumer.rs`/`event_publisher.rs`, cada uno en su propio hilo),
+      cliente de cache-server síncrono nuevo (`ixmati-cache::SyncCacheClient`,
+      mismo protocolo de texto que el async, verificado con un servidor de
+      juguete en tests). `cargo test --workspace --lib` en verde (8/8
+      crates). **Smoke test real** (Mosquitto + cache-server + writer, los 3
+      binarios reales en local): pipeline completo verificado
+      (MQTT→batch→SQLite→cache→outbox→MQTT). **Carga sostenida de 70s**:
+      3,030 batches, 15,150 comandos comprometidos, 0 errores, outbox
+      drenado a 0 al final, sin ningún signo del cuelgue silencioso de
+      `WriteActor` (DEC-0051, que se congelaba a los ~90-95 batches). Ver
+      DEC-0053. **Pendiente**: validar en el contenedor Debian real de
+      producción con la misma carga de `wrk` de sesiones anteriores — el
+      smoke test fue en macOS local, no mide el throughput bajo la carga
+      HTTP completa ni confirma si cierra el 41% de ciclo sin explicar de
+      DEC-0050.
 - [ ] `TASK-VAL-0020` (seguimiento) — Recalibrar `OUTBOX_BACKPRESSURE_THRESHOLD`
       (default 5000, DEC-0045) y el rate-limiter default
       (`MAX_WRITES_PER_WINDOW=1000/s`, TASK-VAL-0013) contra la capacidad
       real medida (~30-40 commits/s) — hoy el rate-limiter default es ~25x
       mayor que lo que el writer puede sostener, por lo que nunca actúa
       antes de que el verdadero cuello de botella (SQLite) se sature.
-- [ ] Retomar profiling de sistema (`tokio-console`, o un host sin
-      restricción de `ptrace` anidado) si se quiere diagnosticar el cuelgue
-      de `TASK-VAL-0022` o el 41% del ciclo sin explicar de DEC-0050 con más
-      precisión que la hipótesis confirmada en `TASK-VAL-0019`/DEC-0052.
+      Remedir con el motor síncrono nuevo (DEC-0053) antes de fijar el
+      número, puede haber cambiado.
+- [ ] Validar el motor síncrono (DEC-0053) en el contenedor Debian real de
+      producción con la misma metodología de `wrk` de sesiones anteriores
+      — confirmar throughput sostenido bajo la carga HTTP completa (no solo
+      publicación MQTT directa) y si cierra el 41% de ciclo sin explicar de
+      DEC-0050.
 
 ## Cancelled / Replaced
 

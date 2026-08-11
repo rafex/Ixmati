@@ -11,6 +11,7 @@ pub mod metrics;
 pub mod outbox;
 pub mod standby;
 pub mod write_engine;
+pub mod write_thread;
 
 use ixmati_core::{EventEnvelope, StoreConfig, WriteEnvelope};
 

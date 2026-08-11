@@ -92,6 +92,15 @@ pub fn encode_metrics() -> String {
 
 /// Arranca el servidor HTTP `/metrics` si `METRICS_PORT` está seteado.
 /// No hace nada (y no falla) si no lo está.
+///
+/// DEC-0052: el proceso `ixmati-writer` ya no corre dentro de un runtime
+/// tokio compartido (`main.rs` es `fn main()` normal, sin `#[tokio::main]`).
+/// `axum`/`tokio::net::TcpListener` siguen necesitando un runtime para
+/// funcionar, así que este hilo se construye el suyo propio, confinado por
+/// completo a sí mismo — igual que el patrón ya usado para las conexiones
+/// MQTT síncronas de `rumqttc` (`consumer.rs`/`event_publisher.rs`). Este
+/// runtime nunca toca SQLite ni comparte primitivas con el hilo de
+/// escritura: exponer métricas no es parte del camino crítico.
 pub fn maybe_spawn_server() {
     let Ok(port) = std::env::var("METRICS_PORT") else {
         return;
@@ -101,24 +110,34 @@ pub fn maybe_spawn_server() {
         return;
     };
 
-    tokio::spawn(async move {
-        let app = axum::Router::new().route(
-            "/metrics",
-            axum::routing::get(|| async { encode_metrics() }),
-        );
-        let addr = format!("0.0.0.0:{port}");
-        match tokio::net::TcpListener::bind(&addr).await {
-            Ok(listener) => {
-                tracing::info!(%addr, "writer metrics endpoint listening");
-                if let Err(e) = axum::serve(listener, app).await {
-                    tracing::error!(error = %e, "metrics server error");
+    std::thread::Builder::new()
+        .name("ixmati-metrics".into())
+        .spawn(move || {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("failed to build metrics server runtime");
+
+            rt.block_on(async move {
+                let app = axum::Router::new().route(
+                    "/metrics",
+                    axum::routing::get(|| async { encode_metrics() }),
+                );
+                let addr = format!("0.0.0.0:{port}");
+                match tokio::net::TcpListener::bind(&addr).await {
+                    Ok(listener) => {
+                        tracing::info!(%addr, "writer metrics endpoint listening");
+                        if let Err(e) = axum::serve(listener, app).await {
+                            tracing::error!(error = %e, "metrics server error");
+                        }
+                    }
+                    Err(e) => {
+                        tracing::error!(error = %e, %addr, "failed to bind metrics endpoint");
+                    }
                 }
-            }
-            Err(e) => {
-                tracing::error!(error = %e, %addr, "failed to bind metrics endpoint");
-            }
-        }
-    });
+            });
+        })
+        .expect("failed to spawn metrics server thread");
 }
 
 #[cfg(test)]

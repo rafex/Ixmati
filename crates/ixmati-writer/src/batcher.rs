@@ -1,5 +1,5 @@
 use ixmati_core::WriteEnvelope;
-use tokio::time::{Duration, Instant};
+use std::time::{Duration, Instant};
 
 use crate::Batch;
 
