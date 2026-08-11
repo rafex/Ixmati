@@ -112,7 +112,7 @@ def seed_database(engine: str, target: str, users: int, orders: int) -> None:
         )
         cur.executemany(
             "INSERT INTO payload_pedidos(entity,key,version,payload) VALUES(%s,%s,1,%s::jsonb)",
-            [("pedido", f"ped_{i:06d}", 1, json.dumps(order_payload(i))) for i in range(orders)],
+            [("pedido", f"ped_{i:06d}", json.dumps(order_payload(i))) for i in range(orders)],
         )
     conn.commit()
     conn.close()
