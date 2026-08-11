@@ -31,6 +31,28 @@ cleanup() {
 }
 trap cleanup EXIT
 
+capture_direct_snapshot() {
+  local label="$1"
+  if [[ -n "${SQLITE_DB:-}" && -f "$SQLITE_DB" ]]; then
+    {
+      echo "label=$label"
+      echo "db_bytes=$(stat -c %s "$SQLITE_DB" 2>/dev/null || stat -f %z "$SQLITE_DB")"
+      sqlite3 "$SQLITE_DB" 'PRAGMA wal_checkpoint(PASSIVE); PRAGMA journal_mode; PRAGMA synchronous; PRAGMA busy_timeout;' 2>/dev/null || true
+    } > "$OUT_DIR/sqlite-${label}.txt"
+  fi
+  if podman container exists "$PG_CONTAINER" 2>/dev/null; then
+    for query in \
+      'SELECT now(), count(*) FROM pg_stat_activity;' \
+      'SELECT datname,xact_commit,xact_rollback,blks_read,blks_hit FROM pg_stat_database WHERE datname=current_database();' \
+      'SELECT checkpoints_timed,checkpoints_req,buffers_checkpoint,buffers_clean FROM pg_stat_bgwriter;' \
+      'SELECT wal_records,wal_fpi,wal_bytes FROM pg_stat_wal;' \
+      'SELECT mode,count(*) FROM pg_locks GROUP BY mode ORDER BY mode;'; do
+      printf '%s\n' "$query"
+      PGPASSWORD=benchmark podman exec "$PG_CONTAINER" psql -U postgres -d ixmati_bench -At -F '|' -c "$query" 2>/dev/null || true
+    done > "$OUT_DIR/postgres-${label}.txt"
+  fi
+}
+
 {
   echo "sha=$(git -C "$ROOT" rev-parse HEAD)"
   echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -64,6 +86,7 @@ podman exec "$PG_CONTAINER" pg_isready -U postgres -d ixmati_bench
 "${UV_ARGS[@]}" "$ROOT/benchmarks/runner.py" init-postgres "$PG_DSN"
 "${UV_ARGS[@]}" "$ROOT/benchmarks/runner.py" seed-postgres "$PG_DSN" \
   --users "$BENCH_USERS_VALUE" --orders "$BENCH_ORDERS_VALUE"
+capture_direct_snapshot pre-load
 
 run_direct() {
   local engine="$1" target="$2" operation="$3" rate="$4" concurrency="$5" batch_size="$6" cache_state="${7:-warm}" repeat="${8:-1}"
@@ -107,6 +130,7 @@ for operation in update idempotency mixed; do
     run_direct postgres "$PG_DSN" "$operation" 100 16 1 warm "$repeat"
   done
 done
+capture_direct_snapshot post-load
 fi
 
 if [[ "$RUN_IXMATI" == 1 ]]; then
