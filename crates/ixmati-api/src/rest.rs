@@ -72,7 +72,7 @@ pub struct AppState {
 // `Throttle` uses a small token-bucket burst allowance instead of a hard
 // sliding-window edge, so a steady client at the configured rate is not
 // rejected merely because its timer has a few milliseconds of jitter.
-const DEFAULT_MAX_WRITES_PER_WINDOW: usize = 20;
+const DEFAULT_MAX_WRITES_PER_WINDOW: usize = 15;
 const DEFAULT_THROTTLE_WINDOW_SECS: u64 = 1;
 const DEFAULT_OUTBOX_BACKPRESSURE_THRESHOLD: i64 = 500;
 
@@ -1341,7 +1341,7 @@ mod tests {
     #[test]
     fn recalibrated_defaults_match_measured_writer_capacity() {
         assert_eq!(
-            DEFAULT_MAX_WRITES_PER_WINDOW, 20,
+            DEFAULT_MAX_WRITES_PER_WINDOW, 15,
             "el perfil productivo debe dejar margen bajo la capacidad real \
              del writer (~30-40 commits/s medidos en Debian)"
         );

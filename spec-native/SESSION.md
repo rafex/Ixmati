@@ -57,7 +57,7 @@ cliente lento, backpressure, `OUT_OF_RANGE` tras retención y reconexión con
 cursor. La prueba
 prolongada de 150/s y 200/s, merge conflictivo de stores, topics antiguos y
 restauración desde backup siguen siendo trabajo independiente. El perfil
-recomendado queda en 20/s con margen operativo; 40/s es diagnóstico. `mdbook` continúa
+recomendado queda en 15/s con margen operativo; 40/s es diagnóstico. `mdbook` continúa
 pendiente por no estar instalado localmente.
 
 ## Context for next agent

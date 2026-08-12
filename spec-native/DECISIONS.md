@@ -1599,7 +1599,7 @@ no como capacidad productiva.
 ### DEC-0073 — Perfil productivo reducido a 20/s tras ventana de 25/s
 
 - Fecha: 2026-08-12
-- Estado: `accepted`
+- Estado: `replaced`
 - Reemplaza: el perfil operativo de `DEC-0072`
 - Relacionado con: `TASK-PROD-0001`, `DEC-0071`
 
@@ -1610,10 +1610,33 @@ perfil no cumple el contrato de confirmación operativa. Una ventana de cinco
 minutos a 20/s produjo 6,001/6,001 respuestas `200`, cero `202`/`429`, cliente
 no saturado y p99 de 122.5 ms.
 
-El valor predeterminado y el perfil recomendado se fijan en
-`MAX_WRITES_PER_WINDOW=20` por store. El soak de una hora de
+El valor predeterminado y el perfil recomendado se fijaron inicialmente en
+`MAX_WRITES_PER_WINDOW=20` por store. La medición posterior de 20/s con
+claves nuevas no cumplió el margen de confirmación, por lo que esta decisión
+fue reemplazada por DEC-0074. El soak de una hora de
 `TASK-PROD-0001` contra el SHA publicado sigue siendo obligatorio para cerrar
 la validación de producción; 25/s y 30/s quedan como escalones de diagnóstico.
+
+### DEC-0074 — Perfil productivo reducido a 15/s tras medición válida de 20/s
+
+- Fecha: 2026-08-12
+- Estado: `accepted`
+- Reemplaza: `DEC-0073`
+- Relacionado con: `TASK-PROD-0001`, `TASK-VAL-0020`
+
+Una corrida limpia de cinco minutos a 20/s con 200 clientes, sobre el SHA
+`a528af5`, produjo 5,056 respuestas `200` y 945 `202` de 6,001 operaciones
+(84.25% confirmadas dentro del timeout de 2 segundos). Las 6,001 claves
+terminaron en `_idempotency`, SQLite pasó `integrity_check` y el outbox quedó
+en cero: el defecto observado es margen de latencia, no pérdida de datos.
+
+Una corrida limpia de cinco minutos a 15/s, con prefijo de claves único y el
+arnés corregido para aislar el warmup, sobre `1794268`, produjo 4,501/4,501
+respuestas `200`, cero `202`/`429`, p99 de 62.09 ms, cero saturación del
+generador y outbox en cero. Por ello el límite predeterminado y perfil
+recomendado se fijan en `MAX_WRITES_PER_WINDOW=15` por store. La hora completa
+contra el SHA final sigue siendo obligatoria antes de cerrar
+`TASK-PROD-0001`; 20/s queda como diagnóstico y no como SLO.
 
 ### DEC-0071 — Admisión a tasa estable mediante token bucket
 
