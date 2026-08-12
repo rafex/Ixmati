@@ -68,6 +68,9 @@ make dist-validate           # verifica binarios/config/systemd en el tarball
 ixmati-store-migrate plan --manifest benchmarks/migration.example.toml
 ixmati-store-migrate verify --manifest migration.toml
 ixmati-store-migrate execute --manifest migration.toml
+
+# E2E offline migration + reconciler/cache en Debian efímero
+helpers/shell/test_store_migration_e2e.sh
 ```
 
 Validación real en contenedor Debian con systemd como PID 1 (requiere Podman

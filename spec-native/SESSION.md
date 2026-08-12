@@ -38,12 +38,12 @@ quedó bajo 160 ms p99; 150/s mostró p99 321 ms. El throttle fue restaurado a
 ## Next steps
 
 Queda ejecutar en Debian el soak de 150/s y 200/s durante una hora por
-escalón, conservar métricas y completar el drenado de cinco minutos. La
-herramienta offline de stores ya está implementada localmente; falta ampliar
-la matriz de integración, validar cutover con reconciler/cache y ejecutar una
-migración controlada sobre un entorno Debian de prueba. El perfil recomendado
-sigue en 40/s hasta cerrar la evidencia. `mdbook` continúa pendiente por no
-estar instalado localmente.
+escalón, conservar métricas y completar el drenado de cinco minutos. El E2E de
+rename, cutover, reconciler y cache ya pasó en un contenedor Debian; siguen
+pendientes merge conflictivo, topics antiguos, restauración desde backup y el
+perfil de capacidad prolongado. El perfil recomendado sigue en 40/s hasta
+cerrar la evidencia. `mdbook` continúa pendiente por no estar instalado
+localmente.
 
 ## Context for next agent
 

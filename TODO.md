@@ -706,8 +706,9 @@ Tablero de tareas activo. Persiste entre sesiones.
 - [x] `TASK-STORE-0003` — Implementar rename y resolución LWW para merge,
       incluyendo colisiones divergentes de idempotencia.
 - [x] `TASK-STORE-0004` — Implementar split `sha256-key-v1` reproducible.
-- [ ] `TASK-STORE-0005` — Validar merge/split E2E con reconciler, cache,
-      systemd, topics estrictos y restauración desde backup.
+- [ ] `TASK-STORE-0005` — Completar merge/split E2E con reconciler, cache,
+      systemd, topics estrictos y restauración desde backup. Rename y
+      reconstrucción de reconciler/cache ya tienen evidencia Debian.
 - [x] `TASK-STORE-0006` — Documentar runbook, decisión, ejemplo de manifiesto,
       comandos y trazabilidad.
 

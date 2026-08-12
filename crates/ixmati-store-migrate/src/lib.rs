@@ -945,4 +945,54 @@ mod tests {
         }
         let _ = std::fs::remove_dir_all(dir);
     }
+
+    #[test]
+    fn merge_rejects_divergent_idempotency_digest() {
+        let dir = std::env::temp_dir().join(format!(
+            "ixmati-store-migrate-idempotency-conflict-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let left = dir.join("left.db");
+        let right = dir.join("right.db");
+        for (path, store, digest) in [
+            (&left, "left", "digest-left"),
+            (&right, "right", "digest-right"),
+        ] {
+            let conn = Connection::open(path).unwrap();
+            create_schema(&conn, store).unwrap();
+            conn.execute(
+                "INSERT INTO _idempotency(idempotency_key,store,entity,key,version,operation,command_digest,applied_at) VALUES('same-key',?1,'pedido','p1',1,'upsert',?2,'2026-01-01')",
+                params![store, digest],
+            )
+            .unwrap();
+        }
+        let manifest = Manifest {
+            operation: Operation::Merge,
+            sources: vec![
+                SourceSpec {
+                    name: "left".into(),
+                    path: left,
+                },
+                SourceSpec {
+                    name: "right".into(),
+                    path: right,
+                },
+            ],
+            target: Some(TargetSpec {
+                name: "merged".into(),
+                path: dir.join("merged.db"),
+            }),
+            targets: vec![],
+            hash_algorithm: HASH_ALGORITHM.into(),
+            evidence_dir: dir.join("evidence"),
+            quiesced: true,
+        };
+        let result = run(&manifest, Mode::Plan);
+        assert!(
+            matches!(result, Err(MigrationError::Conflict(message)) if message.contains("same-key"))
+        );
+        assert!(!dir.join("merged.db").exists());
+        let _ = std::fs::remove_dir_all(dir);
+    }
 }
