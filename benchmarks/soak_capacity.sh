@@ -105,8 +105,7 @@ EOF
   sleep "${DRAIN_SECONDS:-300}"
   curl -fsS "http://${TEST_HOST}:${API_PORT}/metrics" > "$run_dir/api-final.prom" || true
   curl -fsS "http://${TEST_HOST}:${WRITER_METRICS_PORT}/metrics" > "$run_dir/writer-final.prom" || true
-  podman exec "$CONTAINER_NAME" sqlite3 "/var/lib/ixmati/stores/${STORE}.db" \
-    'PRAGMA integrity_check; SELECT COUNT(*) AS pending_outbox FROM _outbox WHERE published_at IS NULL;' \
+  podman exec "$CONTAINER_NAME" bash -lc "python3 -c 'import sqlite3; c=sqlite3.connect(\"/var/lib/ixmati/stores/${STORE}.db\"); print(c.execute(\"PRAGMA integrity_check\").fetchone()[0]); print(c.execute(\"SELECT COUNT(*) FROM _outbox WHERE published_at IS NULL\").fetchone()[0])'" \
     > "$run_dir/sqlite-final.txt" 2>&1 || true
 done
 
