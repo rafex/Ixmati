@@ -77,6 +77,20 @@ SOAK_RATES="150 200" DURATION=3600 DRAIN_SECONDS=300 \
   helpers/shell/run_soak_debian.sh
 ```
 
+La carga se ejecuta dentro de un contenedor generador separado en el host
+Debian (`--network host`) y llega al API por la IP local de ese host. El
+operador sólo consulta el estado con Podman cada 15 minutos:
+
+```bash
+SOAK_RATES=150 DURATION=3600 CONCURRENCY=1000 \
+  TEST_HOST=192.168.3.143 PODMAN_HOST_IP=192.168.3.143 \
+  SNAPSHOT_INTERVAL=900 helpers/shell/run_soak_debian.sh
+```
+
+`TEST_HOST`/`PODMAN_HOST_IP` deben ser una dirección asignada a la máquina
+Debian donde corre Podman, no la dirección del equipo operador. El generador
+se elimina al finalizar y el throttle temporal se restaura mediante `trap`.
+
 Validación real en contenedor Debian con systemd como PID 1 (requiere Podman
 `--privileged` + cgroups montados):
 

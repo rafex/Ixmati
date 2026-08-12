@@ -9,7 +9,9 @@ TEST_HOST="${TEST_HOST:-192.168.3.175}"
 API_PORT="${API_PORT:-30300}"
 WRITER_METRICS_PORT="${WRITER_METRICS_PORT:-30301}"
 IMAGE_NAME="${IMAGE_NAME:-ixmati-soak-debian}"
+GENERATOR_IMAGE="${GENERATOR_IMAGE:-ixmati-soak-generator}"
 CONTAINER_PREFIX="${CONTAINER_PREFIX:-ixmati-soak}"
+GENERATOR_PREFIX="${GENERATOR_PREFIX:-ixmati-soak-generator}"
 SOAK_DURATION="${DURATION:-3600}"
 DRAIN_SECONDS="${DRAIN_SECONDS:-300}"
 CONCURRENCY="${CONCURRENCY:-200}"
@@ -36,14 +38,17 @@ wait_for_systemd() {
 echo "[soak] construyendo distribución e imagen Debian"
 make -C "$ROOT" dist dist-checksums dist-validate >/dev/null
 podman build -t "$IMAGE_NAME" "$ROOT/containers/installer-test" >/dev/null
+podman build -t "$GENERATOR_IMAGE" -f "$ROOT/containers/soak-generator/Containerfile" "$ROOT" >/dev/null
 version="$(cat "$ROOT/VERSION")"
 tarball="$ROOT/dist/ixmati-${version}-linux-amd64.tar.gz"
 dist_dir="ixmati-${version}-linux-amd64"
 
 for rate in "${RATES[@]}"; do
     container="${CONTAINER_PREFIX}-${rate}"
+    generator="${GENERATOR_PREFIX}-${rate}"
     evidence="$ROOT/spec-native/evidence/raw/soak-${rate}-$(date -u +%Y%m%dT%H%M%SZ)"
     cleanup_container "$container"
+    cleanup_container "$generator"
     trap 'cleanup_container "$container"' EXIT INT TERM
 
     echo "[soak] preparando contenedor=$container rate=${rate}/s"
@@ -68,9 +73,12 @@ systemctl restart ixmati-writer@default'
         CONTAINER_NAME="$container" DURATION="$SOAK_DURATION" \
         DRAIN_SECONDS="$DRAIN_SECONDS" CONCURRENCY="$CONCURRENCY" \
         SOAK_RATES="$rate" OUT_DIR="$evidence" \
+        GENERATOR=container GENERATOR_IMAGE="$GENERATOR_IMAGE" \
+        GENERATOR_CONTAINER="$generator" PODMAN_HOST_IP="$TEST_HOST" \
         "$ROOT/benchmarks/soak_capacity.sh"
 
     cleanup_container "$container"
+    cleanup_container "$generator"
     trap - EXIT INT TERM
 done
 

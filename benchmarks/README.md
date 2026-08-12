@@ -38,6 +38,16 @@ SOAK_RATES="150 200" DURATION=3600 DRAIN_SECONDS=300 \
   helpers/shell/run_soak_debian.sh
 ```
 
+`run_soak_debian.sh` builds a separate `ixmati-soak-generator` image and runs
+it with `--network host` on the Debian Podman host. The generator calls the API
+through the host's local address (`PODMAN_HOST_IP`, normally the same value as
+`TEST_HOST`); request traffic therefore does not traverse the operator Mac.
+The operator-side process only collects a snapshot every 15 minutes by using
+Podman (`podman exec`, `podman logs` and `podman ps`). Set
+`SNAPSHOT_INTERVAL` to change that interval. A generator container remains
+detached while the test runs, so a transient loss of the operator's Podman
+connection does not interrupt the load process.
+
 El wrapper ejecuta cada tasa en un contenedor independiente. No se debe
 interrumpir una corrida válida y luego reutilizar su contenedor como evidencia
 del siguiente escalón.

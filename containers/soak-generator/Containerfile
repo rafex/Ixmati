@@ -1,0 +1,13 @@
+# Generator image for prolonged capacity tests.
+# It runs on the same Podman host as the Debian system under test and uses
+# host networking, so request traffic never traverses the operator machine.
+
+FROM debian:trixie-slim
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends python3 ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY helpers/python/rate_load.py /opt/ixmati/rate_load.py
+
+ENTRYPOINT ["python3", "/opt/ixmati/rate_load.py"]
