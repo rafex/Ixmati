@@ -3,7 +3,11 @@ use std::time::Duration;
 
 pub struct StatusQuery;
 
-const STATUS_BUSY_TIMEOUT: Duration = Duration::from_secs(5);
+// Must stay below the 30ms polling interval/deadline budget. A multi-second
+// busy timeout lets hundreds of concurrent durable-ACK polls occupy the
+// blocking pool past WRITE_COMMITTED_TIMEOUT_MS; a short retry is safer than
+// turning transient SQLite contention into a guaranteed PENDING response.
+const STATUS_BUSY_TIMEOUT: Duration = Duration::from_millis(25);
 
 const STATUS_SQL: &str = "SELECT idempotency_key, store, entity, key, version, applied_at
              FROM _idempotency
