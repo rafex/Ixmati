@@ -201,7 +201,17 @@ fn auth<T>(request: &Request<T>, config: &AuthConfig) -> Result<(), Status> {
 fn map_core_error(error: &ixmati_core::Error) -> Status {
     match error {
         ixmati_core::Error::QueueFull { .. } | ixmati_core::Error::OutboxBacklog { .. } => {
-            Status::resource_exhausted(error.to_string())
+            let mut status = Status::resource_exhausted(error.to_string());
+            let retry_after = std::env::var("THROTTLE_WINDOW_SECS")
+                .ok()
+                .and_then(|value| value.parse::<u64>().ok())
+                .unwrap_or(1)
+                .max(1)
+                .to_string();
+            if let Ok(value) = retry_after.parse() {
+                status.metadata_mut().insert("retry-after", value);
+            }
+            status
         }
         ixmati_core::Error::StoreNotFound { .. } | ixmati_core::Error::EntityNotFound { .. } => {
             Status::not_found(error.to_string())
@@ -342,6 +352,9 @@ impl pb::health_service_server::HealthService for HealthServiceImpl {
         let mut checker = crate::health::HealthChecker::new().with_mqtt(self.state.broker());
         if let Some(path) = self.state.db_path_for("default") {
             checker = checker.with_db(path);
+        }
+        for (store, path) in self.state.configured_db_paths() {
+            checker = checker.with_store_db(store, path);
         }
         let status = checker.check();
         let overall = match status.overall {

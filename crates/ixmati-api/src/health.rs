@@ -25,6 +25,7 @@ pub enum Health {
 
 pub struct HealthChecker {
     db_path: Option<String>,
+    store_db_paths: Vec<(String, String)>,
     mqtt_broker: Option<String>,
     store_name: Option<String>,
 }
@@ -33,6 +34,7 @@ impl HealthChecker {
     pub fn new() -> Self {
         Self {
             db_path: None,
+            store_db_paths: Vec::new(),
             mqtt_broker: None,
             store_name: None,
         }
@@ -40,6 +42,12 @@ impl HealthChecker {
 
     pub fn with_db(mut self, path: &str) -> Self {
         self.db_path = Some(path.to_string());
+        self
+    }
+
+    pub fn with_store_db(mut self, store: &str, path: &str) -> Self {
+        self.store_db_paths
+            .push((store.to_string(), path.to_string()));
         self
     }
 
@@ -63,7 +71,11 @@ impl HealthChecker {
         });
 
         if let Some(ref path) = self.db_path {
-            components.push(self.check_sqlite(path));
+            components.push(self.check_sqlite("sqlite", path));
+        }
+
+        for (store, path) in &self.store_db_paths {
+            components.push(self.check_sqlite(&format!("sqlite:{store}"), path));
         }
 
         if let Some(ref broker) = self.mqtt_broker {
@@ -82,22 +94,22 @@ impl HealthChecker {
         }
     }
 
-    fn check_sqlite(&self, path: &str) -> ComponentHealth {
+    fn check_sqlite(&self, name: &str, path: &str) -> ComponentHealth {
         match rusqlite::Connection::open(path) {
             Ok(conn) => match conn.query_row("SELECT 1", [], |_| Ok(())) {
                 Ok(()) => ComponentHealth {
-                    name: "sqlite".into(),
+                    name: name.into(),
                     status: Health::Ok,
                     detail: Some(format!("connected to {}", path)),
                 },
                 Err(e) => ComponentHealth {
-                    name: "sqlite".into(),
+                    name: name.into(),
                     status: Health::Degraded,
                     detail: Some(e.to_string()),
                 },
             },
             Err(e) => ComponentHealth {
-                name: "sqlite".into(),
+                name: name.into(),
                 status: Health::Unavailable,
                 detail: Some(e.to_string()),
             },
@@ -197,5 +209,37 @@ mod tests {
         let checker = HealthChecker::new().with_store("pedidos");
         let status = checker.check();
         assert_eq!(status.store, Some("pedidos".into()));
+    }
+
+    #[test]
+    fn health_check_includes_each_configured_store() {
+        let first = format!(
+            "{}/ixmati-health-first-{}.db",
+            std::env::temp_dir().display(),
+            uuid::Uuid::new_v4()
+        );
+        let second = format!(
+            "{}/ixmati-health-second-{}.db",
+            std::env::temp_dir().display(),
+            uuid::Uuid::new_v4()
+        );
+        rusqlite::Connection::open(&first).unwrap();
+        rusqlite::Connection::open(&second).unwrap();
+
+        let status = HealthChecker::new()
+            .with_store_db("pedidos", &first)
+            .with_store_db("usuarios", &second)
+            .check();
+
+        let names: Vec<_> = status
+            .components
+            .iter()
+            .map(|component| component.name.as_str())
+            .collect();
+        assert!(names.contains(&"sqlite:pedidos"));
+        assert!(names.contains(&"sqlite:usuarios"));
+
+        let _ = std::fs::remove_file(first);
+        let _ = std::fs::remove_file(second);
     }
 }

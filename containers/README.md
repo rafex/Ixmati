@@ -7,7 +7,7 @@ Podman rootless · target `linux/amd64` · builds ejecutan en host remoto vía t
 | Servicio | Puerto | Rango | Función |
 |---|---|---|---|
 | API REST | `30000` | Web | `ixmati-api` HTTP |
-| Health / Metrics | `30001` | Web | `/health` + `/metrics` |
+| Health / Ready / Metrics | `30001` | Web | `/health`, `/ready` + `/metrics` |
 | mdBook docs | `30002` | Web | `just docs-serve` containerizado |
 | API gRPC | `30100` | API | `ixmati-api` gRPC |
 | Mosquitto MQTT | `30200` | DB | Broker persistente. QoS 1, `persistence true`. |

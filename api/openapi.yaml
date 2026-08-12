@@ -24,7 +24,7 @@ paths:
               $ref: "#/components/schemas/ProtobufMessage"
       responses:
         "200":
-          description: Comando aceptado (modo async)
+          description: Commit SQLite confirmado
           content:
             application/json:
               schema:
@@ -38,6 +38,20 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AckResponse"
+            application/protobuf:
+              schema:
+                $ref: "#/components/schemas/ProtobufMessage"
+        "429":
+          description: Backpressure; respetar Retry-After y reintentar con la misma idempotency_key
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+              description: Segundos antes de reintentar
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorDetail"
             application/protobuf:
               schema:
                 $ref: "#/components/schemas/ProtobufMessage"
@@ -175,7 +189,21 @@ paths:
       operationId: health
       responses:
         "200":
-          description: Sistema saludable (todos los componentes OK)
+          description: Diagnóstico del proceso y sus componentes; usar /ready para readiness
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+            application/protobuf:
+              schema:
+                $ref: "#/components/schemas/ProtobufMessage"
+  /ready:
+    get:
+      summary: Readiness para balanceadores y supervisores
+      operationId: ready
+      responses:
+        "200":
+          description: Todos los stores configurados y MQTT están disponibles
           content:
             application/json:
               schema:
@@ -184,7 +212,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ProtobufMessage"
         "503":
-          description: Sistema degradado o no disponible
+          description: Al menos un store o MQTT no está disponible
           content:
             application/json:
               schema:

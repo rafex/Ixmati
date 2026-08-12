@@ -11,8 +11,8 @@ producto viable beta.
   **hecho**.
 - Backpressure, métricas y validación en Debian amd64: **hecho**.
 - Capacidad rate-controlled validada: 40–120 solicitudes/s con throttle
-  temporal elevado; el perfil productivo queda limitado a aproximadamente
-  40 escrituras durables/s.
+  temporal elevado; el perfil productivo recomendado queda limitado a 30
+  escrituras durables/s para conservar margen bajo el techo medido.
 - Primer escalón de saturación observado: 150 solicitudes/s.
 - Lecturas cacheadas/proyectadas validadas hasta 1,000 operaciones/s; p99 de
   escritura `ack_mode=committed` cercano a 2 s en la comparativa completa.
@@ -34,8 +34,10 @@ El ciclo de hardening quedó cerrado en `cc7b912`:
    defensa ante pérdida auténtica de progreso.
 5. La instalación, upgrade y validación de artefactos están automatizados.
 
-El perfil productivo recomendado permanece en aproximadamente 40 escrituras
-durables/s hasta completar una prueba prolongada de estabilidad a 150–200/s.
+El perfil productivo recomendado queda en 30 escrituras durables/s por store,
+con `Retry-After` y `/ready` para operación supervisada. El techo de 40/s es
+un escalón de diagnóstico y no un SLO. Una prueba prolongada de estabilidad a
+150–200/s sigue siendo necesaria para evaluar una futura ampliación.
 La investigación de profiling adicional es optimización, no una falla de
 durabilidad.
 

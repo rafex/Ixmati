@@ -302,7 +302,9 @@ async fn run_window(config: &Config, record: bool) -> (Vec<Sample>, u64, u64) {
         }
         if tasks.len() >= config.concurrency {
             saturated += 1;
-            if let Some(result) = tasks.join_next().await && record {
+            if let Some(result) = tasks.join_next().await
+                && record
+            {
                 samples.push(result.expect("benchmark task"));
             }
             continue;

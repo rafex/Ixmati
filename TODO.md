@@ -696,6 +696,11 @@ Tablero de tareas activo. Persiste entre sesiones.
 
 ## Active — Capacity and Store Lifecycle
 
+- [ ] `TASK-PROD-0001` — Validar el perfil productivo recomendado de 30/s
+      durante una hora con 200 clientes, `Retry-After`, cero escrituras
+      confirmadas perdidas, outbox drenado, integrity check y snapshots de
+      readiness y métricas.
+
 - [x] `TASK-PROTO-0002..0003,0005..0006` — gRPC unary, REST/Protobuf,
       despliegue y benchmark comparativo cerrados con E2E local y evidencia
       Debian amd64 en `PROTOBUF-E2E-20260812.md` y

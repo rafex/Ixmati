@@ -9,6 +9,7 @@
 | `GET` | `/read` | `application/json` | `Accept: application/protobuf` |
 | `POST` | `/read` | — | `application/protobuf` (`ReadRequest`) |
 | `GET` | `/health` | `application/json` | `Accept: application/protobuf` |
+| `GET` | `/ready` | `application/json` | `Accept: application/protobuf` |
 
 El esquema binario es el mismo árbol [`proto/ixmati/v1/`](../../../proto/ixmati/v1/)
 que usa gRPC. Los errores Protobuf se serializan como `ErrorDetail` y
@@ -53,3 +54,12 @@ Accept: application/protobuf
 Para POST, el body es `ixmati.v1.ReadRequest` y la respuesta es
 `ixmati.v1.ReadResponse`. `GET /health` devuelve `HealthCheckResponse` cuando
 se solicita Protobuf. La autenticación REST existente no cambia.
+
+`GET /health` es diagnóstico y conserva HTTP `200` aunque reporte un estado
+degradado. `GET /ready` está destinado a load balancers y systemd: devuelve
+`200` sólo cuando todos los SQLite configurados y MQTT están saludables; si
+algún componente está degradado o no disponible devuelve `503`, también en
+Protobuf.
+
+Una escritura rechazada por backpressure (`429`) incluye `Retry-After`. El
+cliente debe respetar ese valor y reintentar con la misma `idempotency_key`.

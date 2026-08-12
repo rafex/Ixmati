@@ -67,7 +67,9 @@ pub struct AppState {
 // ciega a este modo de falla específico. Bajarla ayuda solo al modo de
 // falla que sí detecta (el publicador de eventos atascado), no al de
 // ingestión superando la capacidad de escritura.
-const DEFAULT_MAX_WRITES_PER_WINDOW: usize = 40;
+// Keep admission below the measured ~30-40 committed writes/s ceiling so the
+// production profile has room for burstiness, retries and background work.
+const DEFAULT_MAX_WRITES_PER_WINDOW: usize = 30;
 const DEFAULT_THROTTLE_WINDOW_SECS: u64 = 1;
 const DEFAULT_OUTBOX_BACKPRESSURE_THRESHOLD: i64 = 500;
 
@@ -211,6 +213,12 @@ impl AppState {
             .map(String::as_str)
             .or(self.db_path.as_deref())
     }
+
+    pub fn configured_db_paths(&self) -> impl Iterator<Item = (&str, &str)> {
+        self.db_paths
+            .iter()
+            .map(|(store, path)| (store.as_str(), path.as_str()))
+    }
 }
 
 pub fn routes(state: AppState, auth_config: crate::auth::AuthConfig) -> Router {
@@ -228,6 +236,7 @@ pub fn routes(state: AppState, auth_config: crate::auth::AuthConfig) -> Router {
         )
         .route("/read", get(read_dispatch).post(read_protobuf_dispatch))
         .route("/health", get(health_dispatch))
+        .route("/ready", get(ready_dispatch))
         .route("/metrics", get(metrics_handler));
 
     Router::new()
@@ -271,6 +280,16 @@ fn protobuf_error(status: StatusCode, error: &ixmati_core::Error) -> Response {
             idempotency_key: String::new(),
         },
     )
+}
+
+fn with_retry_after(mut response: Response, status: StatusCode) -> Response {
+    if status == StatusCode::TOO_MANY_REQUESTS {
+        let seconds = throttle_window_secs_from_env().max(1).to_string();
+        if let Ok(value) = seconds.parse() {
+            response.headers_mut().insert(header::RETRY_AFTER, value);
+        }
+    }
+    response
 }
 
 async fn write_dispatch(
@@ -332,7 +351,7 @@ async fn write_dispatch(
                     },
                 )
             }
-            Err((status, error)) => protobuf_error(status, &error.0),
+            Err((status, error)) => with_retry_after(protobuf_error(status, &error.0), status),
         };
     }
     let envelope = match serde_json::from_slice::<WriteEnvelope>(&body) {
@@ -349,7 +368,7 @@ async fn write_dispatch(
     };
     match submit_write(state, envelope).await {
         Ok(response) => response.into_response(),
-        Err(response) => response.into_response(),
+        Err((status, error)) => with_retry_after((status, Json(error.0)).into_response(), status),
     }
 }
 
@@ -1032,12 +1051,11 @@ async fn write_status_dispatch(
 async fn health_handler(State(state): State<AppState>) -> Json<serde_json::Value> {
     let mut checker = crate::health::HealthChecker::new();
 
-    if let Some(db) = state
-        .db_path
-        .as_deref()
-        .or_else(|| state.db_paths.values().next().map(String::as_str))
-    {
+    if let Some(db) = state.db_path.as_deref() {
         checker = checker.with_db(db);
+    }
+    for (store, db) in state.configured_db_paths() {
+        checker = checker.with_store_db(store, db);
     }
 
     checker = checker.with_mqtt(&state.mqtt_broker);
@@ -1048,8 +1066,26 @@ async fn health_handler(State(state): State<AppState>) -> Json<serde_json::Value
 
 async fn health_dispatch(State(state): State<AppState>, headers: HeaderMap) -> Response {
     let Json(value) = health_handler(State(state)).await;
-    if !wants_protobuf(&headers) {
-        return Json(value).into_response();
+    health_response(value, &headers, StatusCode::OK)
+}
+
+async fn ready_dispatch(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    let Json(value) = health_handler(State(state)).await;
+    let status = if value.get("overall").and_then(|v| v.as_str()) == Some("OK") {
+        StatusCode::OK
+    } else {
+        StatusCode::SERVICE_UNAVAILABLE
+    };
+    health_response(value, &headers, status)
+}
+
+fn health_response(
+    value: serde_json::Value,
+    headers: &HeaderMap,
+    response_status: StatusCode,
+) -> Response {
+    if !wants_protobuf(headers) {
+        return (response_status, Json(value)).into_response();
     }
     let overall = match value
         .get("overall")
@@ -1091,7 +1127,7 @@ async fn health_dispatch(State(state): State<AppState>, headers: HeaderMap) -> R
         })
         .unwrap_or_default();
     protobuf_response(
-        StatusCode::OK,
+        response_status,
         crate::grpc::pb::HealthCheckResponse {
             overall,
             components,
@@ -1171,6 +1207,46 @@ mod tests {
         let body = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
         let health = crate::grpc::pb::HealthCheckResponse::decode(body).unwrap();
         assert_ne!(health.overall, 0);
+    }
+
+    #[tokio::test]
+    async fn readiness_returns_service_unavailable_when_mqtt_is_down() {
+        let state = AppState::new(
+            "tcp://127.0.0.1:1",
+            Arc::new(NoOpBackend::new()),
+            None,
+            None,
+            None,
+        );
+        let app = routes(state, crate::auth::AuthConfig::disabled());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/ready")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    }
+
+    #[test]
+    fn rate_limit_response_includes_retry_after() {
+        let response = with_retry_after(
+            (
+                StatusCode::TOO_MANY_REQUESTS,
+                Json(ixmati_core::Error::QueueFull {
+                    store: "pedidos".into(),
+                }),
+            )
+                .into_response(),
+            StatusCode::TOO_MANY_REQUESTS,
+        );
+        assert_eq!(
+            response.headers().get(axum::http::header::RETRY_AFTER),
+            Some(&axum::http::HeaderValue::from_static("1"))
+        );
     }
 
     #[tokio::test]
@@ -1255,10 +1331,9 @@ mod tests {
     #[test]
     fn recalibrated_defaults_match_measured_writer_capacity() {
         assert_eq!(
-            DEFAULT_MAX_WRITES_PER_WINDOW, 40,
-            "el rate-limiter debe rechazar cerca de la capacidad real del \
-             writer (~30-40 commits/s medidos en DEC-0049/0053), no muy por \
-             encima (el default original, 1000, era ~25x mayor)"
+            DEFAULT_MAX_WRITES_PER_WINDOW, 30,
+            "el perfil productivo debe dejar margen bajo la capacidad real \
+             del writer (~30-40 commits/s medidos en Debian)"
         );
         assert_eq!(DEFAULT_THROTTLE_WINDOW_SECS, 1);
         assert_eq!(

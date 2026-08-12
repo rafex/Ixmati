@@ -55,6 +55,7 @@ make clean               # limpiar target/ y dist/
 # API binaria
 cargo test -p ixmati-api  # conversiones Struct, cursor y contrato API
 # REST JSON: 30000; REST/Protobuf: application/protobuf; gRPC: 30100
+# readiness operativo: GET /ready (503 si un store o MQTT no está saludable)
 # GRPC_PORT=0 deshabilita gRPC en despliegues legacy
 ```
 

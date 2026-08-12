@@ -397,3 +397,18 @@ systemd, snapshots de `/metrics`, manifiestos de crash y consultas SQLite.
 Los resultados deben quedar bajo una carpeta identificada por timestamp y
 SHA, por ejemplo `dist/load-results/20260810T230000Z-<sha>/`; no se deben
 reportar números de una corrida anterior como si fueran del SHA actual.
+# Perfil operativo recomendado
+
+El límite predeterminado de producción es `MAX_WRITES_PER_WINDOW=30` por store
+y ventana de un segundo. Deja margen respecto al techo medido de 30–40
+commits/s y evita operar pegado al punto de saturación. El valor de 40/s usado
+en algunas comparativas es un escalón de diagnóstico, no el SLO recomendado.
+
+Los clientes deben tratar `429`/`RESOURCE_EXHAUSTED` como backpressure,
+respetar `Retry-After` y repetir exactamente la misma `idempotency_key`.
+`200`/`COMMITTED` es la única confirmación durable; `202`/`PENDING` requiere
+consulta posterior de estado.
+
+Para balanceadores y systemd usar `GET /ready`: devuelve `200` sólo si todos
+los SQLite configurados y MQTT están disponibles; `/health` conserva su
+semántica de diagnóstico y puede devolver HTTP `200` con estado degradado.

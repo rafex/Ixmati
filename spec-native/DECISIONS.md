@@ -1551,3 +1551,25 @@ del generador. A 100/150/s los tres caminos quedaron limitados a 40/s por
 backpressure. La evidencia completa está en
 `spec-native/evidence/PROTOBUF-BENCH-20260812.md`; no se atribuye mejora de
 capacidad a los protocolos.
+
+### DEC-0070 — Perfil operativo con margen y readiness explícito
+
+- Fecha: 2026-08-12
+- Estado: `accepted`
+- Relacionado con: `TASK-PROD-0001`, `TASK-VAL-0020`
+
+El límite predeterminado de admisión se fija en 30 escrituras por segundo y
+store, con ventana de un segundo. El techo observado de aproximadamente 40/s
+se conserva como escalón de diagnóstico, no como SLO. La respuesta HTTP 429
+incluye `Retry-After`; gRPC devuelve el mismo dato como metadata. Los clientes
+deben reintentar con la misma clave de idempotencia.
+
+Se añade `GET /ready`, que devuelve 200 sólo cuando MQTT y todos los SQLite
+configurados están disponibles; `/health` conserva HTTP 200 como endpoint de
+diagnóstico. Esto separa liveness/diagnóstico de readiness para systemd,
+balanceadores y despliegues supervisados.
+
+La decisión reduce el riesgo de operar sobre el borde del writer y convierte
+el backpressure en un contrato recuperable. No aumenta la capacidad bruta ni
+sustituye la prueba prolongada de una hora; esa validación queda en
+`TASK-PROD-0001`.

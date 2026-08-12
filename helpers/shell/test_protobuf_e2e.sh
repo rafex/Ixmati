@@ -151,7 +151,7 @@ CACHE_DIR="$TEST_DIR/cache" \
 CACHE_READ_MODE=socket \
 CACHE_SOCKET_PATH="$TEST_DIR/cache.sock" \
 IXMATI_API_KEYS="$API_KEY" \
-MAX_WRITES_PER_WINDOW=1000 \
+MAX_WRITES_PER_WINDOW=30 \
 RUST_LOG="ixmati_api=warn" \
     "$API_BIN" >"$TEST_DIR/api.log" 2>&1 &
 api_pid=$!
@@ -171,6 +171,12 @@ curl -fsS --max-time 5 -H 'Accept: application/json' \
     "http://127.0.0.1:${API_PORT}/health" \
     -o "$TEST_DIR/health.json"
 grep -q '"overall"' "$TEST_DIR/health.json"
+
+printf '[protobuf-e2e] REST readiness\n'
+curl -fsS --max-time 5 -H 'Accept: application/json' \
+    "http://127.0.0.1:${API_PORT}/ready" \
+    -o "$TEST_DIR/ready.json"
+grep -q '"overall":"OK"' "$TEST_DIR/ready.json"
 
 order_key="protobuf-rest-$(date +%s)-$$"
 idempotency_key="protobuf-rest-idem-$(date +%s)-$$"

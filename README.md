@@ -18,7 +18,8 @@ docker compose up -d
 ```
 
 La [guía de uso](docs/src/usage.md) cubre Docker, instalación nativa con
-systemd, configuración, API REST, métricas, backup y recuperación.
+systemd, configuración, API REST, métricas, readiness (`/ready`), backup y
+recuperación.
 
 Una escritura durable se envía así:
 
@@ -51,11 +52,12 @@ durable de `_outbox`, replay acotado y entrega at-least-once.
 
 ## Capacidad y límites conocidos
 
-- El throttle productivo predeterminado es de 40 escrituras por segundo.
+- El throttle productivo predeterminado es de 30 escrituras por segundo, dejando
+  margen bajo el techo medido de aproximadamente 40 escrituras durables/s.
 - Una validación de capacidad con throttle temporal elevado en Debian amd64
   sostuvo 40–120 solicitudes/s sin `202` ni crecimiento de cola.
-- En la comparativa completa, con el perfil productivo, el writer confirmó
-  aproximadamente 40 escrituras durables/s; no debe confundirse con la tasa
+- En la comparativa completa, con el perfil de 40/s usado para diagnóstico, el
+  writer confirmó aproximadamente 40 escrituras durables/s; no debe confundirse con la tasa
   de capacidad temporal anterior.
 - 150 solicitudes/s produjo la primera señal de saturación; no se presenta
   como capacidad sostenible.
