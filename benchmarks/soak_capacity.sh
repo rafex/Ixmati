@@ -111,7 +111,12 @@ EOF
       --api-key "$API_KEY" --store "$STORE" --entity soak-order \
       --sample-interval 10 --snapshot-file /tmp/rate-load.jsonl \
       > "$run_dir/generator-id.txt"
-    podman wait "$generator_container" > "$run_dir/generator-exit.txt"
+    # Do not use `podman wait` here: it would keep one SSH/API connection
+    # open for the entire soak. The generator is detached; the local process
+    # sleeps and snapshots it with short-lived Podman calls instead.
+    sleep "$DURATION"
+    podman inspect --format '{{.State.Status}} {{.State.ExitCode}}' \
+      "$generator_container" > "$run_dir/generator-exit.txt" 2>&1 || true
     podman exec "$generator_container" cat /tmp/rate-load.jsonl > "$run_dir/rate-load.jsonl" 2>/dev/null || true
     podman logs "$generator_container" > "$run_dir/result.json" 2>&1 || true
   elif [[ "$GENERATOR" == "jmeter" || ( "$GENERATOR" == "auto" && -n "$(command -v jmeter || true)" ) ]]; then
