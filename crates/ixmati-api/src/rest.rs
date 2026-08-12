@@ -69,6 +69,9 @@ pub struct AppState {
 // ingestión superando la capacidad de escritura.
 // Keep admission below the measured ~30-40 committed writes/s ceiling so the
 // production profile has room for burstiness, retries and background work.
+// `Throttle` uses a small token-bucket burst allowance instead of a hard
+// sliding-window edge, so a steady client at the configured rate is not
+// rejected merely because its timer has a few milliseconds of jitter.
 const DEFAULT_MAX_WRITES_PER_WINDOW: usize = 30;
 const DEFAULT_THROTTLE_WINDOW_SECS: u64 = 1;
 const DEFAULT_OUTBOX_BACKPRESSURE_THRESHOLD: i64 = 500;

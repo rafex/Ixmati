@@ -53,7 +53,9 @@ durable de `_outbox`, replay acotado y entrega at-least-once.
 ## Capacidad y límites conocidos
 
 - El throttle productivo predeterminado es de 30 escrituras por segundo, dejando
-  margen bajo el techo medido de aproximadamente 40 escrituras durables/s.
+  margen bajo el techo medido de aproximadamente 40 escrituras durables/s. La
+  admisión usa un token bucket por store con una ráfaga máxima pequeña para no
+  convertir el jitter normal del cliente en rechazos espurios.
 - Una validación de capacidad con throttle temporal elevado en Debian amd64
   sostuvo 40–120 solicitudes/s sin `202` ni crecimiento de cola.
 - En la comparativa completa, con el perfil de 40/s usado para diagnóstico, el

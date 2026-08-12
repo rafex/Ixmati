@@ -1573,3 +1573,24 @@ La decisión reduce el riesgo de operar sobre el borde del writer y convierte
 el backpressure en un contrato recuperable. No aumenta la capacidad bruta ni
 sustituye la prueba prolongada de una hora; esa validación queda en
 `TASK-PROD-0001`.
+
+### DEC-0071 — Admisión a tasa estable mediante token bucket
+
+- Fecha: 2026-08-12
+- Estado: `accepted`
+- Relacionado con: `TASK-PROD-0001`, `TASK-VAL-0020`, `DEC-0070`
+- Implementación: `crates/ixmati-api/src/throttle.rs`
+
+La admisión por store usa un token bucket con la tasa configurada por
+`MAX_WRITES_PER_WINDOW`/`THROTTLE_WINDOW_SECS` y una ráfaga máxima de tres
+solicitudes. Esto conserva el límite medio de escrituras durables, pero evita
+rechazar un cliente que opera a la tasa nominal por unos milisegundos de
+jitter del planificador o de la red. REST devuelve `429` con `Retry-After` y
+gRPC devuelve `RESOURCE_EXHAUSTED` con la misma indicación cuando el bucket
+está vacío.
+
+La ráfaga es deliberadamente pequeña: no pretende convertir el store de
+escritor único en un sistema de ingestión ilimitada ni ocultar la saturación.
+El soak de una hora de `TASK-PROD-0001` sigue siendo obligatorio para validar
+que el perfil recomendado conserva latencia, memoria, cola y durabilidad
+estables bajo tráfico realista.

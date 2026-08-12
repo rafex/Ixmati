@@ -400,9 +400,11 @@ reportar números de una corrida anterior como si fueran del SHA actual.
 # Perfil operativo recomendado
 
 El límite predeterminado de producción es `MAX_WRITES_PER_WINDOW=30` por store
-y ventana de un segundo. Deja margen respecto al techo medido de 30–40
-commits/s y evita operar pegado al punto de saturación. El valor de 40/s usado
-en algunas comparativas es un escalón de diagnóstico, no el SLO recomendado.
+y ventana de un segundo. La admisión usa un token bucket con una ráfaga máxima
+de tres solicitudes: mantiene la tasa media y tolera jitter breve sin
+convertirlo en `429`. Deja margen respecto al techo medido de 30–40 commits/s y
+evita operar pegado al punto de saturación. El valor de 40/s usado en algunas
+comparativas es un escalón de diagnóstico, no el SLO recomendado.
 
 Los clientes deben tratar `429`/`RESOURCE_EXHAUSTED` como backpressure,
 respetar `Retry-After` y repetir exactamente la misma `idempotency_key`.
