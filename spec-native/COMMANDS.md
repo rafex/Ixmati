@@ -47,10 +47,15 @@ just docs-check-links    # verificar links rotos
 ```bash
 make build               # compilar debug
 make build-release       # compilar release
-make proto               # generar código desde .proto
+make proto               # validar todos los .proto con protoc
 make docker              # construir imágenes Docker
 make dist                # ensamblar dist/ con checksums
 make clean               # limpiar target/ y dist/
+
+# API binaria
+cargo test -p ixmati-api  # conversiones Struct, cursor y contrato API
+# REST JSON: 30000; REST/Protobuf: application/protobuf; gRPC: 30100
+# GRPC_PORT=0 deshabilita gRPC en despliegues legacy
 ```
 
 ## Instalador nativo (systemd)
@@ -75,6 +80,11 @@ helpers/shell/test_store_migration_e2e.sh
 # Soak prolongado: un contenedor Debian nuevo por cada tasa
 SOAK_RATES="150 200" DURATION=3600 DRAIN_SECONDS=300 \
   helpers/shell/run_soak_debian.sh
+
+# Comparación JSON/REST-Protobuf/gRPC desde un generador dentro de Debian
+PODMAN_CONNECTION=debian-server-wifi PODMAN_HOST_IP=127.0.0.1 \
+  RATES="40 100 150" DURATION=30 WARMUP=5 COOLDOWN=2 CONCURRENCY=200 \
+  benchmarks/protocol_benchmark.sh
 ```
 
 La carga se ejecuta dentro de un contenedor generador separado en el host

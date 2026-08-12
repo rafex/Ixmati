@@ -2,15 +2,17 @@ use crate::cache_client::CacheClient;
 use crate::cache_proxy::CacheProxy;
 use axum::{
     Router,
+    body::Bytes,
     extract::{Path, Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode, header},
     middleware,
-    response::Json,
+    response::{IntoResponse, Json, Response},
     routing::{get, post},
 };
 use ixmati_cache::CacheBackend;
 use ixmati_core::{AckResponse, WriteEnvelope};
 use opentelemetry::KeyValue;
+use prost::Message;
 use rumqttc::{AsyncClient, MqttOptions, QoS};
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -213,7 +215,7 @@ impl AppState {
 
 pub fn routes(state: AppState, auth_config: crate::auth::AuthConfig) -> Router {
     let protected = Router::new()
-        .route("/write", post(write_handler))
+        .route("/write", post(write_dispatch))
         .route_layer(middleware::from_fn_with_state(
             auth_config,
             crate::auth::require_auth,
@@ -222,16 +224,133 @@ pub fn routes(state: AppState, auth_config: crate::auth::AuthConfig) -> Router {
     let public = Router::new()
         .route(
             "/writes/{store}/{idempotency_key}",
-            get(write_status_handler),
+            get(write_status_dispatch),
         )
-        .route("/read", get(read_handler))
-        .route("/health", get(health_handler))
+        .route("/read", get(read_dispatch).post(read_protobuf_dispatch))
+        .route("/health", get(health_dispatch))
         .route("/metrics", get(metrics_handler));
 
     Router::new()
         .merge(protected)
         .merge(public)
         .with_state(state)
+}
+
+fn wants_protobuf(headers: &HeaderMap) -> bool {
+    headers
+        .get(header::ACCEPT)
+        .and_then(|value| value.to_str().ok())
+        .map(|value| {
+            value
+                .split(',')
+                .any(|item| item.trim().starts_with(crate::grpc::PROTOBUF_CONTENT_TYPE))
+        })
+        .unwrap_or(false)
+}
+
+fn protobuf_response<M: Message>(status: StatusCode, message: M) -> Response {
+    let mut bytes = Vec::new();
+    message
+        .encode(&mut bytes)
+        .expect("protobuf encoding cannot fail");
+    (
+        status,
+        [(header::CONTENT_TYPE, crate::grpc::PROTOBUF_CONTENT_TYPE)],
+        bytes,
+    )
+        .into_response()
+}
+
+fn protobuf_error(status: StatusCode, error: &ixmati_core::Error) -> Response {
+    protobuf_response(
+        status,
+        crate::grpc::pb::ErrorDetail {
+            error: error.code().into(),
+            detail: error.to_string(),
+            store: String::new(),
+            idempotency_key: String::new(),
+        },
+    )
+}
+
+async fn write_dispatch(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
+    let protobuf = headers
+        .get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .map(|value| value.starts_with(crate::grpc::PROTOBUF_CONTENT_TYPE))
+        .unwrap_or(false);
+    if protobuf {
+        let request = match crate::grpc::pb::WriteRequest::decode(body.as_ref()) {
+            Ok(request) => request,
+            Err(error) => {
+                return protobuf_response(
+                    StatusCode::BAD_REQUEST,
+                    crate::grpc::pb::ErrorDetail {
+                        error: "INVALID_ARGUMENT".into(),
+                        detail: error.to_string(),
+                        store: String::new(),
+                        idempotency_key: String::new(),
+                    },
+                );
+            }
+        };
+        let envelope = match request
+            .envelope
+            .ok_or_else(|| tonic::Status::invalid_argument("envelope is required"))
+            .and_then(crate::grpc::write_envelope_from_pb)
+        {
+            Ok(envelope) => envelope,
+            Err(error) => {
+                return protobuf_response(
+                    StatusCode::BAD_REQUEST,
+                    crate::grpc::pb::ErrorDetail {
+                        error: "INVALID_ARGUMENT".into(),
+                        detail: error.message().into(),
+                        store: String::new(),
+                        idempotency_key: String::new(),
+                    },
+                );
+            }
+        };
+        return match submit_write(state, envelope).await {
+            Ok((status, response)) => {
+                let ack = response.0;
+                protobuf_response(
+                    status,
+                    crate::grpc::pb::WriteResponse {
+                        status: match ack.status.as_str() {
+                            "APPLIED" => "COMMITTED".into(),
+                            status => status.into(),
+                        },
+                        store: ack.store,
+                        idempotency_key: ack.idempotency_key,
+                        message: ack.message.unwrap_or_default(),
+                    },
+                )
+            }
+            Err((status, error)) => protobuf_error(status, &error.0),
+        };
+    }
+    let envelope = match serde_json::from_slice::<WriteEnvelope>(&body) {
+        Ok(envelope) => envelope,
+        Err(error) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(ixmati_core::Error::Internal {
+                    detail: error.to_string(),
+                }),
+            )
+                .into_response();
+        }
+    };
+    match submit_write(state, envelope).await {
+        Ok(response) => response.into_response(),
+        Err(response) => response.into_response(),
+    }
 }
 
 // DEC-0048/TASK-VAL-0015: `publish().await` a MQTT solo confirma encolado
@@ -319,9 +438,9 @@ fn wait_for_commit_blocking(
     }
 }
 
-async fn write_handler(
-    State(state): State<AppState>,
-    Json(envelope): Json<WriteEnvelope>,
+pub(crate) async fn submit_write(
+    state: AppState,
+    envelope: WriteEnvelope,
 ) -> Result<(StatusCode, Json<AckResponse>), (StatusCode, Json<ixmati_core::Error>)> {
     let started = std::time::Instant::now();
     let store = envelope.store.clone();
@@ -524,18 +643,18 @@ async fn write_handler(
 }
 
 #[derive(Deserialize)]
-struct ReadQuery {
+pub(crate) struct ReadQuery {
     #[allow(dead_code)]
-    store: Option<String>,
+    pub(crate) store: Option<String>,
     #[allow(dead_code)]
-    entity: Option<String>,
+    pub(crate) entity: Option<String>,
     #[allow(dead_code)]
-    key: Option<String>,
+    pub(crate) key: Option<String>,
     #[allow(dead_code)]
-    projection: Option<String>,
+    pub(crate) projection: Option<String>,
 }
 
-async fn read_handler(
+pub(crate) async fn read_handler(
     State(state): State<AppState>,
     Query(params): Query<ReadQuery>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, Json<ixmati_core::Error>)> {
@@ -720,6 +839,73 @@ async fn read_handler(
     })))
 }
 
+async fn read_dispatch(
+    State(state): State<AppState>,
+    Query(params): Query<ReadQuery>,
+    headers: HeaderMap,
+) -> Response {
+    let protobuf = wants_protobuf(&headers);
+    match read_handler(State(state), Query(params)).await {
+        Ok(Json(value)) if protobuf => match crate::grpc::read_response_from_json(value) {
+            Ok(response) => protobuf_response(StatusCode::OK, response),
+            Err(error) => protobuf_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                crate::grpc::pb::ErrorDetail {
+                    error: "INTERNAL".into(),
+                    detail: error.message().into(),
+                    store: String::new(),
+                    idempotency_key: String::new(),
+                },
+            ),
+        },
+        Ok(response) => response.into_response(),
+        Err((status, error)) if protobuf => protobuf_error(status, &error.0),
+        Err(response) => response.into_response(),
+    }
+}
+
+async fn read_protobuf_dispatch(State(state): State<AppState>, body: Bytes) -> Response {
+    let request = match crate::grpc::pb::ReadRequest::decode(body.as_ref()) {
+        Ok(request) => request,
+        Err(error) => {
+            return protobuf_response(
+                StatusCode::BAD_REQUEST,
+                crate::grpc::pb::ErrorDetail {
+                    error: "INVALID_ARGUMENT".into(),
+                    detail: error.to_string(),
+                    store: String::new(),
+                    idempotency_key: String::new(),
+                },
+            );
+        }
+    };
+    let result = read_handler(
+        State(state),
+        Query(ReadQuery {
+            store: (!request.store.is_empty()).then_some(request.store),
+            entity: (!request.entity.is_empty()).then_some(request.entity),
+            key: (!request.key.is_empty()).then_some(request.key),
+            projection: (!request.projection.is_empty()).then_some(request.projection),
+        }),
+    )
+    .await;
+    match result {
+        Ok(Json(value)) => match crate::grpc::read_response_from_json(value) {
+            Ok(response) => protobuf_response(StatusCode::OK, response),
+            Err(error) => protobuf_response(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                crate::grpc::pb::ErrorDetail {
+                    error: "INTERNAL".into(),
+                    detail: error.message().into(),
+                    store: String::new(),
+                    idempotency_key: String::new(),
+                },
+            ),
+        },
+        Err((status, error)) => protobuf_error(status, &error.0),
+    }
+}
+
 #[derive(Deserialize)]
 struct WriteStatusParams {
     store: String,
@@ -775,6 +961,74 @@ async fn write_status_handler(
     }
 }
 
+async fn write_status_dispatch(
+    State(state): State<AppState>,
+    Path(params): Path<WriteStatusParams>,
+    headers: HeaderMap,
+) -> Response {
+    let protobuf = wants_protobuf(&headers);
+    match write_status_handler(State(state), Path(params)).await {
+        Ok(Json(value)) if protobuf => {
+            let detail = value
+                .get("message")
+                .or_else(|| value.get("detail"))
+                .and_then(|v| v.as_str())
+                .map(str::to_owned)
+                .unwrap_or_else(|| {
+                    let entity = value
+                        .get("entity")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default();
+                    let key = value
+                        .get("key")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default();
+                    let version = value
+                        .get("version")
+                        .and_then(|v| v.as_u64())
+                        .unwrap_or_default();
+                    let applied_at = value
+                        .get("applied_at")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default();
+                    if entity.is_empty() {
+                        String::new()
+                    } else {
+                        format!("APPLIED {entity}/{key} v{version} at {applied_at}")
+                    }
+                });
+            protobuf_response(
+                StatusCode::OK,
+                crate::grpc::pb::GetWriteStatusResponse {
+                    status: match value
+                        .get("status")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default()
+                    {
+                        "APPLIED" => 2,
+                        "PENDING" => 6,
+                        _ => 0,
+                    },
+                    store: value
+                        .get("store")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default()
+                        .into(),
+                    idempotency_key: value
+                        .get("idempotency_key")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default()
+                        .into(),
+                    detail,
+                },
+            )
+        }
+        Ok(response) => response.into_response(),
+        Err((status, error)) if protobuf => protobuf_error(status, &error.0),
+        Err(response) => response.into_response(),
+    }
+}
+
 async fn health_handler(State(state): State<AppState>) -> Json<serde_json::Value> {
     let mut checker = crate::health::HealthChecker::new();
 
@@ -792,6 +1046,59 @@ async fn health_handler(State(state): State<AppState>) -> Json<serde_json::Value
     Json(serde_json::to_value(status).unwrap_or_default())
 }
 
+async fn health_dispatch(State(state): State<AppState>, headers: HeaderMap) -> Response {
+    let Json(value) = health_handler(State(state)).await;
+    if !wants_protobuf(&headers) {
+        return Json(value).into_response();
+    }
+    let overall = match value
+        .get("overall")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default()
+    {
+        "OK" => 1,
+        "DEGRADED" => 2,
+        _ => 3,
+    };
+    let components = value
+        .get("components")
+        .and_then(|v| v.as_array())
+        .map(|items| {
+            items
+                .iter()
+                .map(|item| crate::grpc::pb::ComponentHealth {
+                    name: item
+                        .get("name")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default()
+                        .into(),
+                    status: match item
+                        .get("status")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default()
+                    {
+                        "OK" => 1,
+                        "DEGRADED" => 2,
+                        _ => 3,
+                    },
+                    detail: item
+                        .get("detail")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default()
+                        .into(),
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    protobuf_response(
+        StatusCode::OK,
+        crate::grpc::pb::HealthCheckResponse {
+            overall,
+            components,
+        },
+    )
+}
+
 async fn metrics_handler() -> (StatusCode, String) {
     let encoded = crate::metrics::encode_metrics();
     (StatusCode::OK, encoded)
@@ -800,7 +1107,15 @@ async fn metrics_handler() -> (StatusCode, String) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::grpc::PROTOBUF_CONTENT_TYPE;
+    use axum::{
+        body::{Body, to_bytes},
+        http::Request,
+    };
+    use ixmati_cache::NoOpBackend;
     use rusqlite::Connection;
+    use std::sync::Arc;
+    use tower::ServiceExt;
 
     fn tmp_db_path(name: &str) -> String {
         let mut p = std::env::temp_dir();
@@ -826,6 +1141,36 @@ mod tests {
             );",
         )
         .unwrap();
+    }
+
+    #[tokio::test]
+    async fn health_endpoint_returns_protobuf_when_requested() {
+        let state = AppState::new(
+            "tcp://127.0.0.1:1",
+            Arc::new(NoOpBackend::new()),
+            None,
+            None,
+            None,
+        );
+        let app = routes(state, crate::auth::AuthConfig::disabled());
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/health")
+                    .header(axum::http::header::ACCEPT, PROTOBUF_CONTENT_TYPE)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers().get(axum::http::header::CONTENT_TYPE),
+            Some(&axum::http::HeaderValue::from_static(PROTOBUF_CONTENT_TYPE))
+        );
+        let body = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
+        let health = crate::grpc::pb::HealthCheckResponse::decode(body).unwrap();
+        assert_ne!(health.overall, 0);
     }
 
     #[tokio::test]

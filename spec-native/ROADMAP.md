@@ -41,6 +41,9 @@ durabilidad.
 
 ## Próximo ciclo de producto
 
+- **En curso**: iniciativa `protobuf-api`: gRPC unary y streaming en `30100`,
+  REST/Protobuf y compatibilidad REST/JSON. Falta cerrar integración real con
+  clientes tonic/reqwest y medir impacto sobre ACK durable.
 - **En curso**: prueba prolongada de capacidad a 150/s y 200/s con JMeter o
   fallback rate-controlled; el perfil productivo sigue en 40/s hasta cerrar
   la evidencia.

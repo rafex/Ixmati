@@ -2,6 +2,7 @@ pub mod auth;
 pub mod backpressure;
 pub mod cache_client;
 pub mod cache_proxy;
+pub mod grpc;
 pub mod health;
 pub mod metrics;
 pub mod rest;
@@ -18,6 +19,8 @@ use std::sync::Arc;
 pub struct ApiConfig {
     pub host: String,
     pub port: u16,
+    pub grpc_host: String,
+    pub grpc_port: u16,
     pub mqtt_broker: String,
     pub db_path: Option<String>,
     pub db_paths: HashMap<String, String>,
@@ -29,6 +32,8 @@ impl Default for ApiConfig {
         Self {
             host: "127.0.0.1".into(),
             port: 8080,
+            grpc_host: "127.0.0.1".into(),
+            grpc_port: 30100,
             mqtt_broker: "tcp://localhost:1883".into(),
             db_path: None,
             db_paths: HashMap::new(),
@@ -180,7 +185,7 @@ pub async fn serve(config: ApiConfig) -> std::io::Result<()> {
         state.outbox_backlog(),
     );
 
-    let app = Router::new().merge(rest::routes(state, auth_config));
+    let app = Router::new().merge(rest::routes(state.clone(), auth_config.clone()));
 
     let addr: SocketAddr = format!("{}:{}", config.host, config.port)
         .parse()
@@ -189,7 +194,19 @@ pub async fn serve(config: ApiConfig) -> std::io::Result<()> {
     tracing::info!(%addr, "ixmati-api starting");
 
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    axum::serve(listener, app).await
+    let rest_server = axum::serve(listener, app);
+    if config.grpc_port == 0 {
+        return rest_server.await;
+    }
+
+    let grpc_host = config.grpc_host;
+    let grpc_port = config.grpc_port;
+    tokio::select! {
+        result = rest_server => result,
+        result = crate::grpc::serve(state, auth_config, &grpc_host, grpc_port) => {
+            result.map_err(|error| std::io::Error::other(error.to_string()))
+        }
+    }
 }
 
 #[cfg(test)]
@@ -201,5 +218,6 @@ mod tests {
         let cfg = ApiConfig::default();
         assert_eq!(cfg.host, "127.0.0.1");
         assert_eq!(cfg.port, 8080);
+        assert_eq!(cfg.grpc_port, 30100);
     }
 }

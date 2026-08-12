@@ -49,6 +49,8 @@ services:
       - MQTT_BROKER=tcp://mosquitto:30200
       - API_HOST=0.0.0.0
       - API_PORT=30000
+      - GRPC_HOST=0.0.0.0
+      - GRPC_PORT=30100
       - IXMATI_API_KEYS=ix-default-key
       - SQLITE_PATH=/data/default.db
       - CACHE_SOCKET_PATH=/var/run/ixmati/cache.sock

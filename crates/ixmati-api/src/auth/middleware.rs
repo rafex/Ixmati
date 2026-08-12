@@ -1,9 +1,10 @@
 use axum::{
     extract::Request,
-    http::StatusCode,
+    http::{StatusCode, header},
     middleware::Next,
-    response::{Json, Response},
+    response::{IntoResponse, Json, Response},
 };
+use prost::Message;
 
 use crate::auth::session::{ApiKey, AuthCredentials};
 use ixmati_core::Error;
@@ -34,7 +35,7 @@ pub async fn require_auth(
     axum::extract::State(config): axum::extract::State<AuthConfig>,
     request: Request,
     next: Next,
-) -> Result<Response, (StatusCode, Json<Error>)> {
+) -> Result<Response, Response> {
     if !config.enabled {
         return Ok(next.run(request).await);
     }
@@ -51,31 +52,56 @@ pub async fn require_auth(
             if crate::auth::session::validate_api_key(&key, &config.valid_keys).is_some() {
                 return Ok(next.run(request).await);
             }
-            Err((
-                StatusCode::UNAUTHORIZED,
-                Json(Error::Internal {
-                    detail: "invalid API key".into(),
-                }),
-            ))
+            Err(auth_error(&request, "invalid API key"))
         }
         Some(AuthCredentials::BearerToken(token)) => {
             if crate::auth::session::validate_api_key(&token, &config.valid_keys).is_some() {
                 return Ok(next.run(request).await);
             }
-            Err((
-                StatusCode::UNAUTHORIZED,
-                Json(Error::Internal {
-                    detail: "invalid session token".into(),
-                }),
-            ))
+            Err(auth_error(&request, "invalid session token"))
         }
-        None => Err((
-            StatusCode::UNAUTHORIZED,
-            Json(Error::Internal {
-                detail: "Authorization header required".into(),
-            }),
-        )),
+        None => Err(auth_error(&request, "Authorization header required")),
     }
+}
+
+fn auth_error(request: &Request, detail: &str) -> Response {
+    if wants_protobuf(request) {
+        let mut bytes = Vec::new();
+        crate::grpc::pb::ErrorDetail {
+            error: "UNAUTHORIZED".into(),
+            detail: detail.into(),
+            store: String::new(),
+            idempotency_key: String::new(),
+        }
+        .encode(&mut bytes)
+        .expect("protobuf encoding cannot fail");
+        return (
+            StatusCode::UNAUTHORIZED,
+            [(header::CONTENT_TYPE, crate::grpc::PROTOBUF_CONTENT_TYPE)],
+            bytes,
+        )
+            .into_response();
+    }
+
+    (
+        StatusCode::UNAUTHORIZED,
+        Json(Error::Internal {
+            detail: detail.into(),
+        }),
+    )
+        .into_response()
+}
+
+fn wants_protobuf(request: &Request) -> bool {
+    [header::ACCEPT, header::CONTENT_TYPE]
+        .into_iter()
+        .filter_map(|name| request.headers().get(name))
+        .filter_map(|value| value.to_str().ok())
+        .any(|value| {
+            value
+                .split(',')
+                .any(|item| item.trim().starts_with(crate::grpc::PROTOBUF_CONTENT_TYPE))
+        })
 }
 
 #[cfg(test)]

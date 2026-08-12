@@ -33,7 +33,11 @@ rusqlite = { version = "0.40", features = ["bundled", "vtab"] }
 redb = "4"
 rumqttc = "0.25"
 axum = "0.8"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 tonic = "0.14"
+tonic-prost = "0.14"
+prost-types = "0.14"
+tokio-stream = { version = "0.1", features = ["sync"] }
 prost = "0.14"
 opentelemetry = { version = "0.32", default-features = false, features = ["metrics"] }
 opentelemetry_sdk = { version = "0.32", default-features = false, features = ["metrics"] }

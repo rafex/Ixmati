@@ -9,6 +9,10 @@ service WriteService {
   rpc GetWriteStatus (GetWriteStatusRequest) returns (GetWriteStatusResponse);
 }
 
+service EventService {
+  rpc SubscribeEvents (SubscribeEventsRequest) returns (stream EventEnvelope);
+}
+
 message WriteRequest {
   WriteEnvelope envelope = 1;
 }
@@ -30,4 +34,11 @@ message GetWriteStatusResponse {
   string store = 2;
   string idempotency_key = 3;
   string detail = 4;
+}
+
+message SubscribeEventsRequest {
+  string store = 1;
+  string entity = 2;
+  string key = 3;
+  int64 after_outbox_seq = 4;
 }

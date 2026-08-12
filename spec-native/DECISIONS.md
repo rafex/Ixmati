@@ -1510,3 +1510,36 @@ proyecciones después de la migración.
 **Consecuencias**: se requiere ventana de mantenimiento y no existe
 transacción distribuida ni migración online, pero la operación es reproducible,
 auditable y deja el origen intacto ante un fallo.
+
+### DEC-0069 — Interfaces Protobuf sobre el núcleo durable
+
+- Fecha: 2026-08-12
+- Estado: `accepted`
+- Relacionado con: `SPEC-PROTOBUF-0001`, `TASK-PROTO-0001`..`0006`, `TASK-WRITE-0008`
+- Implementación: `crates/ixmati-api/src/grpc.rs`, `proto/ixmati/v1/`, `crates/ixmati-api/src/rest.rs`
+
+**Decisión**: Ixmati expone gRPC en un listener separado (`GRPC_PORT=30100`)
+y REST binario mediante `application/protobuf`, manteniendo REST/JSON. El
+payload canónico es `google.protobuf.Struct` en el campo wire 10; el campo
+wire 9 se conserva como `payload_bytes` deprecated para compatibilidad con
+clientes anteriores. gRPC autentica con metadata
+`x-api-key` reutilizando `IXMATI_API_KEYS`. `accepted` sigue siendo alias
+durable de `committed`; `COMMITTED`/HTTP 200 sólo representa confirmación en
+`_idempotency` y `PENDING`/HTTP 202 requiere consulta de estado.
+
+`EventService.SubscribeEvents` usa el `id` de `_outbox` como cursor durable,
+reproduce sólo la retención disponible y continúa con eventos nuevos. El
+servidor registra el stream antes de leer, aplica filtros, deduplica dentro de
+una ventana acotada y usa un buffer por cliente. La entrega es at-least-once:
+un cursor fuera de retención devuelve `OUT_OF_RANGE` y un consumidor que no
+puede mantenerse al día se termina con `RESOURCE_EXHAUSTED`. No se habilitan
+reflection ni el health protocol estándar; `HealthService.Check` conserva el
+health propio de Ixmati.
+
+**Consecuencias**: (+) clientes REST, gRPC y Protobuf comparten la misma
+durabilidad, cache, SQLite, MQTT y autenticación; (+) el contrato binario no
+duplica el modelo de negocio; (-) el stream depende de la retención del
+outbox y no ofrece exactamente-una-entrega; (-) el benchmark de la nueva
+interfaz debe demostrar impacto sobre la confirmación durable antes de
+atribuirle una mejora de capacidad. El listener puede deshabilitarse con
+`GRPC_PORT=0` durante una migración legacy.

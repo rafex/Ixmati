@@ -12,6 +12,8 @@ ExecStart=/usr/local/bin/ixmati-api
 Environment=MQTT_BROKER=tcp://localhost:1883
 Environment=API_HOST=0.0.0.0
 Environment=API_PORT=30000
+Environment=GRPC_HOST=0.0.0.0
+Environment=GRPC_PORT=30100
 Environment=IXMATI_API_KEYS=ix-default-key
 Environment=CACHE_READ_MODE=socket
 Environment=CACHE_SOCKET_PATH=/var/run/ixmati/cache.sock

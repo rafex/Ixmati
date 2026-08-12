@@ -37,6 +37,8 @@ Si eres un agente o una persona entrando por primera vez:
 - [`SESSION.md`](./SESSION.md):
   estado activo de trabajo — quien trabajo ultimo, que hizo,
   que viene a continuacion.
+- [`specs/protobuf-api/SPEC.md`](./specs/protobuf-api/SPEC.md):
+  iniciativa activa para gRPC, REST/Protobuf y streaming de eventos.
 - [`specs/README.md`](./specs/README.md):
   indice de specs por iniciativa.
 - [`tasks/README.md`](./tasks/README.md):

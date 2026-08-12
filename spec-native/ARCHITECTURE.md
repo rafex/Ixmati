@@ -64,6 +64,21 @@ Litestream replica el WAL de cada store a destinos remotos. El sistema es tolera
 
 ## Flujo de escritura
 
+### Interfaces binarias
+
+`ixmati-api` mantiene REST/JSON en `API_PORT` y sirve gRPC en un listener
+separado `GRPC_HOST:GRPC_PORT` (por defecto `0.0.0.0:30100` en despliegues).
+REST puede negociar `application/protobuf`. Ambas rutas convierten al mismo
+`WriteEnvelope`, `ReadRequest` y estado durable; no existe un camino de
+escritura async distinto. El payload Protobuf es `google.protobuf.Struct` y el
+campo de bytes histórico sólo se conserva deprecated.
+
+La autenticación gRPC usa metadata `x-api-key` y el mismo conjunto
+`IXMATI_API_KEYS` de REST. `EventService.SubscribeEvents` usa el `id` de
+`_outbox` como cursor, reproduce la retención disponible y continúa con live
+en entrega at-least-once. No se habilitan reflection ni el health protocol
+estándar.
+
 1. El backend envía un comando a la API (`POST /write` o gRPC `Write`).
 2. La API valida el envelope (store obligatorio, `idempotency_key`, `version`, `ack_mode`).
 3. La API publica el comando en `ixmati/cmd/<store>/<entity>/<id>` (Mosquitto, QoS 1).

@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package ixmati.v1;
 
+import "google/protobuf/struct.proto";
+
 service ReadService {
   rpc Read (ReadRequest) returns (ReadResponse);
 }
@@ -19,7 +21,12 @@ message ReadResponse {
   string entity = 3;
   string key = 4;
   uint64 version = 5;
-  bytes payload = 6;
+  // Wire-compatible field from the original bytes response.
+  bytes payload_bytes = 6 [deprecated = true];
+  string projection = 7;
+  string source = 8;
+  // Canonical payload for new clients.
+  google.protobuf.Struct payload = 9;
 }
 
 message HealthCheckRequest {}
@@ -40,4 +47,8 @@ message ComponentHealth {
   string name = 1;
   HealthCheckResponse.Status status = 2;
   string detail = 3;
+}
+
+service HealthService {
+  rpc Check (HealthCheckRequest) returns (HealthCheckResponse);
 }

@@ -2,15 +2,30 @@
 [session]
 state = "in_progress"
 agent = "codex"
-initiative = "capacity-and-store-lifecycle"
-task = "TASK-CAP-0001 / TASK-STORE-0001..0006"
-intent = "Validar soak prolongado de 150–200/s e implementar migración offline de stores"
-last_updated = "2026-08-12T03:05:00Z"
+initiative = "protobuf-api"
+task = "TASK-PROTO-0002..0005"
+intent = "Completar gRPC, REST/Protobuf, replay/live, despliegue y pruebas sin alterar la durabilidad existente"
+last_updated = "2026-08-12T00:00:00Z"
 +++
 
 # Active Session
 
 ## Current state
+
+La iniciativa `protobuf-api` tiene el contrato `.proto`, generación reproducible,
+listener gRPC separado, conversiones Struct, dispatch REST/Protobuf y
+configuración de despliegue implementados localmente. `TASK-PROTO-0001` y
+`TASK-PROTO-0005` están cerradas. La prueba funcional local
+`spec-native/evidence/PROTOBUF-E2E-20260812.md` pasó: REST/Protobuf confirmó
+escritura, estado, lectura cacheada y health; el cliente tonic confirmó unary y
+stream replay/live con Mosquitto y SQLite temporales.
+
+Unary, REST binario y streaming siguen abiertos para su cierre completo porque
+faltan la matriz de errores/cursor, backpressure del stream y validación Debian
+amd64 desde el SHA publicado.
+
+El contrato durable no cambia: `accepted` es alias de `committed`, `200`/`COMMITTED`
+confirma `_idempotency` y `202`/`PENDING` requiere consulta de estado.
 
 Validación de cache y proyecciones ejecutada en Debian amd64. El compose
 multi-store fue corregido para montar cada SQLite como directorio de store;
@@ -37,15 +52,13 @@ quedó bajo 160 ms p99; 150/s mostró p99 321 ms. El throttle fue restaurado a
 
 ## Next steps
 
-Queda ejecutar en Debian el soak de 150/s y 200/s durante una hora por
-escalón, conservar métricas y completar el drenado de cinco minutos. El primer
-intento a 150/s no inició porque `192.168.3.175:22` estaba fuera de alcance;
-está documentado en `spec-native/evidence/SOAK-ATTEMPT-20260812.md`. El E2E de
-rename, cutover, reconciler y cache ya pasó en un contenedor Debian; siguen
-pendientes merge conflictivo, topics antiguos, restauración desde backup y el
-perfil de capacidad prolongado. El perfil recomendado sigue en 40/s hasta
-cerrar la evidencia. `mdbook` continúa pendiente por no estar instalado
-localmente.
+Siguiente paso de `protobuf-api`: ampliar las pruebas de integración con
+clientes tonic/reqwest y broker/SQLite temporales para cubrir errores, cursores
+y backpressure; después ejecutar el benchmark comparativo en Debian. La prueba
+prolongada de 150/s y 200/s, merge conflictivo de stores, topics antiguos y
+restauración desde backup siguen siendo trabajo independiente. El perfil
+recomendado sigue en 40/s hasta cerrar la evidencia. `mdbook` continúa
+pendiente por no estar instalado localmente.
 
 ## Context for next agent
 

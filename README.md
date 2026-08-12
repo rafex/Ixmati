@@ -33,6 +33,22 @@ curl -X POST http://localhost:8080/write \
 commit SQLite quedó confirmado, mientras que `202` significa que la solicitud
 quedó pendiente y debe consultarse con `GET /writes/{store}/{idempotency_key}`.
 
+## Interfaces de acceso
+
+La API REST escucha por defecto en `30000` y conserva JSON. La misma API
+expone gRPC en `30100` y REST binario mediante `application/protobuf`; el
+contrato está en [`proto/ixmati/v1/`](proto/ixmati/v1/) y la guía en
+[`docs/src/api/grpc.md`](docs/src/api/grpc.md) y
+[`docs/src/api/rest.md`](docs/src/api/rest.md). gRPC usa metadata `x-api-key`
+cuando se habilita `IXMATI_API_KEYS`, y `GRPC_PORT=0` lo deshabilita para
+instalaciones legacy.
+
+El payload binario usa `google.protobuf.Struct` y debe ser un objeto JSON.
+`accepted` sigue siendo alias durable de `committed`; `COMMITTED`/`200`
+confirma `_idempotency`, mientras `PENDING`/`202` se consulta con
+`GetWriteStatus` o `GET /writes/...`. El stream gRPC de eventos usa el cursor
+durable de `_outbox`, replay acotado y entrega at-least-once.
+
 ## Capacidad y límites conocidos
 
 - El throttle productivo predeterminado es de 40 escrituras por segundo.

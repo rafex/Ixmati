@@ -26,6 +26,13 @@ services:
     ports:
       - "30311:30000"
       - "30312:30100"
+    environment:
+      - API_HOST=0.0.0.0
+      - API_PORT=30000
+      - GRPC_HOST=0.0.0.0
+      - GRPC_PORT=30100
+      - IXMATI_API_KEYS=ix-default-key
+      - SQLITE_PATH=/data/default.db
     depends_on:
       mosquitto:
         condition: service_healthy

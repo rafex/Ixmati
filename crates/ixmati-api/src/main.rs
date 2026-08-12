@@ -34,6 +34,13 @@ async fn main() -> std::io::Result<()> {
             .ok()
             .and_then(|p| p.parse().ok())
             .unwrap_or(30000),
+        grpc_host: std::env::var("GRPC_HOST")
+            .or_else(|_| std::env::var("API_HOST"))
+            .unwrap_or_else(|_| "127.0.0.1".into()),
+        grpc_port: std::env::var("GRPC_PORT")
+            .ok()
+            .and_then(|p| p.parse().ok())
+            .unwrap_or(30100),
         mqtt_broker: std::env::var("MQTT_BROKER").unwrap_or_else(|_| "tcp://localhost:1883".into()),
         db_path,
         db_paths,

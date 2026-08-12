@@ -134,7 +134,7 @@ Test de integración crítico. Un script externo lanza N writers (uno por store)
 ```toml
 id = "TASK-WRITE-0008"
 title = "Implementar ixmati-api (axum REST + tonic gRPC)"
-state = "done"
+state = "in_progress"
 owner = "team-core"
 dependencies = ["TASK-WRITE-0003", "TASK-WRITE-0004", "TASK-WRITE-0005"]
 expected_files = ["crates/ixmati-api/src/lib.rs", "crates/ixmati-api/src/rest.rs", "crates/ixmati-api/src/grpc.rs"]
@@ -142,7 +142,7 @@ close_criteria = "Endpoints REST y gRPC funcionales según OpenAPI y .proto"
 validation = ["test de integración REST con reqwest", "test de integración gRPC con tonic client", "cargo build -p ixmati-api"]
 ```
 
-Implementa los endpoints definidos. Traduce requests HTTP/gRPC a comandos JSON y los publica en `ixmati/cmd/<store>/...`. Sirve lecturas desde FlashDB con fallback a SQLite (cache-aside y proyecciones).
+Implementa los endpoints definidos. Traduce requests HTTP/gRPC a comandos JSON y los publica en `ixmati/cmd/<store>/...`. Sirve lecturas desde FlashDB con fallback a SQLite (cache-aside y proyecciones). La implementación gRPC y REST/Protobuf está en progreso; sólo volverá a `done` cuando existan pruebas de integración reales con cliente tonic y reqwest.
 
 ### TASK-WRITE-0009 — Implementar modo async y sync con correlación
 

@@ -5,7 +5,7 @@ info:
   version: "0.1.0"
 
 servers:
-  - url: http://localhost:8080
+  - url: http://localhost:30000
     description: Local development
 
 paths:
@@ -19,6 +19,9 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/WriteEnvelope"
+          application/protobuf:
+            schema:
+              $ref: "#/components/schemas/ProtobufMessage"
       responses:
         "200":
           description: Comando aceptado (modo async)
@@ -26,24 +29,36 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AckResponse"
-        "201":
-          description: Comando confirmado (modo sync committed)
+            application/protobuf:
+              schema:
+                $ref: "#/components/schemas/ProtobufMessage"
+        "202":
+          description: Comando publicado pero aún pendiente de confirmación durable
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/AckResponse"
+            application/protobuf:
+              schema:
+                $ref: "#/components/schemas/ProtobufMessage"
         "409":
           description: Conflicto (VERSION_CONFLICT o DUPLICATE)
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorDetail"
+            application/protobuf:
+              schema:
+                $ref: "#/components/schemas/ProtobufMessage"
         "422":
           description: Store no encontrado o parámetros inválidos
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorDetail"
+            application/protobuf:
+              schema:
+                $ref: "#/components/schemas/ProtobufMessage"
 
   /writes/{store}/{idempotencyKey}:
     get:
@@ -70,12 +85,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/WriteStatusResponse"
+            application/protobuf:
+              schema:
+                $ref: "#/components/schemas/ProtobufMessage"
         "404":
           description: Store o idempotency_key no encontrado
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorDetail"
+            application/protobuf:
+              schema:
+                $ref: "#/components/schemas/ProtobufMessage"
 
   /read:
     get:
@@ -113,12 +134,40 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ReadResponse"
+            application/protobuf:
+              schema:
+                $ref: "#/components/schemas/ProtobufMessage"
         "404":
           description: Entidad no encontrada
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorDetail"
+            application/protobuf:
+              schema:
+                $ref: "#/components/schemas/ProtobufMessage"
+    post:
+      summary: Leer entidad con ReadRequest Protobuf
+      operationId: readProtobuf
+      requestBody:
+        required: true
+        content:
+          application/protobuf:
+            schema:
+              $ref: "#/components/schemas/ProtobufMessage"
+      responses:
+        "200":
+          description: Respuesta ReadResponse Protobuf
+          content:
+            application/protobuf:
+              schema:
+                $ref: "#/components/schemas/ProtobufMessage"
+        "400":
+          description: Error de validación
+          content:
+            application/protobuf:
+              schema:
+                $ref: "#/components/schemas/ProtobufMessage"
 
   /health:
     get:
@@ -131,15 +180,26 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthResponse"
+            application/protobuf:
+              schema:
+                $ref: "#/components/schemas/ProtobufMessage"
         "503":
           description: Sistema degradado o no disponible
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthResponse"
+            application/protobuf:
+              schema:
+                $ref: "#/components/schemas/ProtobufMessage"
 
 components:
   schemas:
+    ProtobufMessage:
+      type: string
+      format: binary
+      description: "Mensaje binario definido en proto/ixmati/v1; no se habilita reflection."
+
     WriteEnvelope:
       type: object
       required:

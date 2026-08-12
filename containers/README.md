@@ -32,3 +32,8 @@ podman (macOS) → tcp://127.0.0.1:18081 → túnel SSH → /run/user/1000/podma
 ```
 
 Verificar: `podman info | grep arch` debe devolver `amd64`. Si devuelve `arm64`, abortar build (se está ejecutando local, no contra el remoto).
+
+Las instalaciones nuevas publican REST en `30000` y gRPC en `30100`. El
+listener gRPC puede deshabilitarse con `GRPC_PORT=0` durante una migración
+legacy. El contrato binario se valida con `make proto`; no se requiere
+`grpcurl` en runtime porque reflection no está habilitada.

@@ -52,7 +52,7 @@ containers-compile:
 	@mkdir -p $(TARGET_DIR)/release
 	@CONTAINER_ID=$$($(PODMAN) create $(IMAGE_PREFIX)-builder:$(IMAGE_TAG)); \
 	echo "  container=$$CONTAINER_ID"; \
-	for binary in ixmati-api ixmati-writer ixmati-projector ixmati-supervisor ixmati-reconciler ixmati-cache-server ixmati-store-migrate; do \
+	for binary in ixmati-api ixmati-protocol-bench ixmati-writer ixmati-projector ixmati-supervisor ixmati-reconciler ixmati-cache-server ixmati-store-migrate; do \
 		$(PODMAN) cp "$$CONTAINER_ID:/usr/local/bin/$$binary" "$(TARGET_DIR)/release/$$binary" 2>/dev/null && \
 			ls -lh "$(TARGET_DIR)/release/$$binary" || \
 			echo "  $(COLOR_YELLOW)$$binary fallo$(COLOR_RESET)"; \

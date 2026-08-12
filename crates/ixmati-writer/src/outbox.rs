@@ -28,6 +28,9 @@ impl Outbox {
     }
 
     pub fn insert(conn: &Connection, event: &EventEnvelope) -> rusqlite::Result<i64> {
+        // The AUTOINCREMENT id is the durable stream cursor. Persist it in
+        // the event envelope in the same transaction so MQTT consumers and
+        // gRPC replay clients observe the same sequence value.
         let payload = serde_json::to_vec(event).unwrap_or_default();
 
         conn.execute(
@@ -45,7 +48,16 @@ impl Outbox {
             ],
         )?;
 
-        Ok(conn.last_insert_rowid())
+        let outbox_seq = conn.last_insert_rowid();
+        let mut persisted_event = event.clone();
+        persisted_event.outbox_seq = outbox_seq as u64;
+        let persisted_payload = serde_json::to_vec(&persisted_event).unwrap_or_default();
+        conn.execute(
+            "UPDATE _outbox SET payload = ?1 WHERE id = ?2",
+            rusqlite::params![persisted_payload, outbox_seq],
+        )?;
+
+        Ok(outbox_seq)
     }
 
     pub fn mark_published(conn: &Connection, outbox_id: i64) -> rusqlite::Result<()> {
@@ -164,6 +176,8 @@ mod tests {
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].event_id, "evt-1");
         assert_eq!(rows[0].store, "pedidos");
+        let stored: EventEnvelope = serde_json::from_slice(&rows[0].payload).unwrap();
+        assert_eq!(stored.outbox_seq, id as u64);
     }
 
     #[test]

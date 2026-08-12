@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package ixmati.v1;
 
+import "google/protobuf/struct.proto";
+
 message WriteEnvelope {
   string op = 1;
   string store = 2;
@@ -11,7 +13,10 @@ message WriteEnvelope {
   string ts = 6;
   string idempotency_key = 7;
   string ack_mode = 8;
-  bytes payload = 9;
+  // Wire-compatible field retained from the original bytes payload.
+  bytes payload_bytes = 9 [deprecated = true];
+  // Canonical payload for new clients.
+  google.protobuf.Struct payload = 10;
 }
 
 message EventEnvelope {
@@ -23,7 +28,10 @@ message EventEnvelope {
   uint64 version = 6;
   string occurred_at = 7;
   uint64 outbox_seq = 8;
-  bytes payload = 9;
+  // Wire-compatible field retained from the original bytes payload.
+  bytes payload_bytes = 9 [deprecated = true];
+  // Canonical payload for new clients.
+  google.protobuf.Struct payload = 10;
 }
 
 message AckResponse {
@@ -40,6 +48,7 @@ enum WriteStatus {
   WRITE_STATUS_DUPLICATE = 3;
   WRITE_STATUS_VERSION_CONFLICT = 4;
   WRITE_STATUS_REJECTED = 5;
+  WRITE_STATUS_PENDING = 6;
 }
 
 message ErrorDetail {

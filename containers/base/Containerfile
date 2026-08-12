@@ -4,7 +4,9 @@
 # copian desde localhost/ixmati-builder:local.
 
 FROM docker.io/library/rust:1.97-slim-bookworm AS chef
-RUN cargo install cargo-chef
+RUN apt-get update && apt-get install -y --no-install-recommends protobuf-compiler libprotobuf-dev && \
+    rm -rf /var/lib/apt/lists/* && \
+    cargo install cargo-chef
 WORKDIR /app
 
 FROM chef AS planner
@@ -16,6 +18,7 @@ COPY --from=planner /app/recipe.json recipe.json
 RUN cargo chef cook --release --recipe-path recipe.json
 COPY . .
 RUN cargo build --release --bin ixmati-api \
+                     --bin ixmati-protocol-bench \
                      --bin ixmati-writer \
                      --bin ixmati-projector \
                      --bin ixmati-supervisor \
@@ -27,6 +30,7 @@ FROM debian:trixie-slim AS export
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 COPY --from=builder /app/target/release/ixmati-api /usr/local/bin/ixmati-api
+COPY --from=builder /app/target/release/ixmati-protocol-bench /usr/local/bin/ixmati-protocol-bench
 COPY --from=builder /app/target/release/ixmati-writer /usr/local/bin/ixmati-writer
 COPY --from=builder /app/target/release/ixmati-projector /usr/local/bin/ixmati-projector
 COPY --from=builder /app/target/release/ixmati-supervisor /usr/local/bin/ixmati-supervisor

@@ -1,5 +1,15 @@
 target/
 .git/
+.opencode/
+.specnative/
+.claude/
+.agents/
+spike/
+dist/
+spec-native/evidence/raw/
+.pytest_cache/
+.ruff_cache/
+**/.DS_Store
 .venv/
 __pycache__/
 *.pyc

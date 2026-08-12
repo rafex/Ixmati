@@ -51,3 +51,23 @@ connection does not interrupt the load process.
 El wrapper ejecuta cada tasa en un contenedor independiente. No se debe
 interrumpir una corrida válida y luego reutilizar su contenedor como evidencia
 del siguiente escalón.
+
+## Comparación JSON, REST/Protobuf y gRPC
+
+El binario `ixmati-protocol-bench` usa el mismo payload, `ack_mode=committed`,
+dataset lógico, tasa controlada y concurrencia para las tres interfaces. En un
+host Debian amd64 con las imágenes ya construidas:
+
+```bash
+PODMAN_CONNECTION=debian-server-wifi \
+PODMAN_HOST_IP=127.0.0.1 \
+RATES="40 100 150" DURATION=30 WARMUP=5 COOLDOWN=2 CONCURRENCY=200 \
+  benchmarks/protocol_benchmark.sh
+```
+
+El script usa un contenedor generador con `--network host`, guarda un JSON por
+protocolo y escalón, y captura métricas, servicios y recursos después de cada
+corrida. `40/s` es el baseline con el throttle productivo; `100/s` y `150/s`
+son diagnósticos. Una tasa con `429` o con saturación del cliente no se declara
+capacidad sostenible. El cooldown evita que el warmup contamine la ventana del
+rate limiter.

@@ -12,6 +12,13 @@ test-integration filter="":
     @echo "[test] integracion..."
     cargo test {{filter}} -p ixmati-integration
 
+# prueba funcional del protocolo Protobuf: REST/Protobuf + gRPC unary/stream
+# levanta procesos locales efímeros, sin depender del build de Compose.
+[group('test')]
+protobuf-e2e:
+    @cargo build -p ixmati-api -p ixmati-writer -p ixmati-cache-server
+    @helpers/shell/test_protobuf_e2e.sh
+
 # ejecuta tests de smoke (pytest caja negra, stack ya corriendo)
 # usa SMOKE_HOST y SMOKE_SSH_HOST del entorno si existen
 [group('test')]
