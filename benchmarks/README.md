@@ -28,3 +28,16 @@ success. Combine the JTL with API/writer/MQTT snapshots and the five-minute
 drain verification described in the load-testing runbook.
 
 For a quick smoke run, use `-Jduration=30 -Jrate=20 -Jconcurrency=32`.
+
+Para provisionar automáticamente un Debian nuevo por escalón, exponer API y
+métricas del writer, y limpiar cada contenedor al terminar:
+
+```bash
+SOAK_RATES="150 200" DURATION=3600 DRAIN_SECONDS=300 \
+  TEST_HOST=192.168.3.175 \
+  helpers/shell/run_soak_debian.sh
+```
+
+El wrapper ejecuta cada tasa en un contenedor independiente. No se debe
+interrumpir una corrida válida y luego reutilizar su contenedor como evidencia
+del siguiente escalón.

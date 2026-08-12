@@ -5,7 +5,7 @@ agent = "codex"
 initiative = "capacity-and-store-lifecycle"
 task = "TASK-CAP-0001 / TASK-STORE-0001..0006"
 intent = "Validar soak prolongado de 150–200/s e implementar migración offline de stores"
-last_updated = "2026-08-12T00:30:00Z"
+last_updated = "2026-08-12T03:05:00Z"
 +++
 
 # Active Session

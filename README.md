@@ -70,6 +70,8 @@ Para una prueba prolongada reutilizable, el repositorio incluye
 un contenedor Debian ya instalado y una tasa externa controlada; los escalones
 de 150/s y 200/s sólo se consideran válidos tras una hora completa más cinco
 minutos de drenado.
+Para provisionar un contenedor nuevo por escalón está disponible
+[`run_soak_debian.sh`](helpers/shell/run_soak_debian.sh).
 
 Las operaciones de ciclo de vida de stores son offline. El binario
 `ixmati-store-migrate` implementa rename, merge y split con tombstones,

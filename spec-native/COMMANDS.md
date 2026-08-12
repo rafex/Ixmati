@@ -71,6 +71,10 @@ ixmati-store-migrate execute --manifest migration.toml
 
 # E2E offline migration + reconciler/cache en Debian efímero
 helpers/shell/test_store_migration_e2e.sh
+
+# Soak prolongado: un contenedor Debian nuevo por cada tasa
+SOAK_RATES="150 200" DURATION=3600 DRAIN_SECONDS=300 \
+  helpers/shell/run_soak_debian.sh
 ```
 
 Validación real en contenedor Debian con systemd como PID 1 (requiere Podman
