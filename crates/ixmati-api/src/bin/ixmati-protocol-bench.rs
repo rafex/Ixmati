@@ -149,7 +149,7 @@ fn parse_config() -> Config {
     }
 }
 
-fn payload(key: &str) -> Struct {
+fn payload(key: &str, user_key: &str) -> Struct {
     Struct {
         fields: BTreeMap::from([
             (
@@ -161,7 +161,7 @@ fn payload(key: &str) -> Struct {
             (
                 "usuario_id".into(),
                 Value {
-                    kind: Some(Kind::StringValue("usr_000001".into())),
+                    kind: Some(Kind::StringValue(user_key.into())),
                 },
             ),
             (
@@ -176,6 +176,7 @@ fn payload(key: &str) -> Struct {
 
 fn request_message(config: &Config, sequence: u64) -> pb::WriteRequest {
     let key = format!("protocol-bench-{sequence}");
+    let user_key = format!("usr_{:06}", sequence % 100);
     pb::WriteRequest {
         envelope: Some(pb::WriteEnvelope {
             op: "upsert".into(),
@@ -186,7 +187,7 @@ fn request_message(config: &Config, sequence: u64) -> pb::WriteRequest {
             ts: "2026-08-12T00:00:00Z".into(),
             idempotency_key: format!("protocol-bench-idem-{sequence}"),
             ack_mode: "committed".into(),
-            payload: Some(payload(&key)),
+            payload: Some(payload(&key, &user_key)),
             payload_bytes: Vec::new(),
         }),
     }
@@ -214,7 +215,7 @@ async fn http_request(client: Client, config: Config, sequence: u64) -> Sample {
             "ts": envelope.ts,
             "idempotency_key": envelope.idempotency_key,
             "ack_mode": envelope.ack_mode,
-            "payload": {"pedido_id": format!("protocol-bench-{sequence}"), "usuario_id": "usr_000001", "total": 42.5}
+            "payload": {"pedido_id": format!("protocol-bench-{sequence}"), "usuario_id": format!("usr_{:06}", sequence % 100), "total": 42.5}
         });
         client
             .post(format!("{}/write", config.url.trim_end_matches('/')))

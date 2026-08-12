@@ -146,7 +146,7 @@ services:
     environment:
       - MQTT_BROKER=tcp://mosquitto:30200
       - CACHE_SOCKET_PATH=/var/run/ixmati/cache.sock
-      - RUST_LOG=ixmati_projector=debug,ixmati_cache=debug
+      - RUST_LOG=ixmati_projector=info,ixmati_cache=info
     depends_on:
       mosquitto:
         condition: service_healthy
