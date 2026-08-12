@@ -108,6 +108,12 @@ tabla no presenta 100 o 200/s como capacidad productiva. Los números de
 SQLite/PostgreSQL no son equivalentes al pipeline completo: sirven para
 separar el costo del motor del costo de durabilidad, mensajería y proyección.
 
+La comparación de interfaces está documentada en
+[`PROTOBUF-BENCH-20260812.md`](spec-native/evidence/PROTOBUF-BENCH-20260812.md):
+JSON, REST/Protobuf y gRPC confirmaron el mismo throughput durable bajo el
+throttle productivo. Protobuf y gRPC son interfaces de transporte; no cambian
+la frontera de commit ni deben anunciarse como una mejora de capacidad.
+
 ### Qué dicen estos resultados del producto
 
 Ixmati no compite por throughput SQL bruto. La comparativa demuestra que

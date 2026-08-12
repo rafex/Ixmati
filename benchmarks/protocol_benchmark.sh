@@ -7,6 +7,7 @@ connection="${PODMAN_CONNECTION:-debian-server-wifi}"
 image="${BENCHMARK_IMAGE:-localhost/ixmati-builder:local}"
 api_url="${API_URL:-http://${PODMAN_HOST_IP:-127.0.0.1}:30000}"
 grpc_url="${GRPC_URL:-http://${PODMAN_HOST_IP:-127.0.0.1}:30100}"
+metrics_url="${METRICS_URL:-${api_url}/metrics}"
 api_key="${IXMATI_API_KEY:-ix-default-key}"
 store="${IXMATI_BENCH_STORE:-pedidos}"
 entity="${IXMATI_BENCH_ENTITY:-pedido}"
@@ -23,7 +24,8 @@ mkdir -p "${output_dir}"
 {
   printf 'sha=%s\n' "$(git -C "${repo_root}" rev-parse HEAD)"
   printf 'connection=%s\nimage=%s\n' "${connection}" "${image}"
-  printf 'api_url=%s\ngrpc_url=%s\n' "${api_url}" "${grpc_url}"
+  printf 'api_url=%s\ngrpc_url=%s\nmetrics_url=%s\n' \
+    "${api_url}" "${grpc_url}" "${metrics_url}"
   printf 'duration=%s\nwarmup=%s\ncooldown=%s\nconcurrency=%s\n' \
     "${duration}" "${warmup}" "${cooldown}" "${concurrency}"
   printf 'rates=%s\nprotocols=%s\n' "${rates[*]}" "${protocols[*]}"
@@ -31,7 +33,7 @@ mkdir -p "${output_dir}"
 
 snapshot() {
   local label="$1"
-  curl -fsS "${api_url}/metrics" > "${output_dir}/${label}-api.prom" || true
+  curl -fsS "${metrics_url}" > "${output_dir}/${label}-api.prom" || true
   podman --connection "${connection}" ps --format '{{.Names}} {{.Status}}' \
     > "${output_dir}/${label}-services.txt"
   podman --connection "${connection}" stats --no-stream \

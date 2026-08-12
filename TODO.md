@@ -696,10 +696,12 @@ Tablero de tareas activo. Persiste entre sesiones.
 
 ## Active — Capacity and Store Lifecycle
 
-- [ ] `TASK-PROTO-0002..0006` — Cerrar gRPC unary, REST/Protobuf, replay/live,
-      despliegue y benchmark comparativo; la compilación del contrato y el
-      listener inicial ya están implementados, pero faltan pruebas de
-      integración reales.
+- [x] `TASK-PROTO-0002..0003,0005..0006` — gRPC unary, REST/Protobuf,
+      despliegue y benchmark comparativo cerrados con E2E local y evidencia
+      Debian amd64 en `PROTOBUF-E2E-20260812.md` y
+      `PROTOBUF-BENCH-20260812.md`.
+- [ ] `TASK-PROTO-0004` — ampliar replay/live con cliente lento, buffer lleno,
+      `OUT_OF_RANGE` tras retención y reconexión con cursor.
 
 - [ ] `TASK-CAP-0001` — Ejecutar soak rate-controlled de 150/s y 200/s durante
       una hora por escalón en contenedores Debian nuevos; conservar JTL/JSONL,

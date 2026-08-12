@@ -1543,3 +1543,11 @@ outbox y no ofrece exactamente-una-entrega; (-) el benchmark de la nueva
 interfaz debe demostrar impacto sobre la confirmación durable antes de
 atribuirle una mejora de capacidad. El listener puede deshabilitarse con
 `GRPC_PORT=0` durante una migración legacy.
+
+**Resultado de validación**: en Debian amd64, con `ack_mode=committed`, 200
+clientes y tasa controlada, JSON, REST/Protobuf y gRPC confirmaron 39.1/s en el
+baseline de 40/s, con el mismo número de rechazos del throttle y sin saturación
+del generador. A 100/150/s los tres caminos quedaron limitados a 40/s por
+backpressure. La evidencia completa está en
+`spec-native/evidence/PROTOBUF-BENCH-20260812.md`; no se atribuye mejora de
+capacidad a los protocolos.

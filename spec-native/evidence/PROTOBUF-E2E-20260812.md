@@ -1,7 +1,7 @@
 # Evidencia E2E — Protobuf, REST binario y gRPC
 
 Fecha: 2026-08-12
-SHA base del árbol: `48283cb0035110a951e71204eaf40a591880efb3`
+SHA publicado: `46a039fb265846d710b17b42a6b1b880ca627619`
 Estado: **pasada funcional local; no es benchmark de capacidad**
 
 ## Alcance
@@ -96,7 +96,8 @@ Esta evidencia tampoco cubre todavía:
 - ejecución en Debian amd64 desde el SHA publicado;
 - matriz de errores gRPC y autenticación ausente/incorrecta;
 - `OUT_OF_RANGE`, cliente lento y backpressure del stream;
-- benchmark REST JSON vs REST/Protobuf vs gRPC.
+- benchmark REST JSON vs REST/Protobuf vs gRPC — cubierto por
+  `PROTOBUF-BENCH-20260812.md`.
 
 Esas pruebas permanecen pendientes antes de cerrar la iniciativa
 `protobuf-api` o anunciar una mejora de capacidad.

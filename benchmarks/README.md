@@ -61,6 +61,7 @@ host Debian amd64 con las imágenes ya construidas:
 ```bash
 PODMAN_CONNECTION=debian-server-wifi \
 PODMAN_HOST_IP=127.0.0.1 \
+METRICS_URL=http://192.168.3.143:30000/metrics \
 RATES="40 100 150" DURATION=30 WARMUP=5 COOLDOWN=2 CONCURRENCY=200 \
   benchmarks/protocol_benchmark.sh
 ```

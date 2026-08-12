@@ -16,7 +16,7 @@ validation = ["cargo check -p ixmati-api", "make proto"]
 ```toml
 id = "TASK-PROTO-0002"
 title = "Servir Write, GetWriteStatus, Read y Health por gRPC"
-state = "in_progress"
+state = "done"
 owner = "team-core"
 dependencies = ["TASK-PROTO-0001"]
 close_criteria = "Cliente tonic prueba los cuatro RPC, metadata x-api-key y mapeo de errores"
@@ -28,7 +28,7 @@ validation = ["cargo test -p ixmati-api", "test de integración tonic + SQLite/M
 ```toml
 id = "TASK-PROTO-0003"
 title = "Agregar application/protobuf y POST /read"
-state = "in_progress"
+state = "done"
 owner = "team-core"
 dependencies = ["TASK-PROTO-0001"]
 close_criteria = "POST /write, GET /writes, GET/POST /read y GET /health negocian Protobuf sin regresión JSON"
@@ -64,9 +64,9 @@ validation = ["just validate-config", "make dist-validate", "git diff --check", 
 ```toml
 id = "TASK-PROTO-0006"
 title = "Comparar REST JSON, REST Protobuf y gRPC"
-state = "todo"
+state = "done"
 owner = "team-core"
 dependencies = ["TASK-PROTO-0002", "TASK-PROTO-0003"]
 close_criteria = "40/s baseline y 100/150/s diagnóstico con p50/p95/p99, errores y saturación"
-validation = ["evidencia Debian amd64 desde SHA publicado"]
+validation = ["evidencia Debian amd64 desde SHA publicado", "spec-native/evidence/PROTOBUF-BENCH-20260812.md"]
 ```

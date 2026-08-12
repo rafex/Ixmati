@@ -3,7 +3,7 @@
 state = "in_progress"
 agent = "codex"
 initiative = "protobuf-api"
-task = "TASK-PROTO-0002..0005"
+task = "TASK-PROTO-0004"
 intent = "Completar gRPC, REST/Protobuf, replay/live, despliegue y pruebas sin alterar la durabilidad existente"
 last_updated = "2026-08-12T00:00:00Z"
 +++
@@ -14,15 +14,15 @@ last_updated = "2026-08-12T00:00:00Z"
 
 La iniciativa `protobuf-api` tiene el contrato `.proto`, generación reproducible,
 listener gRPC separado, conversiones Struct, dispatch REST/Protobuf y
-configuración de despliegue implementados localmente. `TASK-PROTO-0001` y
-`TASK-PROTO-0005` están cerradas. La prueba funcional local
+configuración de despliegue implementados localmente. `TASK-PROTO-0001`..`0003`,
+`TASK-PROTO-0005` y `TASK-PROTO-0006` están cerradas. La prueba funcional local
 `spec-native/evidence/PROTOBUF-E2E-20260812.md` pasó: REST/Protobuf confirmó
 escritura, estado, lectura cacheada y health; el cliente tonic confirmó unary y
 stream replay/live con Mosquitto y SQLite temporales.
 
-Unary, REST binario y streaming siguen abiertos para su cierre completo porque
-faltan la matriz de errores/cursor, backpressure del stream y validación Debian
-amd64 desde el SHA publicado.
+Unary y REST binario están cerrados con E2E local; el stream conserva pendiente
+la validación específica de cliente lento/backpressure. El benchmark comparativo
+JSON/REST-Protobuf/gRPC ya fue ejecutado en Debian amd64 desde el SHA publicado.
 
 El contrato durable no cambia: `accepted` es alias de `committed`, `200`/`COMMITTED`
 confirma `_idempotency` y `202`/`PENDING` requiere consulta de estado.
@@ -53,8 +53,8 @@ quedó bajo 160 ms p99; 150/s mostró p99 321 ms. El throttle fue restaurado a
 ## Next steps
 
 Siguiente paso de `protobuf-api`: ampliar las pruebas de integración con
-clientes tonic/reqwest y broker/SQLite temporales para cubrir errores, cursores
-y backpressure; después ejecutar el benchmark comparativo en Debian. La prueba
+cliente lento, backpressure, `OUT_OF_RANGE` tras retención y reconexión con
+cursor. La prueba
 prolongada de 150/s y 200/s, merge conflictivo de stores, topics antiguos y
 restauración desde backup siguen siendo trabajo independiente. El perfil
 recomendado sigue en 40/s hasta cerrar la evidencia. `mdbook` continúa

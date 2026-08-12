@@ -36,6 +36,7 @@ Vínculos entre artefactos del proyecto.
 | `TASK-CAP-0001` | `benchmarks/ixmati-soak.jmx`, `benchmarks/soak_capacity.sh`, bounded `rate_load.py` | pending Debian soak evidence | pending |
 | `TASK-STORE-0001`..`0006` | `crates/ixmati-store-migrate`, tombstones, migration runbook | local unit/integration gates | `DEC-0068` |
 | `TASK-PROTO-0001` | `proto/ixmati/v1/`, `build.rs`, `make proto` | `cargo check -p ixmati-api`, `make proto` | `DEC-0069` |
-| `TASK-PROTO-0002`..`0004` | `crates/ixmati-api/src/grpc.rs`, REST dispatch and generated tonic client | `spec-native/evidence/PROTOBUF-E2E-20260812.md`; error matrix/cursor edge cases pending | `DEC-0069` |
+| `TASK-PROTO-0002`..`0003` | `crates/ixmati-api/src/grpc.rs`, REST dispatch and generated tonic client | `spec-native/evidence/PROTOBUF-E2E-20260812.md` | `DEC-0069` |
+| `TASK-PROTO-0004` | `EventService.SubscribeEvents` replay/live | `spec-native/evidence/PROTOBUF-E2E-20260812.md`; cliente lento/backpressure pendiente | `DEC-0069` |
 | `TASK-PROTO-0005` | deployment, OpenAPI, README, docs and SpecNative | `spec-native/evidence/PROTOBUF-E2E-20260812.md`; config/distribution gates pass | `DEC-0069` |
-| `TASK-PROTO-0006` | benchmark pendiente | pendiente Debian amd64 | `DEC-0069` |
+| `TASK-PROTO-0006` | `benchmarks/protocol_benchmark.sh`, `ixmati-protocol-bench` | `spec-native/evidence/PROTOBUF-BENCH-20260812.md` | `DEC-0069` |
