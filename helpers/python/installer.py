@@ -31,6 +31,7 @@ BINARIES = [
     "ixmati-projector",
     "ixmati-supervisor",
     "ixmati-reconciler",
+    "ixmati-store-migrate",
 ]
 
 SYSTEMD_UNITS = [

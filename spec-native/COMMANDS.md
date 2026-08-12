@@ -63,6 +63,11 @@ make containers-compile      # extrae binarios a target/release/
 make dist                    # ensambla dist/ (incluye ixmati-cache-server)
 make dist-checksums          # genera .sha256
 make dist-validate           # verifica binarios/config/systemd en el tarball
+
+# Operación offline de stores (requiere ventana y manifiesto quiesced=true)
+ixmati-store-migrate plan --manifest benchmarks/migration.example.toml
+ixmati-store-migrate verify --manifest migration.toml
+ixmati-store-migrate execute --manifest migration.toml
 ```
 
 Validación real en contenedor Debian con systemd como PID 1 (requiere Podman
@@ -134,6 +139,16 @@ sqlite3 /data/pedidos_restored.db "PRAGMA integrity_check;"
 ```bash
 just ci-pr               # verificaciones de PR
 just ci-main              # verificaciones de main (con smoke + coverage)
+
+## Capacidad prolongada
+
+```bash
+# JMeter: una hora a 150/s; repetir con rate=200
+just benchmark-soak 150 3600 200
+
+# Harness completo: snapshots de API/writer/MQTT y drenado
+SOAK_RATES="150 200" DURATION=3600 benchmarks/soak_capacity.sh
+```
 ```
 
 ## Health

@@ -9,7 +9,7 @@ VERSION      := $(shell cat $(VERSION_FILE) 2>/dev/null || echo "0.0.0")
 DIST_ARCH    := amd64
 DIST_NAME    := ixmati-$(VERSION)-linux-$(DIST_ARCH)
 
-EXPECTED_BINS    := ixmati-cache-server ixmati-api ixmati-writer ixmati-projector ixmati-supervisor ixmati-reconciler
+EXPECTED_BINS    := ixmati-cache-server ixmati-api ixmati-writer ixmati-projector ixmati-supervisor ixmati-reconciler ixmati-store-migrate
 EXPECTED_CONFIG  := stores.toml projections.toml
 EXPECTED_SYSTEMD := ixmati-cache-server.service ixmati-api.service ixmati-writer@.service ixmati-projector.service
 

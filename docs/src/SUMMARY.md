@@ -18,10 +18,12 @@
   - [Multi Store](guides/multi-store.md)
   - [Proyecciones](guides/projections.md)
   - [Disaster Recovery](guides/disaster-recovery.md)
+  - [Migración de stores](guides/store-migration.md)
   - [Kubernetes](guides/kubernetes.md)
 - Operaciones
   - [Runbook](operations/runbook.md)
   - [Observabilidad](operations/observability.md)
+  - [Pruebas de capacidad](operations/load-testing.md)
 - Contribuyendo
   - [Tooling](contributing/tooling.md)
   - [Testing](contributing/testing.md)

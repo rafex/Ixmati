@@ -10,6 +10,7 @@ pub mod event_publisher;
 pub mod metrics;
 pub mod outbox;
 pub mod standby;
+pub mod tombstones;
 pub mod watchdog;
 pub mod write_engine;
 pub mod write_thread;

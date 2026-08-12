@@ -1489,3 +1489,24 @@ añade espacio y coste de escritura; (-) la capacidad final debe repetirse con
 el artefacto publicado y una carga controlada. El watchdog sigue siendo una
 defensa operativa, no la corrección primaria.
 - Reemplaza: la conclusión provisional de DEC-0066 sobre causa no confirmada.
+
+### DEC-0068 — Migración offline y determinista del ciclo de vida de stores
+
+- Fecha: 2026-08-12
+- Estado: `accepted`
+- Relacionado con: `TASK-STORE-0001`..`TASK-STORE-0006`
+- Implementación: `crates/ixmati-store-migrate`, `spec-native/RUNBOOK-STORE-MIGRATION.md`
+
+**Decisión**: rename, merge y split son operaciones offline con outbox drenado,
+integridad SQLite, backup verificable y publicación atómica de destinos
+temporales. Merge usa LWW por versión, timestamp y nombre de origen
+lexicográficamente menor; las colisiones de idempotencia con digest divergente
+aborta la operación. Las eliminaciones se conservan como `_tombstones` y los
+históricos ambiguos no se resuelven optimistamente. Split usa
+`sha256-key-v1` sobre la clave y la lista ordenada de destinos. El cutover es
+estricto, sin alias ni doble publicación; reconciler reconstruye cache y
+proyecciones después de la migración.
+
+**Consecuencias**: se requiere ventana de mantenimiento y no existe
+transacción distribuida ni migración online, pero la operación es reproducible,
+auditable y deja el origen intacto ante un fallo.

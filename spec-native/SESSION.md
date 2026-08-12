@@ -2,10 +2,10 @@
 [session]
 state = "in_progress"
 agent = "codex"
-initiative = "production-backlog-hardening"
-task = "TASK-VAL-0033..0036 / TASK-VAL-0025"
-intent = "Cerrar observabilidad, latencia durable, crash PUBACK, MQTT y Pattern R mutable"
-last_updated = "2026-08-11T23:05:00Z"
+initiative = "capacity-and-store-lifecycle"
+task = "TASK-CAP-0001 / TASK-STORE-0001..0006"
+intent = "Validar soak prolongado de 150–200/s e implementar migración offline de stores"
+last_updated = "2026-08-12T00:30:00Z"
 +++
 
 # Active Session
@@ -37,12 +37,13 @@ quedó bajo 160 ms p99; 150/s mostró p99 321 ms. El throttle fue restaurado a
 
 ## Next steps
 
-El hardening de producción está cerrado. Queda una validación prolongada de
-150–200/s para separar capacidad sostenible de caracterización de escalón; el
-perfil recomendado sigue en 40/s. También queda instalar `mdbook` y ejecutar
-el build documental. Después de eso, el siguiente ciclo de producto es
-sharding interno, dashboard operativo y migración/merge/split de stores. El
-clustering de Mosquitto permanece fuera del alcance beta.
+Queda ejecutar en Debian el soak de 150/s y 200/s durante una hora por
+escalón, conservar métricas y completar el drenado de cinco minutos. La
+herramienta offline de stores ya está implementada localmente; falta ampliar
+la matriz de integración, validar cutover con reconciler/cache y ejecutar una
+migración controlada sobre un entorno Debian de prueba. El perfil recomendado
+sigue en 40/s hasta cerrar la evidencia. `mdbook` continúa pendiente por no
+estar instalado localmente.
 
 ## Context for next agent
 

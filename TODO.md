@@ -694,6 +694,23 @@ Tablero de tareas activo. Persiste entre sesiones.
       `consumer_queue_depth=0`; 150/s fue el primer escalón con `202` y cola.
       Ver DEC-0061.
 
+## Active — Capacity and Store Lifecycle
+
+- [ ] `TASK-CAP-0001` — Ejecutar soak rate-controlled de 150/s y 200/s durante
+      una hora por escalón en contenedores Debian nuevos; conservar JTL/JSONL,
+      métricas, logs, drenado y clasificación sostenible/inconclusa.
+- [x] `TASK-STORE-0001` — Añadir `_tombstones`, operación y digest de comando
+      en `_idempotency`, con migración idempotente de esquemas existentes.
+- [x] `TASK-STORE-0002` — Crear `ixmati-store-migrate` con manifiesto,
+      preflight, backups, destinos temporales y publicación atómica.
+- [x] `TASK-STORE-0003` — Implementar rename y resolución LWW para merge,
+      incluyendo colisiones divergentes de idempotencia.
+- [x] `TASK-STORE-0004` — Implementar split `sha256-key-v1` reproducible.
+- [ ] `TASK-STORE-0005` — Validar merge/split E2E con reconciler, cache,
+      systemd, topics estrictos y restauración desde backup.
+- [x] `TASK-STORE-0006` — Documentar runbook, decisión, ejemplo de manifiesto,
+      comandos y trazabilidad.
+
 ## Cancelled / Replaced
 
 - [x] `TASK-WRITE-0002` — Spike comparativa Opción A vs B (cerrada por diseño)

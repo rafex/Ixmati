@@ -64,6 +64,18 @@ Los resultados medidos se mantienen separados de las referencias oficiales
 de PostgreSQL; el ejemplo de `pgbench` publicado por PostgreSQL no es una
 promesa de capacidad para este hardware.
 
+Para una prueba prolongada reutilizable, el repositorio incluye
+[`benchmarks/ixmati-soak.jmx`](benchmarks/ixmati-soak.jmx) y
+[`benchmarks/soak_capacity.sh`](benchmarks/soak_capacity.sh). Ambos requieren
+un contenedor Debian ya instalado y una tasa externa controlada; los escalones
+de 150/s y 200/s sólo se consideran válidos tras una hora completa más cinco
+minutos de drenado.
+
+Las operaciones de ciclo de vida de stores son offline. El binario
+`ixmati-store-migrate` implementa rename, merge y split con tombstones,
+conflictos LWW deterministas, backups y publicación atómica. El procedimiento
+está en [`spec-native/RUNBOOK-STORE-MIGRATION.md`](spec-native/RUNBOOK-STORE-MIGRATION.md).
+
 Resumen de la corrida Debian amd64 (1,000 usuarios, 10,000 pedidos):
 
 | Camino | Resultado sostenible observado | Latencia representativa | Lectura |

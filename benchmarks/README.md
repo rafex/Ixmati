@@ -1,30 +1,30 @@
-# Comparativa de capacidad
+# Benchmarks
 
-Esta suite compara en el mismo host y con el mismo dataset:
+The benchmark suite compares SQLite directo, Ixmati and PostgreSQL with a
+common dataset. `run_suite.sh` is the short comparison suite; it is not a
+long-term capacity claim.
 
-- SQLite directo con `WAL`, `synchronous=NORMAL` y `busy_timeout=5000`.
-- Ixmati completo: API, Mosquitto, writer, cache-server y projector.
-- PostgreSQL 18 directo con `synchronous_commit=on`.
+## Reusable JMeter soak
 
-Los resultados propios se separan de las referencias oficiales de PostgreSQL.
-El ejemplo de `pgbench` publicado en la documentación de PostgreSQL (896.967
-TPS y 11.013 ms) es una salida ilustrativa, no una promesa de capacidad para
-este hardware.
-
-## Ejecución
-
-En Debian amd64, con el repositorio en el SHA que se desea medir:
+`ixmati-soak.jmx` sends durable `POST /write` requests with a shared,
+rate-controlled throughput timer. It does not store response bodies, which
+keeps a one-hour run bounded in memory. Use JMeter's `-l` option when a full
+JTL is required:
 
 ```bash
-uv run --with 'psycopg[binary]==3.2.9' python benchmarks/runner.py \
-  init-sqlite /tmp/ixmati-bench.sqlite
-uv run --with 'psycopg[binary]==3.2.9' python benchmarks/runner.py \
-  seed-sqlite /tmp/ixmati-bench.sqlite
+jmeter -n -t benchmarks/ixmati-soak.jmx \
+  -Jhost=127.0.0.1 -Jport=30000 -Jstore=default \
+  -Jrate=150 -Jduration=3600 -Jconcurrency=200 \
+  -Japi_key=ix-default-key \
+  -l evidence/jmeter-150.jtl \
+  -j evidence/jmeter-150.log
 ```
 
-El runner también admite `init-postgres`, `seed-postgres` y `load`. Para la
-carga de Ixmati se usa `--engine http` contra el API publicado.
+Repeat with `-Jrate=200` and a fresh Debian container. The rate is requests
+per second; the JMX converts it to requests per minute for JMeter's
+`ConstantThroughputTimer`. The test deliberately leaves `200`, `202`, `429`
+and transport errors visible in the JTL instead of treating them all as
+success. Combine the JTL with API/writer/MQTT snapshots and the five-minute
+drain verification described in the load-testing runbook.
 
-`run_suite.sh` levanta PostgreSQL 18, prepara el dataset, ejecuta las tasas
-controladas y conserva los JSON de cada corrida, el manifiesto del host y la
-configuración del motor.
+For a quick smoke run, use `-Jduration=30 -Jrate=20 -Jconcurrency=32`.

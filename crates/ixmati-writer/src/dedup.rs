@@ -1,5 +1,6 @@
 use ixmati_core::WriteEnvelope;
 use rusqlite::Connection;
+use sha2::{Digest, Sha256};
 
 pub struct IdempotencyTracker;
 
@@ -12,13 +13,31 @@ impl IdempotencyTracker {
                 entity          TEXT NOT NULL,
                 key             TEXT NOT NULL,
                 version         INTEGER NOT NULL,
+                operation       TEXT,
+                command_digest  TEXT,
                 applied_at      TEXT NOT NULL DEFAULT (datetime('now')),
                 PRIMARY KEY (store, idempotency_key)
             );
 
             CREATE INDEX IF NOT EXISTS idx_idempotency_entity_key_version
                 ON _idempotency(store, entity, key, version);",
-        )
+        )?;
+
+        // Existing installations predate the migration metadata. ALTER TABLE
+        // is intentionally guarded by PRAGMA inspection so startup remains
+        // idempotent and does not rewrite user data.
+        for (column, definition) in [("operation", "TEXT"), ("command_digest", "TEXT")] {
+            let exists: bool = conn
+                .prepare("SELECT 1 FROM pragma_table_info('_idempotency') WHERE name = ?1")?
+                .exists([column])?;
+            if !exists {
+                conn.execute(
+                    &format!("ALTER TABLE _idempotency ADD COLUMN {column} {definition}"),
+                    [],
+                )?;
+            }
+        }
+        Ok(())
     }
 
     pub fn check(
@@ -44,14 +63,17 @@ impl IdempotencyTracker {
 
     pub fn record(conn: &Connection, envelope: &WriteEnvelope) -> rusqlite::Result<()> {
         conn.execute(
-            "INSERT OR IGNORE INTO _idempotency (idempotency_key, store, entity, key, version)
-             VALUES (?1, ?2, ?3, ?4, ?5)",
+            "INSERT OR IGNORE INTO _idempotency
+             (idempotency_key, store, entity, key, version, operation, command_digest)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
             (
                 &envelope.idempotency_key,
                 &envelope.store,
                 &envelope.entity,
                 &envelope.key,
                 envelope.version as i64,
+                &envelope.op,
+                command_digest(envelope),
             ),
         )?;
         Ok(())
@@ -76,6 +98,25 @@ impl IdempotencyTracker {
             None => Ok(None),
         }
     }
+}
+
+/// Stable digest used only to detect divergent idempotency collisions during
+/// offline store operations. The JSON object uses sorted keys in serde_json,
+/// and the envelope fields are encoded explicitly to avoid dependence on
+/// Rust struct layout.
+pub fn command_digest(envelope: &WriteEnvelope) -> String {
+    let canonical = serde_json::json!({
+        "op": envelope.op,
+        "store": envelope.store,
+        "entity": envelope.entity,
+        "key": envelope.key,
+        "version": envelope.version,
+        "ts": envelope.ts,
+        "payload": envelope.payload,
+    });
+    let mut hasher = Sha256::new();
+    hasher.update(serde_json::to_vec(&canonical).expect("canonical envelope serializes"));
+    format!("{:x}", hasher.finalize())
 }
 
 #[derive(Debug, PartialEq, Eq)]

@@ -1,6 +1,6 @@
 # containers/base/Containerfile — builder compartido con cargo-chef
 #
-# Compila los 5 binarios UNA vez. Los Containerfiles de servicio
+# Compila los binarios UNA vez. Los Containerfiles de servicio
 # copian desde localhost/ixmati-builder:local.
 
 FROM docker.io/library/rust:1.97-slim-bookworm AS chef
@@ -20,7 +20,8 @@ RUN cargo build --release --bin ixmati-api \
                      --bin ixmati-projector \
                      --bin ixmati-supervisor \
                      --bin ixmati-reconciler \
-                     --bin ixmati-cache-server
+                     --bin ixmati-cache-server \
+                     --bin ixmati-store-migrate
 
 FROM debian:trixie-slim AS export
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && \
@@ -31,3 +32,4 @@ COPY --from=builder /app/target/release/ixmati-projector /usr/local/bin/ixmati-p
 COPY --from=builder /app/target/release/ixmati-supervisor /usr/local/bin/ixmati-supervisor
 COPY --from=builder /app/target/release/ixmati-reconciler /usr/local/bin/ixmati-reconciler
 COPY --from=builder /app/target/release/ixmati-cache-server /usr/local/bin/ixmati-cache-server
+COPY --from=builder /app/target/release/ixmati-store-migrate /usr/local/bin/ixmati-store-migrate

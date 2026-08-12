@@ -1,0 +1,38 @@
+# Ejemplo para una ventana offline. Las rutas deben ser absolutas o relativas
+# al directorio desde el que se ejecuta ixmati-store-migrate.
+operation = "rename"
+hash_algorithm = "sha256-key-v1"
+quiesced = true
+evidence_dir = "./evidence/store-migration"
+
+[[sources]]
+name = "pedidos"
+path = "/var/lib/ixmati/stores/pedidos.db"
+
+[target]
+name = "orders"
+path = "/var/lib/ixmati/stores/orders.db"
+
+# Para merge:
+# operation = "merge"
+# [[sources]]
+# name = "pedidos-eu"
+# path = "/var/lib/ixmati/stores/pedidos-eu.db"
+# [[sources]]
+# name = "pedidos-us"
+# path = "/var/lib/ixmati/stores/pedidos-us.db"
+# [target]
+# name = "pedidos"
+# path = "/var/lib/ixmati/stores/pedidos-merged.db"
+
+# Para split:
+# operation = "split"
+# [[sources]]
+# name = "pedidos"
+# path = "/var/lib/ixmati/stores/pedidos.db"
+# [[targets]]
+# name = "pedidos-0"
+# path = "/var/lib/ixmati/stores/pedidos-0.db"
+# [[targets]]
+# name = "pedidos-1"
+# path = "/var/lib/ixmati/stores/pedidos-1.db"

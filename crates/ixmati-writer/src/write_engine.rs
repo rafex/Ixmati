@@ -6,6 +6,7 @@ use uuid::Uuid;
 use crate::BatchResult;
 use crate::dedup::{IdempotencyStatus, IdempotencyTracker};
 use crate::outbox::Outbox;
+use crate::tombstones::Tombstones;
 
 pub struct WriteEngine;
 
@@ -13,6 +14,7 @@ impl WriteEngine {
     pub fn ensure_schema(conn: &Connection, store_name: &str) -> rusqlite::Result<()> {
         IdempotencyTracker::ensure_schema(conn)?;
         Outbox::ensure_schema(conn)?;
+        Tombstones::ensure_schema(conn)?;
 
         conn.execute_batch(&format!(
             "CREATE TABLE IF NOT EXISTS payload_{store_name} (
@@ -85,6 +87,7 @@ impl WriteEngine {
                         ),
                         rusqlite::params![cmd.entity, cmd.key, cmd.version as i64, payload],
                     )?;
+                    Tombstones::clear_if_older(&tx, &cmd.entity, &cmd.key, cmd.version)?;
                 }
                 "delete" => {
                     tx.execute(
@@ -112,6 +115,10 @@ impl WriteEngine {
                 outbox_seq: 0,
                 payload: cmd.payload.clone(),
             };
+
+            if cmd.op == "delete" {
+                Tombstones::record(&tx, &cmd.entity, &cmd.key, cmd.version, &event.event_id)?;
+            }
 
             Outbox::insert(&tx, &event)?;
             IdempotencyTracker::record(&tx, cmd)?;
@@ -238,6 +245,14 @@ mod tests {
                 .unwrap();
         assert_eq!(result.committed, 1);
         assert_eq!(result.events[0].event_type, "pedido.eliminado");
+        let tombstone: i64 = conn
+            .query_row(
+                "SELECT version FROM _tombstones WHERE entity = 'pedido' AND key = 'ped_1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(tombstone, 2);
     }
 
     #[test]

@@ -105,6 +105,12 @@ El sistema sigue siendo beta: el atasco de sesión MQTT bajo sobrecarga extrema
 continúa como riesgo operativo conocido y la prueba determinista de crash en
 la ventana PUBACK→`published_at` permanece pendiente.
 
+Para migrar stores no se deben mover archivos con el servicio activo. Usa
+`ixmati-store-migrate` en una ventana offline, valida el manifiesto, ejecuta
+reconciler y sólo después vuelve a aceptar escrituras. Rename, merge y split,
+incluyendo el algoritmo de hash y los criterios LWW, están descritos en el
+[runbook de migración](../../spec-native/RUNBOOK-STORE-MIGRATION.md).
+
 ## Referencias
 
 - [API REST](api/rest.md)

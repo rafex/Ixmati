@@ -13,12 +13,14 @@ import argparse
 import concurrent.futures
 import json
 import math
+import random
 import time
 import urllib.error
 import urllib.request
 import uuid
 from collections import Counter
 from dataclasses import dataclass
+from pathlib import Path
 
 
 @dataclass
@@ -34,6 +36,25 @@ def percentile(values: list[float], pct: float) -> float:
     ordered = sorted(values)
     rank = max(1, math.ceil(pct / 100 * len(ordered)))
     return ordered[rank - 1]
+
+
+class Reservoir:
+    """Bounded latency sample suitable for multi-hour runs."""
+
+    def __init__(self, capacity: int = 10000) -> None:
+        self.capacity = capacity
+        self.values: list[float] = []
+        self.seen = 0
+        self.random = random.Random(0)
+
+    def add(self, value: float) -> None:
+        self.seen += 1
+        if len(self.values) < self.capacity:
+            self.values.append(value)
+            return
+        index = self.random.randrange(self.seen)
+        if index < self.capacity:
+            self.values[index] = value
 
 
 def request_once(url: str, timeout: float, api_key: str, store: str, entity: str) -> Result:
@@ -83,17 +104,81 @@ def main() -> int:
     parser.add_argument("--api-key", default="ix-default-key")
     parser.add_argument("--store", default="default")
     parser.add_argument("--entity", default="rate-load")
+    parser.add_argument(
+        "--sample-interval",
+        type=float,
+        default=10.0,
+        help="seconds between cumulative JSONL snapshots (0 disables snapshots)",
+    )
+    parser.add_argument(
+        "--snapshot-file",
+        type=Path,
+        help="append bounded-memory cumulative snapshots as JSON lines",
+    )
+    parser.add_argument(
+        "--reservoir-size",
+        type=int,
+        default=10000,
+        help="maximum latency samples retained for final percentiles",
+    )
     args = parser.parse_args()
 
     if args.rate <= 0 or args.duration <= 0 or args.concurrency <= 0:
         parser.error("rate, duration y concurrency deben ser mayores que cero")
 
+    if args.sample_interval < 0 or args.reservoir_size <= 0:
+        parser.error("sample-interval debe ser >= 0 y reservoir-size > 0")
+
     deadline = time.perf_counter() + args.duration
     next_submit = time.perf_counter()
+    next_snapshot = next_submit + args.sample_interval
     submitted = 0
     client_saturated = 0
-    results: list[Result] = []
+    completed = 0
+    reservoir = Reservoir(args.reservoir_size)
+    statuses: Counter[str] = Counter()
+    errors: Counter[str] = Counter()
+    window_completed = 0
+    window_started = time.perf_counter()
     in_flight: set[concurrent.futures.Future[Result]] = set()
+
+    if args.snapshot_file:
+        args.snapshot_file.parent.mkdir(parents=True, exist_ok=True)
+
+    def consume(result: Result) -> None:
+        nonlocal completed, window_completed
+        completed += 1
+        window_completed += 1
+        if result.status is not None:
+            statuses[str(result.status)] += 1
+        if result.error is not None:
+            errors[result.error] += 1
+        if result.latency_ms is not None:
+            reservoir.add(result.latency_ms)
+
+    def snapshot(now: float, force: bool = False) -> None:
+        nonlocal next_snapshot, window_completed, window_started
+        if args.sample_interval <= 0 or (not force and now < next_snapshot):
+            return
+        elapsed_window = max(now - window_started, 0.001)
+        data = {
+            "target_rate": args.rate,
+            "elapsed_seconds": now - (deadline - args.duration),
+            "window_seconds": elapsed_window,
+            "window_completed": window_completed,
+            "window_throughput_per_second": window_completed / elapsed_window,
+            "completed": completed,
+            "submitted": submitted,
+            "client_saturated_ticks": client_saturated,
+            "status_codes": dict(sorted(statuses.items())),
+            "errors": dict(sorted(errors.items())),
+        }
+        if args.snapshot_file:
+            with args.snapshot_file.open("a", encoding="utf-8") as stream:
+                stream.write(json.dumps(data, sort_keys=True) + "\n")
+        window_completed = 0
+        window_started = now
+        next_snapshot = now + args.sample_interval
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=args.concurrency) as executor:
         while time.perf_counter() < deadline:
@@ -104,14 +189,15 @@ def main() -> int:
 
             done = {future for future in in_flight if future.done()}
             for future in done:
-                results.append(future.result())
+                consume(future.result())
             in_flight -= done
+            snapshot(now)
 
             if len(in_flight) >= args.concurrency:
                 client_saturated += 1
                 done_future = next(concurrent.futures.as_completed(in_flight))
                 in_flight.remove(done_future)
-                results.append(done_future.result())
+                consume(done_future.result())
 
             in_flight.add(
                 executor.submit(
@@ -127,11 +213,10 @@ def main() -> int:
             next_submit += 1.0 / args.rate
 
         for future in concurrent.futures.as_completed(in_flight):
-            results.append(future.result())
+            consume(future.result())
 
-    latencies = [result.latency_ms for result in results if result.latency_ms is not None]
-    statuses = Counter(str(result.status) for result in results if result.status is not None)
-    errors = Counter(result.error for result in results if result.error is not None)
+    snapshot(time.perf_counter(), force=True)
+
     elapsed = max(args.duration, 0.001)
     output = {
         "generator": "python-rate-load",
@@ -140,16 +225,21 @@ def main() -> int:
         "duration_seconds": args.duration,
         "concurrency": args.concurrency,
         "submitted": submitted,
-        "completed": len(results),
-        "throughput_per_second": len(results) / elapsed,
+        "completed": completed,
+        "throughput_per_second": completed / elapsed,
         "client_saturated_ticks": client_saturated,
         "status_codes": dict(sorted(statuses.items())),
         "errors": dict(sorted(errors.items())),
         "latency_ms": {
-            "p50": percentile(latencies, 50),
-            "p90": percentile(latencies, 90),
-            "p99": percentile(latencies, 99),
-            "max": max(latencies, default=0.0),
+            "p50": percentile(reservoir.values, 50),
+            "p90": percentile(reservoir.values, 90),
+            "p99": percentile(reservoir.values, 99),
+            "max": max(reservoir.values, default=0.0),
+        },
+        "latency_reservoir": {
+            "capacity": reservoir.capacity,
+            "seen": reservoir.seen,
+            "retained": len(reservoir.values),
         },
     }
     print(json.dumps(output, sort_keys=True))

@@ -41,9 +41,13 @@ durabilidad.
 
 ## Próximo ciclo de producto
 
-- Sharding interno de un store.
-- Dashboard web de operación.
-- Migración de stores (renombrar, merge, split).
+- **En curso**: prueba prolongada de capacidad a 150/s y 200/s con JMeter o
+  fallback rate-controlled; el perfil productivo sigue en 40/s hasta cerrar
+  la evidencia.
+- **En curso**: ciclo de vida offline de stores (renombrar, merge, split),
+  con tombstones, LWW determinista y reconstrucción mediante reconciler.
+- Siguiente iniciativa: sharding interno de un store.
+- Siguiente iniciativa: dashboard web de operación.
 
 ## Horizonte de alta disponibilidad
 

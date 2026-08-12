@@ -6,6 +6,7 @@ members = [
     "crates/ixmati-cache",
     "crates/ixmati-projector",
     "crates/ixmati-reconciler",
+    "crates/ixmati-store-migrate",
     "crates/ixmati-supervisor",
     "crates/ixmati-cache-server",
     "tests/integration",
@@ -27,6 +28,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
 uuid = { version = "1", features = ["v4", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
+sha2 = "0.10"
 rusqlite = { version = "0.40", features = ["bundled", "vtab"] }
 redb = "4"
 rumqttc = "0.25"
