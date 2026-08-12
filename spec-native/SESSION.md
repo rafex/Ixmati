@@ -38,7 +38,9 @@ quedó bajo 160 ms p99; 150/s mostró p99 321 ms. El throttle fue restaurado a
 ## Next steps
 
 Queda ejecutar en Debian el soak de 150/s y 200/s durante una hora por
-escalón, conservar métricas y completar el drenado de cinco minutos. El E2E de
+escalón, conservar métricas y completar el drenado de cinco minutos. El primer
+intento a 150/s no inició porque `192.168.3.175:22` estaba fuera de alcance;
+está documentado en `spec-native/evidence/SOAK-ATTEMPT-20260812.md`. El E2E de
 rename, cutover, reconciler y cache ya pasó en un contenedor Debian; siguen
 pendientes merge conflictivo, topics antiguos, restauración desde backup y el
 perfil de capacidad prolongado. El perfil recomendado sigue en 40/s hasta
