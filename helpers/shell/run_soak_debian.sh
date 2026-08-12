@@ -74,7 +74,7 @@ systemctl restart ixmati-writer@default'
         DRAIN_SECONDS="$DRAIN_SECONDS" CONCURRENCY="$CONCURRENCY" \
         SOAK_RATES="$rate" OUT_DIR="$evidence" \
         GENERATOR=container GENERATOR_IMAGE="$GENERATOR_IMAGE" \
-        GENERATOR_CONTAINER="$generator" PODMAN_HOST_IP="$TEST_HOST" \
+        GENERATOR_CONTAINER="$generator" PODMAN_HOST_IP="${PODMAN_HOST_IP:-127.0.0.1}" \
         "$ROOT/benchmarks/soak_capacity.sh"
 
     cleanup_container "$container"

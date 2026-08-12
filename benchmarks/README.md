@@ -40,8 +40,8 @@ SOAK_RATES="150 200" DURATION=3600 DRAIN_SECONDS=300 \
 
 `run_soak_debian.sh` builds a separate `ixmati-soak-generator` image and runs
 it with `--network host` on the Debian Podman host. The generator calls the API
-through the host's local address (`PODMAN_HOST_IP`, normally the same value as
-`TEST_HOST`); request traffic therefore does not traverse the operator Mac.
+through `127.0.0.1` by default (`PODMAN_HOST_IP`); request traffic therefore
+does not traverse the operator Mac or the LAN interface.
 The operator-side process only collects a snapshot every 15 minutes by using
 Podman (`podman exec`, `podman logs` and `podman ps`). Set
 `SNAPSHOT_INTERVAL` to change that interval. A generator container remains

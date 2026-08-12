@@ -7,7 +7,9 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CONTAINER_NAME="${CONTAINER_NAME:-ixmati-load-test}"
 TEST_HOST="${TEST_HOST:-192.168.3.175}"
-PODMAN_HOST_IP="${PODMAN_HOST_IP:-$TEST_HOST}"
+# The generator runs with --network host on the Debian Podman machine. Do not
+# route load traffic through the operator or the LAN interface.
+PODMAN_HOST_IP="${PODMAN_HOST_IP:-127.0.0.1}"
 API_PORT="${API_PORT:-30300}"
 WRITER_METRICS_PORT="${WRITER_METRICS_PORT:-30301}"
 STORE="${STORE:-default}"
