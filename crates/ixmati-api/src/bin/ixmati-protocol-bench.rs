@@ -30,6 +30,7 @@ struct Config {
     api_key: String,
     store: String,
     entity: String,
+    key_prefix: String,
 }
 
 #[derive(Debug)]
@@ -78,6 +79,7 @@ impl Reservoir {
 struct Report {
     protocol: String,
     target: String,
+    key_prefix: String,
     target_rate: f64,
     duration_seconds: f64,
     warmup_seconds: f64,
@@ -146,6 +148,7 @@ fn parse_config() -> Config {
         api_key: arg(&args, "--api-key", "ix-default-key"),
         store: arg(&args, "--store", "pedidos"),
         entity: arg(&args, "--entity", "pedido"),
+        key_prefix: arg(&args, "--key-prefix", "protocol-bench"),
     }
 }
 
@@ -175,7 +178,7 @@ fn payload(key: &str, user_key: &str) -> Struct {
 }
 
 fn request_message(config: &Config, sequence: u64) -> pb::WriteRequest {
-    let key = format!("protocol-bench-{sequence}");
+    let key = format!("{}-{sequence}", config.key_prefix);
     let user_key = format!("usr_{:06}", sequence % 100);
     pb::WriteRequest {
         envelope: Some(pb::WriteEnvelope {
@@ -185,7 +188,7 @@ fn request_message(config: &Config, sequence: u64) -> pb::WriteRequest {
             key: key.clone(),
             version: 1,
             ts: "2026-08-12T00:00:00Z".into(),
-            idempotency_key: format!("protocol-bench-idem-{sequence}"),
+            idempotency_key: format!("{}-idem-{sequence}", config.key_prefix),
             ack_mode: "committed".into(),
             payload: Some(payload(&key, &user_key)),
             payload_bytes: Vec::new(),
@@ -215,7 +218,7 @@ async fn http_request(client: Client, config: Config, sequence: u64) -> Sample {
             "ts": envelope.ts,
             "idempotency_key": envelope.idempotency_key,
             "ack_mode": envelope.ack_mode,
-            "payload": {"pedido_id": format!("protocol-bench-{sequence}"), "usuario_id": format!("usr_{:06}", sequence % 100), "total": 42.5}
+            "payload": {"pedido_id": format!("{}-{sequence}", config.key_prefix), "usuario_id": format!("usr_{:06}", sequence % 100), "total": 42.5}
         });
         client
             .post(format!("{}/write", config.url.trim_end_matches('/')))
@@ -347,6 +350,7 @@ async fn main() {
     if config.warmup > Duration::ZERO {
         let mut warmup = config.clone();
         warmup.duration = config.warmup;
+        warmup.key_prefix = format!("{}-warmup", config.key_prefix);
         let _ = run_window(&warmup, false).await;
         tokio::time::sleep(config.cooldown).await;
     }
@@ -372,6 +376,7 @@ async fn main() {
         } else {
             config.url
         },
+        key_prefix: config.key_prefix.clone(),
         target_rate: config.rate,
         duration_seconds: config.duration.as_secs_f64(),
         warmup_seconds: config.warmup.as_secs_f64(),
