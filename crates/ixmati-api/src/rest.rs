@@ -430,7 +430,14 @@ fn wait_for_commit_blocking(
     idempotency_key: &str,
     deadline: std::time::Instant,
 ) -> CommitOutcome {
-    let Ok(conn) = rusqlite::Connection::open(db_path) else {
+    let Ok(conn) = crate::status::StatusQuery::open(db_path) else {
+        return CommitOutcome::TimedOut;
+    };
+    let Ok(mut stmt) = conn.prepare(
+        "SELECT idempotency_key, store, entity, key, version, applied_at
+         FROM _idempotency
+         WHERE store = ?1 AND idempotency_key = ?2",
+    ) else {
         return CommitOutcome::TimedOut;
     };
 
@@ -441,7 +448,7 @@ fn wait_for_commit_blocking(
             version,
             applied_at,
             ..
-        }) = crate::status::StatusQuery::query_connection(&conn, store, idempotency_key)
+        }) = crate::status::StatusQuery::query_statement(&mut stmt, store, idempotency_key)
         {
             return CommitOutcome::Applied {
                 entity,
