@@ -141,6 +141,20 @@ pub static CACHE_SYNC_ERRORS: LazyLock<Counter<u64>> = LazyLock::new(|| {
         .build()
 });
 
+pub static CACHE_SYNC_DEFERRED: LazyLock<Counter<u64>> = LazyLock::new(|| {
+    METER
+        .u64_counter("cache_sync_deferred")
+        .with_description("Post-commit cache batches deferred because the bounded queue was full")
+        .build()
+});
+
+pub static CACHE_SYNC_QUEUE_DEPTH: LazyLock<Gauge<u64>> = LazyLock::new(|| {
+    METER
+        .u64_gauge("cache_sync_queue_depth")
+        .with_description("Post-commit cache batches waiting for synchronization")
+        .build()
+});
+
 pub static LAST_BATCH_COMMIT_UNIX_SECONDS: LazyLock<Gauge<i64>> = LazyLock::new(|| {
     METER
         .i64_gauge("last_batch_commit_unix_seconds")
@@ -171,7 +185,9 @@ pub static BATCH_ACK_DURATION: LazyLock<Histogram<f64>> = LazyLock::new(|| {
 pub static BATCH_CYCLE_DURATION: LazyLock<Histogram<f64>> = LazyLock::new(|| {
     METER
         .f64_histogram("batch_cycle_duration_seconds")
-        .with_description("Time from batch fill start through cache synchronization")
+        .with_description(
+            "Time from batch fill start through durable commit and projection enqueue",
+        )
         .with_boundaries(vec![
             0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0,
         ])
@@ -289,6 +305,7 @@ mod tests {
         MQTT_COMMANDS_DEFERRED.add(1, &[]);
         MQTT_COMMANDS_ACKED.add(1, &[]);
         CACHE_SYNC_ERRORS.add(1, &[]);
+        CACHE_SYNC_DEFERRED.add(1, &[]);
         OUTBOX_PUBACK_TIMEOUTS.add(1, &[]);
         let out = encode_metrics();
         assert!(out.contains("ixmati_write_batch_duration_seconds_bucket"));

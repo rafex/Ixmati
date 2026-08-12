@@ -7,7 +7,7 @@ db_path = "/data/ixmati/pedidos.db"
 mqtt_broker = "tcp://localhost:1883"
 mqtt_client_id = "writer-pedidos"
 batch_size = 100
-batch_interval_ms = 50
+batch_interval_ms = 100
 
 [[stores]]
 name = "usuarios"
@@ -16,7 +16,7 @@ db_path = "/data/ixmati/usuarios.db"
 mqtt_broker = "tcp://localhost:1883"
 mqtt_client_id = "writer-usuarios"
 batch_size = 100
-batch_interval_ms = 50
+batch_interval_ms = 100
 
 # Proyecciones (opt-in, solo se activan en multi-store)
 # [[projections]]

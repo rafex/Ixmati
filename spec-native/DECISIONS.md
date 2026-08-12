@@ -1658,3 +1658,33 @@ escritor único en un sistema de ingestión ilimitada ni ocultar la saturación.
 El soak de una hora de `TASK-PROD-0001` sigue siendo obligatorio para validar
 que el perfil recomendado conserva latencia, memoria, cola y durabilidad
 estables bajo tráfico realista.
+
+### DEC-0075 — Batching productivo y cache post-commit
+
+- Fecha: 2026-08-12
+- Estado: `accepted`
+- Relacionado con: `TASK-PROD-0001`, `TASK-VAL-0025`
+- Implementación: `crates/ixmati-writer/src/main.rs`,
+  `crates/ixmati-writer/src/cache_sync.rs`
+
+La validación limpia de 15 escrituras durables/s mostró que el perfil anterior
+dejaba al writer procesando una operación por transacción y sin margen: durante
+la corrida de una hora en preparación aparecieron respuestas `PENDING` aunque
+SQLite finalmente conservó las escrituras. El perfil de despliegue usa ahora
+`BATCH_INTERVAL_MS=100`, que agrupa el tráfico nominal de 15/s en lotes
+pequeños, y mantiene `BATCH_SIZE=100` como límite superior.
+
+La cache base dejó de ejecutarse en el loop único del writer. Después de
+confirmar SQLite y el ACK MQTT, los eventos se entregan a un worker post-commit
+con cola acotada (`CACHE_SYNC_QUEUE_CAPACITY=1000`). La cache es una proyección
+reconstruible; una cola llena no puede perder una escritura durable, y se
+expone `cache_sync_deferred` para activar reconciliación/backpressure. También
+se corrigió la conversión de eventos de eliminación para invalidar la entrada
+en vez de volver a poblarla.
+
+Una corrida limpia de cinco minutos sobre el árbol con estos cambios, a 15/s,
+200 clientes y generador no saturado, produjo 4,501/4,501 respuestas `200`,
+`p99=92.21 ms`, `max=152.47 ms`, `0` errores, `0` pendientes al finalizar,
+`integrity_check=ok` y outbox drenado. Este resultado valida el mecanismo y el
+perfil corto, pero no reemplaza el soak de una hora requerido por
+`TASK-PROD-0001`.

@@ -699,7 +699,11 @@ Tablero de tareas activo. Persiste entre sesiones.
 - [ ] `TASK-PROD-0001` — Validar el perfil productivo recomendado de 15/s
       durante una hora con 200 clientes, `Retry-After`, cero escrituras
       confirmadas perdidas, outbox drenado, integrity check y snapshots de
-      readiness y métricas.
+      readiness y métricas. El defecto de margen encontrado en la primera
+      corrida se corrigió con `BATCH_INTERVAL_MS=100` y cache post-commit;
+      una corrida limpia de cinco minutos pasó 4,501/4,501 `200`, p99
+      92.21ms, sin errores, con integridad y outbox drenado. Falta repetir la
+      hora completa sobre el SHA publicado.
 
 - [x] `TASK-PROTO-0002..0003,0005..0006` — gRPC unary, REST/Protobuf,
       despliegue y benchmark comparativo cerrados con E2E local y evidencia

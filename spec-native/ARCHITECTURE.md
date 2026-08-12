@@ -92,7 +92,8 @@ estándar.
    los workers async del API. Un timeout devuelve `202 PENDING` y deja la
    consulta disponible en `GET /writes/...`.
 6. El writer del store consume el comando, lo acumula en un batch.
-7. El batch se vacía al cumplirse `MAX_BATCH_SIZE` o `MAX_BATCH_INTERVAL_MS`,
+7. El batch se vacía al cumplirse `MAX_BATCH_SIZE` o `MAX_BATCH_INTERVAL_MS`;
+   el perfil productivo actual usa 100 ms para agrupar escrituras a 15/s,
    comprobando el intervalo también cuando siguen llegando comandos; así el
    tráfico continuo no puede esperar indefinidamente a llenar el batch.
    Entonces ejecuta `BEGIN IMMEDIATE`:
@@ -104,7 +105,11 @@ estándar.
 9. El writer confirma el consumo MQTT después del commit SQLite. El publicador
    marca `_outbox.published_at` sólo después de recibir `PUBACK`; la entrega de
    eventos es at-least-once.
-10. Los proyectores reciben el evento y actualizan sus read models en FlashDB de forma idempotente.
+10. La sincronización de la cache base se encola después del commit en un worker
+    post-commit acotado (`CACHE_SYNC_QUEUE_CAPACITY`). Una cache lenta no bloquea
+    al writer; si la cola se llena, el evento sigue siendo recuperable desde
+    `_outbox` y el diferido queda expuesto en métricas para reconciliación.
+11. Los proyectores reciben el evento y actualizan sus read models en FlashDB de forma idempotente.
 
 ## Flujo de lectura
 

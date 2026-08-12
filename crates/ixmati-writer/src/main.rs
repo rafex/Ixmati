@@ -1,6 +1,6 @@
 use ixmati_cache::SyncCacheClient;
 use ixmati_writer::batcher::Batcher;
-use ixmati_writer::cache_sync::CacheSync;
+use ixmati_writer::cache_sync::{CacheSyncWorker, event_to_cache_command};
 use ixmati_writer::consumer::MqttConsumer;
 use ixmati_writer::event_publisher::EventPublisher;
 use ixmati_writer::write_thread::WriteHandle;
@@ -48,7 +48,7 @@ fn main() -> std::io::Result<()> {
     let batch_interval_ms: u64 = std::env::var("BATCH_INTERVAL_MS")
         .ok()
         .and_then(|v| v.parse().ok())
-        .unwrap_or(50);
+        .unwrap_or(100);
     let publish_interval_ms: u64 = std::env::var("PUBLISH_INTERVAL_MS")
         .ok()
         .and_then(|v| v.parse().ok())
@@ -139,7 +139,11 @@ fn main() -> std::io::Result<()> {
         std::io::Error::other(format!("SyncCacheClient connect: {e}"))
     })?);
 
-    let cache_sync = Arc::new(CacheSync::new(cache_client));
+    let cache_sync_capacity: usize = std::env::var("CACHE_SYNC_QUEUE_CAPACITY")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(1000);
+    let cache_sync = CacheSyncWorker::spawn(cache_client, cache_sync_capacity, &store_name);
 
     let write_handle = WriteHandle::spawn(db_path.clone());
 
@@ -207,7 +211,7 @@ fn process_batch(
     write_handle: &WriteHandle,
     batch: &ixmati_writer::Batch,
     store_name: &str,
-    cache_sync: &Arc<CacheSync>,
+    cache_sync: &CacheSyncWorker,
 ) -> bool {
     let started = std::time::Instant::now();
     let envelopes = batch
@@ -278,40 +282,15 @@ fn process_batch(
                 )],
             );
 
-            let cache_sync_started = std::time::Instant::now();
-            let cache_errors = cache_sync.sync_batch(
-                &result
-                    .events
-                    .iter()
-                    .map(|e| ixmati_core::WriteEnvelope {
-                        op: "upsert".into(),
-                        store: e.store.clone(),
-                        entity: e.entity.clone(),
-                        key: e.key.clone(),
-                        version: e.version,
-                        ts: e.occurred_at.clone(),
-                        idempotency_key: String::new(),
-                        ack_mode: "accepted".into(),
-                        payload: e.payload.clone(),
-                    })
-                    .collect::<Vec<_>>(),
-            );
-            if cache_errors > 0 {
-                ixmati_writer::metrics::CACHE_SYNC_ERRORS.add(
-                    cache_errors as u64,
-                    &[opentelemetry::KeyValue::new(
-                        "store",
-                        store_name.to_string(),
-                    )],
-                );
-            }
-            ixmati_writer::metrics::CACHE_SYNC_DURATION.record(
-                cache_sync_started.elapsed().as_secs_f64(),
-                &[opentelemetry::KeyValue::new(
-                    "store",
-                    store_name.to_string(),
-                )],
-            );
+            // Cache is a rebuildable projection. Enqueue it only after the
+            // durable transaction and MQTT command ACK; never let a slow
+            // cache-server hold the single writer loop hostage.
+            let cache_commands = result
+                .events
+                .iter()
+                .map(event_to_cache_command)
+                .collect::<Vec<_>>();
+            let _cache_enqueued = cache_sync.try_enqueue(cache_commands);
 
             tracing::info!(
                 store = %store_name,

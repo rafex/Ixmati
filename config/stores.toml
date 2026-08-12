@@ -9,4 +9,4 @@ db_path = "/var/lib/ixmati/stores/default.db"
 mqtt_broker = "tcp://localhost:1883"
 mqtt_client_id = "writer-default"
 batch_size = 100
-batch_interval_ms = 50
+batch_interval_ms = 100

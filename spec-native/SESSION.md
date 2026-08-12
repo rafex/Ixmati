@@ -5,7 +5,7 @@ agent = "codex"
 initiative = "protobuf-api"
 task = "TASK-PROTO-0004"
 intent = "Completar gRPC, REST/Protobuf, replay/live, despliegue y pruebas sin alterar la durabilidad existente"
-last_updated = "2026-08-12T00:00:00Z"
+last_updated = "2026-08-12T23:40:00Z"
 +++
 
 # Active Session
@@ -49,6 +49,14 @@ baseline de 40/s con 2,339/2,400 respuestas 200, p99 143.9 ms y escalera
 rate-controlled de 20–200/s sin saturación del generador. El rango 40–100/s
 quedó bajo 160 ms p99; 150/s mostró p99 321 ms. El throttle fue restaurado a
 40/s y el contenedor de prueba se eliminó.
+
+En la validación del perfil de 15/s se encontró que el despliegue anterior
+dejaba al writer en lotes de tamaño 1 y generaba `PENDING` bajo una ventana
+prolongada. Se corrigió el perfil con `BATCH_INTERVAL_MS=100` y se movió la
+sincronización de cache a un worker post-commit con cola acotada. La corrida
+limpia de cinco minutos del candidato pasó 4,501/4,501 `200`, p99=92.21ms,
+sin errores, con `integrity_check=ok` y outbox drenado. Falta repetir una hora
+completa contra el SHA publicado; no se debe cerrar todavía `TASK-PROD-0001`.
 
 ## Next steps
 

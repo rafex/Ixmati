@@ -13,8 +13,11 @@ Environment=MQTT_BROKER=tcp://localhost:1883
 Environment=STORE_NAME=%i
 Environment=SQLITE_PATH=/var/lib/ixmati/stores/%i.db
 Environment=BATCH_SIZE=100
-Environment=BATCH_INTERVAL_MS=50
+Environment=BATCH_INTERVAL_MS=100
 Environment=CACHE_SOCKET_PATH=/var/run/ixmati/cache.sock
+# Cache is a rebuildable post-commit projection; keep its queue bounded so a
+# slow cache-server cannot block the durable SQLite writer.
+Environment=CACHE_SYNC_QUEUE_CAPACITY=1000
 Restart=always
 RestartSec=5
 StandardOutput=journal

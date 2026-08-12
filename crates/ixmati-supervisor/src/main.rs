@@ -19,7 +19,7 @@ async fn main() {
         mqtt_broker: std::env::var("MQTT_BROKER").unwrap_or_else(|_| "tcp://localhost:1883".into()),
         mqtt_client_id: "supervisor".into(),
         batch_size: 100,
-        batch_interval_ms: 50,
+        batch_interval_ms: 100,
         litestream_config: None,
     };
 

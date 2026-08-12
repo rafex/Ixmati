@@ -90,7 +90,9 @@ services:
       - MQTT_BROKER=tcp://mosquitto:30200
       - STORE_NAME=pedidos
       - SQLITE_PATH=/data/pedidos.db
+      - BATCH_INTERVAL_MS=100
       - CACHE_SOCKET_PATH=/var/run/ixmati/cache.sock
+      - CACHE_SYNC_QUEUE_CAPACITY=1000
     depends_on:
       mosquitto:
         condition: service_healthy
@@ -109,7 +111,9 @@ services:
       - MQTT_BROKER=tcp://mosquitto:30200
       - STORE_NAME=usuarios
       - SQLITE_PATH=/data/usuarios.db
+      - BATCH_INTERVAL_MS=100
       - CACHE_SOCKET_PATH=/var/run/ixmati/cache.sock
+      - CACHE_SYNC_QUEUE_CAPACITY=1000
     depends_on:
       mosquitto:
         condition: service_healthy
@@ -128,7 +132,9 @@ services:
       - MQTT_BROKER=tcp://mosquitto:30200
       - STORE_NAME=inventario
       - SQLITE_PATH=/data/inventario.db
+      - BATCH_INTERVAL_MS=100
       - CACHE_SOCKET_PATH=/var/run/ixmati/cache.sock
+      - CACHE_SYNC_QUEUE_CAPACITY=1000
     depends_on:
       mosquitto:
         condition: service_healthy
