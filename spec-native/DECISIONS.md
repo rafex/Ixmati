@@ -1555,7 +1555,7 @@ capacidad a los protocolos.
 ### DEC-0070 — Perfil operativo con margen y readiness explícito
 
 - Fecha: 2026-08-12
-- Estado: `accepted`
+- Estado: `replaced`
 - Relacionado con: `TASK-PROD-0001`, `TASK-VAL-0020`
 
 El límite predeterminado de admisión se fija en 30 escrituras por segundo y
@@ -1573,6 +1573,28 @@ La decisión reduce el riesgo de operar sobre el borde del writer y convierte
 el backpressure en un contrato recuperable. No aumenta la capacidad bruta ni
 sustituye la prueba prolongada de una hora; esa validación queda en
 `TASK-PROD-0001`.
+
+### DEC-0072 — Perfil productivo reducido a 25/s tras soak fallido a 30/s
+
+- Fecha: 2026-08-12
+- Estado: `accepted`
+- Reemplaza: `DEC-0070`
+- Relacionado con: `TASK-PROD-0001`, `TASK-VAL-0020`, `DEC-0071`
+
+La corrida de validación con 200 clientes y tasa controlada de 30/s confirmó
+que el sistema conserva durabilidad eventual, pero no cumple el contrato de
+confirmación operativa: en aproximadamente 20 minutos hubo 35,510 respuestas
+`COMMITTED` y 1,625 `PENDING` por timeout de 2 segundos (4.4%). Las claves
+pendientes terminaron presentes en `_idempotency`, el outbox quedó drenado y
+SQLite pasó `integrity_check`; por tanto el hallazgo es de latencia y margen,
+no de pérdida de datos.
+
+El valor predeterminado se reduce a `MAX_WRITES_PER_WINDOW=25` por store. El
+token bucket y `Retry-After` se mantienen. La nueva tasa será aceptada como
+perfil productivo sólo después de completar `TASK-PROD-0001` durante una hora
+con al menos 99.5% de respuestas durables, sin `202` sostenidos y con cola,
+outbox, memoria y drenado acotados. 30/s queda como escalón de diagnóstico,
+no como capacidad productiva.
 
 ### DEC-0071 — Admisión a tasa estable mediante token bucket
 

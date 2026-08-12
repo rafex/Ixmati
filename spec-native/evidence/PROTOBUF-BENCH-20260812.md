@@ -87,6 +87,6 @@ JSON, REST/Protobuf y gRPC llegan al mismo camino durable. En este entorno y
 workload, REST/Protobuf reduce ligeramente el overhead de serialización frente
 a JSON, mientras gRPC tiene latencia similar; ninguna interfaz aumenta la
 capacidad durable del writer. La capacidad recomendada continúa siendo el
-perfil productivo de 30 escrituras/s por store, con margen bajo el techo
+perfil productivo de 25 escrituras/s por store, con margen bajo el techo
 observado de 40/s. Las pruebas prolongadas de 150/200/s y las
 pruebas de stream con cliente lento siguen siendo trabajo independiente.

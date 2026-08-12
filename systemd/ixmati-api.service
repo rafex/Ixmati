@@ -20,13 +20,13 @@ Environment=CACHE_SOCKET_PATH=/var/run/ixmati/cache.sock
 Environment=SQLITE_PATH=/var/lib/ixmati/stores/default.db
 # Rate-limiter y backpressure (ver DEC-0054/TASK-VAL-0013/TASK-VAL-0020):
 # los defaults del binario ya reflejan la capacidad real medida del writer
-# (~30-40 commits/s sostenidos a SQLite) — MAX_WRITES_PER_WINDOW=30/s,
+# (~30-40 commits/s sostenidos a SQLite) — MAX_WRITES_PER_WINDOW=25/s,
 # THROTTLE_WINDOW_SECS=1, OUTBOX_BACKPRESSURE_THRESHOLD=500. Ajustar acá
 # solo si el hardware del store es distinto al medido o si se quiere
 # tolerar más ráfaga a costa de backlog. No se fijan explícitos acá a
 # propósito, para no duplicar el default y arriesgar que quede
 # desincronizado del binario — descomentar y ajustar si hace falta:
-#Environment=MAX_WRITES_PER_WINDOW=30
+#Environment=MAX_WRITES_PER_WINDOW=25
 #Environment=THROTTLE_WINDOW_SECS=1
 #Environment=OUTBOX_BACKPRESSURE_THRESHOLD=500
 Restart=always

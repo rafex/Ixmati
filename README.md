@@ -52,7 +52,7 @@ durable de `_outbox`, replay acotado y entrega at-least-once.
 
 ## Capacidad y límites conocidos
 
-- El throttle productivo predeterminado es de 30 escrituras por segundo, dejando
+- El throttle productivo predeterminado es de 25 escrituras por segundo, dejando
   margen bajo el techo medido de aproximadamente 40 escrituras durables/s. La
   admisión usa un token bucket por store con una ráfaga máxima pequeña para no
   convertir el jitter normal del cliente en rechazos espurios.

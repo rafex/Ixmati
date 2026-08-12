@@ -151,7 +151,7 @@ CACHE_DIR="$TEST_DIR/cache" \
 CACHE_READ_MODE=socket \
 CACHE_SOCKET_PATH="$TEST_DIR/cache.sock" \
 IXMATI_API_KEYS="$API_KEY" \
-MAX_WRITES_PER_WINDOW=30 \
+MAX_WRITES_PER_WINDOW=25 \
 RUST_LOG="ixmati_api=warn" \
     "$API_BIN" >"$TEST_DIR/api.log" 2>&1 &
 api_pid=$!

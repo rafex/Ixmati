@@ -696,7 +696,7 @@ Tablero de tareas activo. Persiste entre sesiones.
 
 ## Active — Capacity and Store Lifecycle
 
-- [ ] `TASK-PROD-0001` — Validar el perfil productivo recomendado de 30/s
+- [ ] `TASK-PROD-0001` — Validar el perfil productivo recomendado de 25/s
       durante una hora con 200 clientes, `Retry-After`, cero escrituras
       confirmadas perdidas, outbox drenado, integrity check y snapshots de
       readiness y métricas.

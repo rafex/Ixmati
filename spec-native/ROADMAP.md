@@ -11,7 +11,7 @@ producto viable beta.
   **hecho**.
 - Backpressure, métricas y validación en Debian amd64: **hecho**.
 - Capacidad rate-controlled validada: 40–120 solicitudes/s con throttle
-  temporal elevado; el perfil productivo recomendado queda limitado a 30
+  temporal elevado; el perfil productivo recomendado queda limitado a 25
   escrituras durables/s para conservar margen bajo el techo medido.
 - Primer escalón de saturación observado: 150 solicitudes/s.
 - Lecturas cacheadas/proyectadas validadas hasta 1,000 operaciones/s; p99 de
@@ -34,7 +34,7 @@ El ciclo de hardening quedó cerrado en `cc7b912`:
    defensa ante pérdida auténtica de progreso.
 5. La instalación, upgrade y validación de artefactos están automatizados.
 
-El perfil productivo recomendado queda en 30 escrituras durables/s por store,
+El perfil productivo recomendado queda en 25 escrituras durables/s por store,
 con `Retry-After` y `/ready` para operación supervisada. El techo de 40/s es
 un escalón de diagnóstico y no un SLO. Una prueba prolongada de estabilidad a
 150–200/s sigue siendo necesaria para evaluar una futura ampliación.
@@ -47,7 +47,7 @@ durabilidad.
   REST/Protobuf y compatibilidad REST/JSON. Falta cerrar integración real con
   clientes tonic/reqwest y medir impacto sobre ACK durable.
 - **En curso**: prueba prolongada de capacidad a 150/s y 200/s con JMeter o
-  fallback rate-controlled; el perfil productivo sigue en 40/s hasta cerrar
+  fallback rate-controlled; el perfil productivo queda en 25/s hasta cerrar
   la evidencia.
 - **En curso**: ciclo de vida offline de stores (renombrar, merge, split),
   con tombstones, LWW determinista y reconstrucción mediante reconciler.
