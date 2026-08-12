@@ -87,7 +87,7 @@ deben deduplicar por identificador de evento.
 
 ## Capacidad de referencia
 
-El throttle predeterminado de 25/s es el perfil operativo recomendado. En una
+El throttle predeterminado de 20/s es el perfil operativo recomendado. En una
 prueba de capacidad con throttle temporal elevado sobre Debian amd64 se
 observaron 40–120/s sin respuestas `202` ni crecimiento de cola. A 150/s
 aparecieron `202`, latencia de segundos y cola; ese escalón representa

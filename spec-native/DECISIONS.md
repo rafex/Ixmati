@@ -1577,7 +1577,7 @@ sustituye la prueba prolongada de una hora; esa validación queda en
 ### DEC-0072 — Perfil productivo reducido a 25/s tras soak fallido a 30/s
 
 - Fecha: 2026-08-12
-- Estado: `accepted`
+- Estado: `replaced`
 - Reemplaza: `DEC-0070`
 - Relacionado con: `TASK-PROD-0001`, `TASK-VAL-0020`, `DEC-0071`
 
@@ -1595,6 +1595,25 @@ perfil productivo sólo después de completar `TASK-PROD-0001` durante una hora
 con al menos 99.5% de respuestas durables, sin `202` sostenidos y con cola,
 outbox, memoria y drenado acotados. 30/s queda como escalón de diagnóstico,
 no como capacidad productiva.
+
+### DEC-0073 — Perfil productivo reducido a 20/s tras ventana de 25/s
+
+- Fecha: 2026-08-12
+- Estado: `accepted`
+- Reemplaza: el perfil operativo de `DEC-0072`
+- Relacionado con: `TASK-PROD-0001`, `DEC-0071`
+
+La ventana controlada de 25/s durante 15 minutos con 200 clientes produjo
+1,292 respuestas `PENDING` frente a 21,564 `COMMITTED` (aproximadamente
+5.7%). Las escrituras terminaron durables y SQLite pasó integridad, pero el
+perfil no cumple el contrato de confirmación operativa. Una ventana de cinco
+minutos a 20/s produjo 6,001/6,001 respuestas `200`, cero `202`/`429`, cliente
+no saturado y p99 de 122.5 ms.
+
+El valor predeterminado y el perfil recomendado se fijan en
+`MAX_WRITES_PER_WINDOW=20` por store. El soak de una hora de
+`TASK-PROD-0001` contra el SHA publicado sigue siendo obligatorio para cerrar
+la validación de producción; 25/s y 30/s quedan como escalones de diagnóstico.
 
 ### DEC-0071 — Admisión a tasa estable mediante token bucket
 

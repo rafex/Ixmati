@@ -48,7 +48,7 @@ spec:
             - name: MQTT_BROKER
               value: "tcp://mosquitto:1883"
             - name: MAX_WRITES_PER_WINDOW
-              value: "25"
+              value: "20"
             - name: THROTTLE_WINDOW_SECS
               value: "1"
             - name: RUST_LOG
