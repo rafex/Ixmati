@@ -1688,3 +1688,24 @@ Una corrida limpia de cinco minutos sobre el árbol con estos cambios, a 15/s,
 `integrity_check=ok` y outbox drenado. Este resultado valida el mecanismo y el
 perfil corto, pero no reemplaza el soak de una hora requerido por
 `TASK-PROD-0001`.
+
+### DEC-0076 — Recalibración del perfil productivo a 10/s por margen de confirmación
+
+- Fecha: 2026-08-13
+- Estado: `accepted`
+- Reemplaza: `DEC-0074` para el límite operativo recomendado
+- Relacionado con: `TASK-PROD-0001`, `TASK-VAL-0020`
+
+La corrida prolongada del candidato de 15/s sobre `6fc80ab` no fue sostenible:
+en aproximadamente ocho minutos acumuló 448 respuestas `202/PENDING` de 7,296
+solicitudes observadas, aunque todas las claves terminaron comprometidas en
+`_idempotency`. SQLite permaneció íntegro y no hubo pérdida; el fallo fue de
+margen de latencia frente al timeout durable de 2 s.
+
+Un control de cinco minutos a 10/s, con 200 clientes y generador no saturado,
+produjo 3,001/3,001 respuestas `200`, p99 de 212.75 ms, cero errores, outbox
+drenado e integridad correcta. Por tanto, `MAX_WRITES_PER_WINDOW=10` queda
+como perfil recomendado provisional, mientras 15/s queda como diagnóstico.
+La prueba de una hora contra el SHA recalibrado sigue siendo obligatoria antes
+de cerrar `TASK-PROD-0001`; este cambio no convierte el control corto en una
+garantía de disponibilidad.

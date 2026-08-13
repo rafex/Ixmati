@@ -87,7 +87,7 @@ deben deduplicar por identificador de evento.
 
 ## Capacidad de referencia
 
-El throttle predeterminado de 15/s es el perfil operativo recomendado. En una
+El throttle predeterminado de 10/s es el perfil operativo recomendado. En una
 prueba de capacidad con throttle temporal elevado sobre Debian amd64 se
 observaron 40–120/s sin respuestas `202` ni crecimiento de cola. A 150/s
 aparecieron `202`, latencia de segundos y cola; ese escalón representa
@@ -96,9 +96,9 @@ productivo, el writer confirmó aproximadamente 40 escrituras durables/s y el
 camino de lecturas cacheadas/proyectadas alcanzó 1,000 operaciones/s.
 
 La comparativa histórica con el perfil anterior observó p99 cercana a 2 s en
-`ack_mode=committed`. El perfil actual de 15/s usa batches de 100 ms y cache
-post-commit; una corrida limpia de cinco minutos obtuvo 4,501/4,501 `200` y
-p99 de 92.21 ms. La prueba de una hora sigue siendo el criterio para elevar
+`ack_mode=committed`. El perfil actual de 10/s usa batches de 100 ms y cache
+post-commit; un control limpio de cinco minutos obtuvo 3,001/3,001 `200` y
+p99 de 212.75 ms. La prueba de una hora sigue siendo el criterio para elevar
 esta observación a garantía operativa. Ixmati continúa siendo beta viable para
 escritura moderada y alta fan-out de lectura, no un reemplazo de PostgreSQL
 para cargas intensivas de escritura. Los `429` por encima del límite son

@@ -211,6 +211,29 @@ def install_config(base_dir: Path) -> None:
             shutil.copy2(mosquitto_conf, mosquitto_dst)
             ok(f"mosquitto.conf → {mosquitto_dst}")
 
+    # API credentials are deployment state, not an artifact default. Write
+    # them only when the operator explicitly supplied IXMATI_API_KEYS and
+    # never overwrite the file on reinstall. The service runs as ixmati, so
+    # root:ixmati 0640 lets it read the secret without making it public.
+    api_env = etc_ixmati / "ixmati.env"
+    if api_env.exists():
+        warn(f"ixmati.env ya existe en {api_env}, se conserva")
+    else:
+        api_keys = os.environ.get("IXMATI_API_KEYS", "").strip()
+        if not api_keys:
+            warn("IXMATI_API_KEYS no está configurado; la API quedará cerrada")
+        elif any(char in api_keys for char in "\r\n"):
+            die("IXMATI_API_KEYS no puede contener saltos de línea")
+        else:
+            escaped = api_keys.replace("\\", "\\\\").replace('"', '\\"')
+            api_env.write_text(f'IXMATI_API_KEYS="{escaped}"\n')
+            api_env.chmod(0o640)
+            try:
+                shutil.chown(api_env, user="root", group="ixmati")
+            except (LookupError, OSError) as exc:
+                die(f"no se pudo proteger {api_env}: {exc}")
+            ok(f"credenciales API → {api_env} (0640 root:ixmati)")
+
 
 def install_systemd_units(base_dir: Path) -> None:
     log("instalando unidades systemd...")
@@ -315,9 +338,14 @@ def show_final_message() -> None:
     print("  Health check:")
     print("    curl http://localhost:30000/health")
     print("")
+    print("  Configurar credenciales (si no se definieron durante la instalación):")
+    print("    sudoedit /etc/ixmati/ixmati.env")
+    print('    # IXMATI_API_KEYS="una-clave-larga,otra-clave-en-rotacion"')
+    print("    sudo systemctl restart ixmati-api")
+    print("")
     print("  Escribir un comando:")
     print('    curl -X POST http://localhost:30000/write \\')
-    print('      -H "Authorization: ApiKey ix-default-key" \\')
+    print('      -H "Authorization: ApiKey <clave-configurada>" \\')
     print('      -H "Content-Type: application/json" \\')
     print('      -d \'{"op":"upsert","store":"default","entity":"test","key":"k1","version":1,')
     print('           "ts":"2026-01-01T00:00:00Z","idempotency_key":"$(uuidgen)",')
@@ -442,10 +470,12 @@ def main() -> None:
 
     install_mosquitto()
     install_binaries(base_dir)
+    # The credential file is owned by root:ixmati, so the service account must
+    # exist before install_config writes and protects it.
+    create_user()
     install_config(base_dir)
     configure_mosquitto(base_dir)
     install_systemd_units(base_dir)
-    create_user()
     create_directories()
     start_services()
     verify_health()

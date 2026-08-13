@@ -65,7 +65,7 @@ services:
       - CACHE_SOCKET_PATH=/var/run/ixmati/cache.sock
       - CACHE_READ_MODE=socket
       - IXMATI_API_KEYS=ix-default-key
-      - MAX_WRITES_PER_WINDOW=15
+      - MAX_WRITES_PER_WINDOW=10
       - THROTTLE_WINDOW_SECS=1
       - SQLITE_PATHS=pedidos=/data/pedidos/pedidos.db,usuarios=/data/usuarios/usuarios.db,inventario=/data/inventario/inventario.db
       - RUST_LOG=ixmati_api=info

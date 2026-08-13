@@ -6,7 +6,10 @@ set -e
 
 export STORE_NAME="${STORE_NAME:-default}"
 export SQLITE_PATH="${SQLITE_PATH:-/var/lib/ixmati/stores/${STORE_NAME}.db}"
-export IXMATI_API_KEYS="${IXMATI_API_KEYS:-ix-default-key}"
+# Never ship a shared production credential. Test/development deployments
+# should pass IXMATI_API_KEYS explicitly; an empty value makes auth fail
+# closed for protected endpoints.
+export IXMATI_API_KEYS="${IXMATI_API_KEYS:-}"
 export API_PORT="${API_PORT:-30000}"
 export GRPC_HOST="${GRPC_HOST:-0.0.0.0}"
 export GRPC_PORT="${GRPC_PORT:-30100}"
@@ -22,6 +25,11 @@ echo "  store:     ${STORE_NAME}"
 echo "  db:        ${SQLITE_PATH}"
 echo "  api port:  ${API_PORT}"
 echo "  grpc port: ${GRPC_PORT}"
+if [[ -n "${IXMATI_API_KEYS}" ]]; then
+    echo "  api keys:  configured"
+else
+    echo "  api keys:  NOT CONFIGURED (protected requests will be rejected)"
+fi
 echo "  mqtt:      tcp://localhost:1883"
 
 exec "$@"

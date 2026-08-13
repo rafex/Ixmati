@@ -115,7 +115,7 @@ log "=== 4/7: instalando Ixmati dentro del contenedor ==="
 podman cp "$TARBALL" "$CONTAINER_NAME:/root/$(basename "$TARBALL")"
 exec_c "cd /root && tar xzf $(basename "$TARBALL")"
 DIST_DIRNAME="ixmati-${VERSION}-linux-amd64"
-exec_c "cd /root/${DIST_DIRNAME} && ./install.sh"
+exec_c "cd /root/${DIST_DIRNAME} && IXMATI_API_KEYS=ix-default-key ./install.sh"
 
 check_services_active "instalación limpia"
 check_write_read_roundtrip

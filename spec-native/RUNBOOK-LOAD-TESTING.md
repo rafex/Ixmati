@@ -399,7 +399,7 @@ SHA, por ejemplo `dist/load-results/20260810T230000Z-<sha>/`; no se deben
 reportar números de una corrida anterior como si fueran del SHA actual.
 # Perfil operativo recomendado
 
-El límite predeterminado de producción es `MAX_WRITES_PER_WINDOW=15` por store
+El límite predeterminado de producción es `MAX_WRITES_PER_WINDOW=10` por store
 y ventana de un segundo. La admisión usa un token bucket con una ráfaga máxima
 de tres solicitudes: mantiene la tasa media y tolera jitter breve sin
 convertirlo en `429`. Deja margen respecto al techo medido de 30–40 commits/s y

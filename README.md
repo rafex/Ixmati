@@ -52,17 +52,21 @@ durable de `_outbox`, replay acotado y entrega at-least-once.
 
 ## Capacidad y límites conocidos
 
-- El throttle productivo predeterminado es de 15 escrituras por segundo, dejando
-  margen bajo el techo efectivo medido del writer. La
+- El throttle productivo predeterminado es de 10 escrituras por segundo, dejando
+  margen bajo el borde de latencia durable observado en el writer. La
   admisión usa un token bucket por store con una ráfaga máxima pequeña para no
   convertir el jitter normal del cliente en rechazos espurios.
 - El perfil de despliegue usa `BATCH_INTERVAL_MS=100` y sincronización de cache
   post-commit con cola acotada (`CACHE_SYNC_QUEUE_CAPACITY=1000`); la cache no
   forma parte de la frontera de durabilidad.
-- Una corrida limpia de cinco minutos del perfil actual, con 200 clientes y
-  generador no saturado, confirmó 4,501/4,501 respuestas `200`, p99 de
-  92.21 ms, integridad SQLite correcta y outbox drenado. La validación de una
-  hora contra el SHA publicado sigue siendo necesaria para cerrar el perfil.
+- Un control rate-controlled de cinco minutos a 10/s, con 200 clientes y
+  generador no saturado, confirmó 3,001/3,001 respuestas `200`, p99 de
+  212.75 ms, integridad SQLite correcta y outbox drenado. La validación de
+  una hora contra el SHA final sigue siendo necesaria para cerrar el perfil.
+- El candidato anterior de 15/s no fue estable: en una corrida prolongada
+  acumuló respuestas `202/PENDING` por vencer el límite de confirmación de 2 s,
+  aunque las claves terminaron comprometidas. Por eso 15/s queda como
+  diagnóstico y no como perfil productivo.
 - Una validación de capacidad con throttle temporal elevado en Debian amd64
   sostuvo 40–120 solicitudes/s sin `202` ni crecimiento de cola.
 - En la comparativa completa, con el perfil de 40/s usado para diagnóstico, el

@@ -9,6 +9,7 @@ Environment=MQTT_HOST=ixmati-mosquitto
 Environment=MQTT_PORT=30200
 Environment=GRPC_HOST=0.0.0.0
 Environment=GRPC_PORT=30100
+EnvironmentFile=-/etc/ixmati/ixmati.env
 Volume=ixmati-cache.volume:/cache:U
 Requires=ixmati-mosquitto.service
 

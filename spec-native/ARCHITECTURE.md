@@ -93,7 +93,7 @@ estándar.
    consulta disponible en `GET /writes/...`.
 6. El writer del store consume el comando, lo acumula en un batch.
 7. El batch se vacía al cumplirse `MAX_BATCH_SIZE` o `MAX_BATCH_INTERVAL_MS`;
-   el perfil productivo actual usa 100 ms para agrupar escrituras a 15/s,
+   el perfil productivo actual usa 100 ms para agrupar escrituras a 10/s,
    comprobando el intervalo también cuando siguen llegando comandos; así el
    tráfico continuo no puede esperar indefinidamente a llenar el batch.
    Entonces ejecuta `BEGIN IMMEDIATE`:

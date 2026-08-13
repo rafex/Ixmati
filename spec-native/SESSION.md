@@ -55,8 +55,10 @@ dejaba al writer en lotes de tamaño 1 y generaba `PENDING` bajo una ventana
 prolongada. Se corrigió el perfil con `BATCH_INTERVAL_MS=100` y se movió la
 sincronización de cache a un worker post-commit con cola acotada. La corrida
 limpia de cinco minutos del candidato pasó 4,501/4,501 `200`, p99=92.21ms,
-sin errores, con `integrity_check=ok` y outbox drenado. Falta repetir una hora
-completa contra el SHA publicado; no se debe cerrar todavía `TASK-PROD-0001`.
+sin errores, con `integrity_check=ok` y outbox drenado. La validación
+prolongada posterior mostró que 15/s no conserva margen: acumuló `PENDING`
+por timeout aunque las claves terminaron comprometidas. El límite candidato
+se redujo a 10/s; falta cerrar la hora completa contra el SHA publicado.
 
 ## Next steps
 
@@ -65,7 +67,7 @@ cliente lento, backpressure, `OUT_OF_RANGE` tras retención y reconexión con
 cursor. La prueba
 prolongada de 150/s y 200/s, merge conflictivo de stores, topics antiguos y
 restauración desde backup siguen siendo trabajo independiente. El perfil
-recomendado queda en 15/s con margen operativo; 40/s es diagnóstico. `mdbook` continúa
+recomendado queda en 10/s con margen operativo; 40/s es diagnóstico. `mdbook` continúa
 pendiente por no estar instalado localmente.
 
 ## Context for next agent
