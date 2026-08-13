@@ -715,8 +715,11 @@ Tablero de tareas activo. Persiste entre sesiones.
 
 - [ ] `TASK-CAP-0001` — Ejecutar soak rate-controlled de 150/s y 200/s durante
       una hora por escalón en contenedores Debian nuevos; conservar JTL/JSONL,
-      métricas, logs, drenado y clasificación sostenible/inconclusa. Primer
-      intento bloqueado por host Debian inaccesible; ver evidencia de intento.
+      métricas, logs, drenado y clasificación sostenible/inconclusa. El
+      baseline de 150/s contra `907236f` se clasificó no sostenible a los 15
+      minutos por 91.1% de `200`, `10,526` `202` y `1,501` `429`; ver
+      `spec-native/evidence/SOAK-150-SHA-907236F-20260813.md`. Falta repetir
+      con `28245fd` y ejecutar 200/s.
 - [x] `TASK-STORE-0001` — Añadir `_tombstones`, operación y digest de comando
       en `_idempotency`, con migración idempotente de esquemas existentes.
 - [x] `TASK-STORE-0002` — Crear `ixmati-store-migrate` con manifiesto,
