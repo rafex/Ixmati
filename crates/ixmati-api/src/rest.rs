@@ -416,42 +416,26 @@ async fn wait_for_commit(
     let store = store.to_owned();
     let idempotency_key = idempotency_key.to_owned();
 
-    // StatusQuery::query abre una conexión y ejecuta I/O síncrono. Hacerlo
-    // desde el worker async bloquea la capacidad del API justo cuando cada
-    // request durable está esperando al writer. Mantener una conexión por
-    // espera evita además repetir Connection::open cada 30ms.
-    tokio::task::spawn_blocking(move || {
-        wait_for_commit_blocking(&db_path, &store, &idempotency_key, deadline)
-    })
-    .await
-    .unwrap_or(CommitOutcome::TimedOut)
-}
-
-fn wait_for_commit_blocking(
-    db_path: &str,
-    store: &str,
-    idempotency_key: &str,
-    deadline: std::time::Instant,
-) -> CommitOutcome {
-    let Ok(conn) = crate::status::StatusQuery::open(db_path) else {
-        return CommitOutcome::TimedOut;
-    };
-    let Ok(mut stmt) = conn.prepare(
-        "SELECT idempotency_key, store, entity, key, version, applied_at
-         FROM _idempotency
-         WHERE store = ?1 AND idempotency_key = ?2",
-    ) else {
-        return CommitOutcome::TimedOut;
-    };
-
+    // No mantengas un hilo de spawn_blocking durante toda la ventana de ACK:
+    // con cientos de clientes concurrentes eso agota el pool de Tokio aunque
+    // cada lectura SQLite dure sólo unos milisegundos. Cada intento ocupa el
+    // pool únicamente durante la consulta y el intervalo se espera en Tokio.
     loop {
-        if let Ok(crate::status::WriteStatus::Applied {
+        let query_path = db_path.clone();
+        let query_store = store.clone();
+        let query_key = idempotency_key.clone();
+        let result = tokio::task::spawn_blocking(move || {
+            crate::status::StatusQuery::query(&query_path, &query_store, &query_key)
+        })
+        .await;
+
+        if let Ok(Ok(crate::status::WriteStatus::Applied {
             entity,
             key,
             version,
             applied_at,
             ..
-        }) = crate::status::StatusQuery::query_statement(&mut stmt, store, idempotency_key)
+        })) = result
         {
             return CommitOutcome::Applied {
                 entity,
@@ -460,13 +444,14 @@ fn wait_for_commit_blocking(
                 applied_at,
             };
         }
+
         if std::time::Instant::now() >= deadline {
             return CommitOutcome::TimedOut;
         }
         let Some(remaining) = deadline.checked_duration_since(std::time::Instant::now()) else {
             return CommitOutcome::TimedOut;
         };
-        std::thread::sleep(remaining.min(WRITE_COMMITTED_POLL_INTERVAL));
+        tokio::time::sleep(remaining.min(WRITE_COMMITTED_POLL_INTERVAL)).await;
     }
 }
 

@@ -1777,3 +1777,29 @@ S3-compatible queda cubierta por un smoke test con MinIO fijado por digest;
 disponible; (-) un bucket remoto real, segundo destino, RPO/RTO y
 cutover/rollback de routing siguen siendo gates pendientes y no se deben
 presentar como resueltos.
+
+### DEC-0079 — El ACK durable no retiene hilos de `spawn_blocking`
+
+- Fecha: 2026-08-13
+- Estado: `accepted`
+- Relacionado con: `TASK-VAL-0025`, `TASK-PROD-0001`
+- Implementación: `crates/ixmati-api/src/rest.rs`
+
+El camino `ack_mode=committed` conserva la semántica durable: sólo responde
+`200` después de encontrar la clave en `_idempotency` y responde `202 PENDING`
+si vence la ventana configurada. La espera se implementa como sondeos cortos:
+cada consulta SQLite ocupa un hilo de `spawn_blocking` sólo durante la lectura;
+el intervalo entre sondeos se espera en Tokio.
+
+La implementación anterior mantenía un hilo de `spawn_blocking` por petición
+durante toda la ventana de hasta dos segundos. Con cientos de clientes eso
+podía agotar el pool bloqueante del API y producir `PENDING` aunque el writer,
+SQLite y sus colas siguieran progresando. El cambio reduce esa saturación
+artificial sin convertir el ACK en optimista ni introducir un modo async nuevo.
+
+Consecuencias: (+) el límite de concurrencia del API deja de estar atado a un
+hilo bloqueante por ACK pendiente; (+) REST y gRPC comparten la corrección al
+usar el mismo camino durable; (-) cada sondeo abre una conexión de lectura y
+su impacto debe medirse nuevamente en Debian; (-) la capacidad productiva no
+se amplía hasta que una prueba prolongada del SHA que contiene este cambio lo
+demuestre.
