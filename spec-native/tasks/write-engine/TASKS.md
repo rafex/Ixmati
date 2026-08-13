@@ -22,7 +22,7 @@ state = "in_progress"
 ```toml
 id = "TASK-WRITE-0001"
 title = "Spike: viabilidad de FlashDB vía FFI en Rust"
-state = "done"
+state = "in_progress"
 owner = "team-core"
 dependencies = []
 expected_files = ["spike/flashdb-ffi/Cargo.toml", "spike/flashdb-ffi/README.md"]
@@ -234,11 +234,11 @@ dependencies = []
 ```toml
 id = "TASK-WRITE-0014"
 title = "Configurar Litestream con replicación a ≥2 destinos por store"
-state = "done"
+state = "in_progress"
 owner = "team-core"
 dependencies = ["TASK-WRITE-0006", "TASK-WRITE-0017"]
 expected_files = ["config/litestream.yml", "docker/litestream.Dockerfile"]
-close_criteria = "Litestream replicando WAL de cada store a S3 + VPS; restore verificado por store"
+close_criteria = "Litestream replicando WAL de cada store a S3 + VPS; restore verificado por store y RPO/RTO medidos"
 validation = [
   "litestream generations muestra generaciones en ambos destinos por store",
   "test de restore: borrar SQLite de un store, litestream restore, verificar integridad",
@@ -246,7 +246,10 @@ validation = [
 ]
 ```
 
-Configuración de Litestream con dos réplicas por store. Frecuencia, destinos y retención configurables independientemente. Cada store tiene su sidecar o proceso Litestream.
+La imagen sidecar y la configuración declarativa existen, pero la tarea vuelve a
+`in_progress` hasta demostrar el flujo completo en el despliegue objetivo:
+replicación a dos destinos, restore destructivo verificado y RPO/RTO medidos.
+La instalación nativa actual no instala ni arranca Litestream automáticamente.
 
 ### TASK-WRITE-0015 — Health checks integrados
 

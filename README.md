@@ -5,7 +5,7 @@ beta técnica**, validada en Debian amd64 con carga controlada.
 
 ## Qué es
 
-Ixmati permite que múltiples backends o pods escriban en una misma instancia de SQLite sin contención. Las escrituras pasan por un canal de ingesta desacoplado (API REST/gRPC o MQTT) y son procesadas secuencialmente por un único writer. Las lecturas se sirven desde una cache rápida con fallback a SQLite. Litestream replica el WAL a destinos remotos para disaster recovery.
+Ixmati permite que múltiples backends o pods escriban en una misma instancia de SQLite sin contención. Las escrituras pasan por un canal de ingesta desacoplado (API REST/gRPC o MQTT) y son procesadas secuencialmente por un único writer. Las lecturas se sirven desde una cache rápida con fallback a SQLite. El despliegue Compose incluye Litestream como sidecar; la validación de backup remoto y restore en la instalación nativa sigue siendo un gate de producción abierto.
 
 ## Uso rápido
 
@@ -158,7 +158,7 @@ entre PUBACK y `published_at` sigue pendiente.
 
 ## Stack
 
-Rust (tokio, axum, tonic, rusqlite, rumqttc) · Mosquitto (persistence + QoS 1) · SQLite (WAL + synchronous=NORMAL) · FlashDB (cache) · Litestream (backup continuo).
+Rust (tokio, axum, tonic, rusqlite, rumqttc) · Mosquitto (persistence + QoS 1) · SQLite (WAL + synchronous=NORMAL) · FlashDB (cache) · Litestream (sidecar de backup, pendiente de validación remota).
 
 ## Navegación
 

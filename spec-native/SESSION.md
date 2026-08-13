@@ -70,9 +70,10 @@ El resultado está en `PRODUCTION-PROFILE-10S-SHA-6C38EB8-20260813.md`.
 
 Siguiente paso de `protobuf-api`: ampliar las pruebas de integración con
 cliente lento, backpressure, `OUT_OF_RANGE` tras retención y reconexión con
-cursor. La prueba
-prolongada de 150/s y 200/s, merge conflictivo de stores, topics antiguos y
-restauración desde backup siguen siendo trabajo independiente. El perfil
+cursor. La evidencia `STORE-MIGRATION-E2E-20260813.md` ya cubre merge/split,
+tombstone, checksums reproducibles, backup local y reconciler/cache. Siguen
+pendientes el restore remoto de Litestream, topics antiguos, cutover de routing,
+rollback y la prueba prolongada de 150/s y 200/s. El perfil
 recomendado queda en 10/s con evidencia de una hora; 40/s es diagnóstico. `mdbook` continúa
 pendiente por no estar instalado localmente.
 

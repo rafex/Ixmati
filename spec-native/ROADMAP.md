@@ -51,7 +51,12 @@ durabilidad.
   de 150/s y 200/s sigue pendiente y no debe extrapolarse desde el perfil
   base; esas tasas continúan siendo diagnóstico.
 - **En curso**: ciclo de vida offline de stores (renombrar, merge, split),
-  con tombstones, LWW determinista y reconstrucción mediante reconciler.
+  con tombstones, LWW determinista y reconstrucción mediante reconciler. El
+  E2E Debian ya cubre merge/split y backup local; falta cutover de routing,
+  topics antiguos, rollback y restore remoto.
+- **Bloqueante para producción**: validar Litestream en el despliegue real
+  (dos destinos, restore destructivo y RPO/RTO). La imagen sidecar no equivale
+  a una recuperación probada y la instalación nativa todavía no lo arranca.
 - Siguiente iniciativa: sharding interno de un store.
 - Siguiente iniciativa: dashboard web de operación.
 

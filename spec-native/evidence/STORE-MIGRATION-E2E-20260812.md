@@ -28,7 +28,6 @@ La ejecución pasó de extremo a extremo:
 
 ## Alcance aún abierto
 
-Esta evidencia valida rename, cutover controlado, reconciler y cache. No
-declara cerradas las pruebas de merge conflictivo en Debian, rechazo de topics
-antiguos ni restauración efectiva desde backup; esos escenarios permanecen en
-`TASK-STORE-0005`.
+Esta ejecución histórica validó rename, cutover controlado, reconciler y cache.
+La ejecución ampliada de 2026-08-13 está documentada en
+`STORE-MIGRATION-E2E-20260813.md`.

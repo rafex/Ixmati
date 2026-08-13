@@ -29,9 +29,14 @@ ixmati-store-migrate verify --manifest migration.toml
 ixmati-store-migrate execute --manifest migration.toml
 ```
 
-`execute` crea backups en `evidence_dir`, escribe destinos temporales en el
+`execute` crea un backup offline verificable en `evidence_dir`, escribe destinos temporales en el
 mismo filesystem, valida integridad y los publica con rename atómico. Un fallo
 deja el origen intacto y no publica destinos parciales.
+
+Este backup local demuestra la atomicidad de la migración, pero no sustituye la
+replicación remota. La restauración desde Litestream y la medición de RPO/RTO
+siguen siendo un gate separado de producción hasta que exista evidencia con el
+binario y los destinos configurados del despliegue.
 
 ## Rename
 
@@ -93,7 +98,7 @@ sqlite3 /var/lib/ixmati/stores/<store>.db \
   "SELECT COUNT(*) FROM _outbox WHERE published_at IS NULL;"
 IXMATI_STORE_PATHS='orders=/var/lib/ixmati/stores/orders.db' \
   cargo run -p ixmati-reconciler
-curl -fsS http://127.0.0.1:8080/health
+curl -fsS http://127.0.0.1:30000/health
 ```
 
 Debe verificarse que el nombre anterior ya no acepte escrituras, que no haya
