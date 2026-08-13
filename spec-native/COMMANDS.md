@@ -246,6 +246,11 @@ stat -f%z /data/pedidos.db-wal
 # Arrancar la API con API keys (separadas por coma)
 IXMATI_API_KEYS="ix-key-1,ix-key-2" cargo run -p ixmati-api
 
+# Opcional: limitar cada clave a stores (entradas separadas por ;)
+IXMATI_API_KEYS="orders-key,audit-key" \
+IXMATI_API_KEY_SCOPES="orders-key=orders|users;audit-key=audit" \
+cargo run -p ixmati-api
+
 # Llamada autenticada a POST /write
 curl -X POST http://localhost:8080/write \
   -H "Authorization: ApiKey ix-key-1" \
@@ -265,7 +270,12 @@ curl -X POST http://localhost:8080/write \
 
 # Rutas públicas (no requieren auth)
 curl http://localhost:8080/health
-curl http://localhost:8080/writes/pedidos/550e8400-e29b-41d4-a716-446655440000
+curl http://localhost:8080/ready
+curl http://localhost:8080/metrics
+
+# Lectura y estado requieren la misma auth que /write
+curl -H "Authorization: ApiKey ix-key-1" \
+  http://localhost:8080/writes/pedidos/550e8400-e29b-41d4-a716-446655440000
 ```
 
 ### Qué hace cada just recipe por debajo

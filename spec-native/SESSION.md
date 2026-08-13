@@ -5,7 +5,7 @@ agent = "codex"
 initiative = "protobuf-api"
 task = "TASK-PROTO-0004"
 intent = "Completar gRPC, REST/Protobuf, replay/live, despliegue y pruebas sin alterar la durabilidad existente"
-last_updated = "2026-08-13T02:30:00Z"
+last_updated = "2026-08-13T04:30:00Z"
 +++
 
 # Active Session
@@ -67,6 +67,11 @@ SQLite. La corrección devolvió esa operación al hilo único de escritura; la
 validación exacta de `6c38eb8` completó una hora a 10/s con `36,001/36,001`
 respuestas `200`, p99 de 212.86 ms, outbox drenado e `integrity_check=ok`.
 El resultado está en `PRODUCTION-PROFILE-10S-SHA-6C38EB8-20260813.md`.
+
+Se cerró además `TASK-PROD-0003`: el alcance de API keys ahora se propaga a
+todas las operaciones de datos REST y gRPC, y el instalador conserva
+`IXMATI_API_KEY_SCOPES` en `ixmati.env`. Las rutas públicas quedan limitadas a
+health/readiness/métricas; las claves scoped reciben 403 fuera de su store.
 
 En este ciclo se cerró un defecto de distribución: `make dist` podía reutilizar
 binarios del host o stale de `target/release` bajo el nombre `linux-amd64`. Ahora

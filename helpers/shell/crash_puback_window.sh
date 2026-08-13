@@ -15,6 +15,7 @@ N_MESSAGES="${2:-20}"
 CONTAINER="${CONTAINER_NAME:-ixmati-load-test}"
 TEST_HOST="${TEST_HOST:-192.168.3.175}"
 API_PORT="${API_PORT:-30300}"
+API_KEY="${API_KEY:-ix-default-key}"
 DB_PATH="${DB_PATH:-/var/lib/ixmati/stores/${STORE}.db}"
 TIMEOUT="${TIMEOUT:-60}"
 RUN_ID="puback-window-$(date +%s)-$$"
@@ -114,7 +115,7 @@ run_in_container systemctl is-active --quiet "ixmati-writer@${STORE}" \
 log "verificando idempotencia, APPLIED, outbox y eventos"
 missing=0
 while IFS=$'\t' read -r key entity_key; do
-    api_status="$(curl -fsS --max-time 5 "http://${TEST_HOST}:${API_PORT}/writes/${STORE}/${key}" || true)"
+    api_status="$(curl -fsS --max-time 5 -H "Authorization: ApiKey ${API_KEY}" "http://${TEST_HOST}:${API_PORT}/writes/${STORE}/${key}" || true)"
     if grep -q '"status":"APPLIED"' <<< "$api_status"; then api=APPLIED; else api=PENDING; fi
     idem="$(sqlite_query "SELECT applied_at FROM _idempotency WHERE store='${STORE}' AND idempotency_key='${key}';")"
     event_id="$(sqlite_query "SELECT event_id FROM _outbox WHERE store='${STORE}' AND entity='puback_window' AND key='${entity_key}' ORDER BY id DESC LIMIT 1;")"

@@ -30,6 +30,9 @@ pub enum Error {
         idempotency_key: String,
     },
 
+    #[error("permission denied for store {store}: {detail}")]
+    PermissionDenied { store: String, detail: String },
+
     #[error("queue full: {store}")]
     QueueFull { store: String },
 
@@ -57,6 +60,7 @@ impl Error {
             Error::StoreNotFound { .. } => "STORE_NOT_FOUND",
             Error::EntityNotFound { .. } => "ENTITY_NOT_FOUND",
             Error::WriteRejected { .. } => "WRITE_REJECTED",
+            Error::PermissionDenied { .. } => "PERMISSION_DENIED",
             Error::QueueFull { .. } => "QUEUE_FULL",
             Error::OutboxBacklog { .. } => "OUTBOX_BACKLOG",
             Error::ProjectionError { .. } => "PROJECTION_ERROR",

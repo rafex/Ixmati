@@ -119,6 +119,10 @@ Tablero de tareas activo. Persiste entre sesiones.
 
 ## Active — Validation & Load Testing (SPEC-VAL-0001)
 
+- [x] `TASK-PROD-0003` — Aplicar scopes de API keys de forma uniforme a REST,
+      gRPC, lecturas, estados y eventos; proteger las rutas de datos REST y
+      persistir `IXMATI_API_KEY_SCOPES` durante la instalación. Ver DEC-0081.
+
 - [x] `TASK-VAL-0001` — Extender Prometheus metrics:
       `ixmati_process_memory_rss_bytes`, `ixmati_process_cpu_user_seconds_total`,
       `ixmati_write_batch_duration_seconds`

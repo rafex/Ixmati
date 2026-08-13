@@ -398,20 +398,33 @@ def install_config(base_dir: Path) -> None:
 
     # API credentials are deployment state, not an artifact default. Write
     # them only when the operator explicitly supplied IXMATI_API_KEYS and
-    # never overwrite the file on reinstall. The service runs as ixmati, so
-    # root:ixmati 0640 lets it read the secret without making it public.
+    # never overwrite the file on reinstall. Persist scopes together with the
+    # keys; otherwise a scoped installation would silently become global after
+    # the first systemd restart. The service runs as ixmati, so root:ixmati
+    # 0640 lets it read the secret without making it public.
     api_env = etc_ixmati / "ixmati.env"
     if api_env.exists():
         warn(f"ixmati.env ya existe en {api_env}, se conserva")
     else:
         api_keys = os.environ.get("IXMATI_API_KEYS", "").strip()
+        api_scopes = os.environ.get("IXMATI_API_KEY_SCOPES", "").strip()
+        if not api_keys and api_scopes:
+            die("IXMATI_API_KEY_SCOPES requiere IXMATI_API_KEYS")
         if not api_keys:
             warn("IXMATI_API_KEYS no está configurado; la API quedará cerrada")
-        elif any(char in api_keys for char in "\r\n"):
-            die("IXMATI_API_KEYS no puede contener saltos de línea")
         else:
-            escaped = api_keys.replace("\\", "\\\\").replace('"', '\\"')
-            api_env.write_text(f'IXMATI_API_KEYS="{escaped}"\n')
+            values = {
+                "IXMATI_API_KEYS": api_keys,
+                "IXMATI_API_KEY_SCOPES": api_scopes,
+            }
+            if any(char in value for value in values.values() for char in "\r\n"):
+                die("IXMATI_API_KEYS e IXMATI_API_KEY_SCOPES no pueden contener saltos de línea")
+            lines = []
+            for name, value in values.items():
+                if value:
+                    escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+                    lines.append(f'{name}="{escaped}"')
+            api_env.write_text("\n".join(lines) + "\n")
             api_env.chmod(0o640)
             try:
                 shutil.chown(api_env, user="root", group="ixmati")
@@ -534,6 +547,7 @@ def show_final_message() -> None:
     print("  Configurar credenciales (si no se definieron durante la instalación):")
     print("    sudoedit /etc/ixmati/ixmati.env")
     print('    # IXMATI_API_KEYS="una-clave-larga,otra-clave-en-rotacion"')
+    print('    # IXMATI_API_KEY_SCOPES="orders-key=orders|users;audit-key=audit"')
     print("    sudo systemctl restart ixmati-api")
     print("")
     print("  Escribir un comando:")

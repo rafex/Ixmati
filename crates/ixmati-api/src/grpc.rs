@@ -211,20 +211,34 @@ fn event_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<pb::EventEnvelope
     })
 }
 
-fn auth<T>(request: &Request<T>, config: &AuthConfig) -> Result<(), Status> {
+fn auth<T>(
+    request: &Request<T>,
+    config: &AuthConfig,
+) -> Result<Option<crate::auth::AuthIdentity>, Status> {
     if !config.enabled {
-        return Ok(());
+        return Ok(None);
     }
     let key = request
         .metadata()
         .get("x-api-key")
         .and_then(|value| value.to_str().ok())
         .ok_or_else(|| Status::unauthenticated("x-api-key metadata is required"))?;
-    if crate::auth::session::validate_api_key(key, &config.valid_keys).is_some() {
-        Ok(())
-    } else {
-        Err(Status::unauthenticated("invalid API key"))
+    crate::auth::session::validate_api_key(key, &config.valid_keys)
+        .map(crate::auth::AuthIdentity::from)
+        .map(Some)
+        .ok_or_else(|| Status::unauthenticated("invalid API key"))
+}
+
+fn authorize_store(
+    identity: Option<&crate::auth::AuthIdentity>,
+    store: &str,
+) -> Result<(), Status> {
+    if identity.is_some_and(|identity| !identity.allows_store(store)) {
+        return Err(Status::permission_denied(format!(
+            "API key is not authorized for store {store}"
+        )));
     }
+    Ok(())
 }
 
 fn map_core_error(error: &ixmati_core::Error) -> Status {
@@ -249,6 +263,7 @@ fn map_core_error(error: &ixmati_core::Error) -> Status {
             Status::already_exists(error.to_string())
         }
         ixmati_core::Error::WriteRejected { .. } => Status::invalid_argument(error.to_string()),
+        ixmati_core::Error::PermissionDenied { .. } => Status::permission_denied(error.to_string()),
         ixmati_core::Error::Internal { .. } | ixmati_core::Error::ProjectionError { .. } => {
             Status::internal(error.to_string())
         }
@@ -267,12 +282,13 @@ impl pb::write_service_server::WriteService for WriteServiceImpl {
         &self,
         request: Request<pb::WriteRequest>,
     ) -> Result<Response<pb::WriteResponse>, Status> {
-        auth(&request, &self.auth)?;
+        let identity = auth(&request, &self.auth)?;
         let envelope = request
             .into_inner()
             .envelope
             .ok_or_else(|| Status::invalid_argument("envelope is required"))?;
         let envelope = write_envelope_from_pb(envelope)?;
+        authorize_store(identity.as_ref(), &envelope.store)?;
         let result = rest::submit_write(self.state.clone(), envelope).await;
         match result {
             Ok((_status, response)) => {
@@ -295,13 +311,14 @@ impl pb::write_service_server::WriteService for WriteServiceImpl {
         &self,
         request: Request<pb::GetWriteStatusRequest>,
     ) -> Result<Response<pb::GetWriteStatusResponse>, Status> {
-        auth(&request, &self.auth)?;
+        let identity = auth(&request, &self.auth)?;
         let request = request.into_inner();
         if request.store.is_empty() || request.idempotency_key.is_empty() {
             return Err(Status::invalid_argument(
                 "store and idempotency_key are required",
             ));
         }
+        authorize_store(identity.as_ref(), &request.store)?;
         let db_path = self
             .state
             .db_path_for(&request.store)
@@ -349,8 +366,19 @@ impl pb::read_service_server::ReadService for ReadServiceImpl {
         &self,
         request: Request<pb::ReadRequest>,
     ) -> Result<Response<pb::ReadResponse>, Status> {
-        auth(&request, &self.auth)?;
+        let identity = auth(&request, &self.auth)?;
         let request = request.into_inner();
+        if !request.store.is_empty() {
+            authorize_store(identity.as_ref(), &request.store)?;
+        } else if !request.projection.is_empty()
+            && identity
+                .as_ref()
+                .is_some_and(|identity| !identity.allows_unscoped_projection())
+        {
+            return Err(Status::permission_denied(
+                "scoped API keys cannot read an unscoped projection",
+            ));
+        }
         let response = rest::read_handler(
             axum::extract::State(self.state.clone()),
             axum::extract::Query(rest::ReadQuery {
@@ -426,11 +454,12 @@ impl pb::event_service_server::EventService for EventServiceImpl {
         &self,
         request: Request<pb::SubscribeEventsRequest>,
     ) -> Result<Response<Self::SubscribeEventsStream>, Status> {
-        auth(&request, &self.auth)?;
+        let identity = auth(&request, &self.auth)?;
         let request = request.into_inner();
         if request.store.is_empty() {
             return Err(Status::invalid_argument("store is required"));
         }
+        authorize_store(identity.as_ref(), &request.store)?;
         if request.after_outbox_seq < 0 {
             return Err(Status::invalid_argument(
                 "after_outbox_seq cannot be negative",
@@ -650,7 +679,9 @@ mod tests {
         request
             .metadata_mut()
             .insert("x-api-key", "test-key".parse().unwrap());
-        auth(&request, &config).expect("valid metadata key");
+        auth(&request, &config)
+            .expect("valid metadata key")
+            .expect("identity");
 
         request
             .metadata_mut()
@@ -658,6 +689,21 @@ mod tests {
         assert_eq!(
             auth(&request, &config).unwrap_err().code(),
             tonic::Code::Unauthenticated
+        );
+    }
+
+    #[test]
+    fn scoped_identity_restricts_store_access() {
+        let identity = crate::auth::AuthIdentity {
+            key_id: "orders-key".into(),
+            store_access: vec!["orders".into()],
+        };
+        assert!(authorize_store(Some(&identity), "orders").is_ok());
+        assert_eq!(
+            authorize_store(Some(&identity), "users")
+                .unwrap_err()
+                .code(),
+            tonic::Code::PermissionDenied
         );
     }
 

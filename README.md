@@ -44,6 +44,21 @@ que usa MinIO fijado por digest, replica SQLite y restaura desde el objeto
 remoto. Esta prueba valida compatibilidad de transporte; no reemplaza un
 simulacro contra el bucket remoto de producción.
 
+En un despliegue multi-store se pueden limitar las claves por store. Las
+claves sin entrada en `IXMATI_API_KEY_SCOPES` conservan compatibilidad y tienen
+acceso global; para producción multi-tenant se recomienda declarar todas las
+claves con scopes:
+
+```bash
+IXMATI_API_KEYS='orders-key,audit-key' \
+IXMATI_API_KEY_SCOPES='orders-key=orders|users;audit-key=audit' \
+./install.sh
+```
+
+Una clave scoped no puede escribir, leer, consultar estados ni suscribirse a
+eventos de otro store. Las proyecciones sin store explícito sólo están
+disponibles para claves globales.
+
 Para recuperar un store, usa
 [`helpers/shell/litestream_restore.sh`](helpers/shell/litestream_restore.sh);
 detecta la réplica local nativa o las variables S3 configuradas y falla si no

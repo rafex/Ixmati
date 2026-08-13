@@ -166,15 +166,20 @@ pub async fn serve(config: ApiConfig) -> std::io::Result<()> {
         state = state.with_db_paths(config.db_paths.clone());
     }
 
+    let api_keys = std::env::var("IXMATI_API_KEYS").unwrap_or_default();
+    let scoped_keys = std::env::var("IXMATI_API_KEY_SCOPES").unwrap_or_default();
+    let scopes = parse_api_key_scopes(&scoped_keys);
     let auth_config = crate::auth::AuthConfig::new(
-        std::env::var("IXMATI_API_KEYS")
-            .unwrap_or_default()
+        api_keys
             .split(',')
-            .filter(|k| !k.is_empty())
-            .map(|k| crate::auth::ApiKey {
-                key_id: k.trim().to_string(),
-                store_access: Vec::new(),
-                created_at: chrono::Utc::now(),
+            .filter(|key| !key.trim().is_empty())
+            .map(|key| {
+                let key = key.trim();
+                crate::auth::ApiKey {
+                    key_id: key.to_string(),
+                    store_access: scopes.get(key).cloned().unwrap_or_default(),
+                    created_at: chrono::Utc::now(),
+                }
             })
             .collect(),
     );
@@ -209,6 +214,24 @@ pub async fn serve(config: ApiConfig) -> std::io::Result<()> {
     }
 }
 
+fn parse_api_key_scopes(raw: &str) -> HashMap<String, Vec<String>> {
+    raw.split(';')
+        .filter_map(|entry| entry.split_once('='))
+        .map(|(key, stores)| {
+            (
+                key.trim().to_string(),
+                stores
+                    .split('|')
+                    .map(str::trim)
+                    .filter(|store| !store.is_empty())
+                    .map(str::to_string)
+                    .collect(),
+            )
+        })
+        .filter(|(key, _)| !key.is_empty())
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -219,5 +242,13 @@ mod tests {
         assert_eq!(cfg.host, "127.0.0.1");
         assert_eq!(cfg.port, 8080);
         assert_eq!(cfg.grpc_port, 30100);
+    }
+
+    #[test]
+    fn api_key_scopes_parse_without_changing_legacy_keys() {
+        let scopes = parse_api_key_scopes("orders-key=orders|users; audit-key=audit");
+        assert_eq!(scopes["orders-key"], vec!["orders", "users"]);
+        assert_eq!(scopes["audit-key"], vec!["audit"]);
+        assert!(parse_api_key_scopes("").is_empty());
     }
 }

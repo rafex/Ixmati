@@ -17,6 +17,39 @@ pub struct ApiKey {
     pub created_at: DateTime<Utc>,
 }
 
+/// Authenticated principal attached to a request after API-key validation.
+/// Empty `store_access` preserves the legacy meaning of an unscoped key:
+/// access to every configured store. Explicit scopes are recommended for
+/// multi-store deployments.
+#[derive(Debug, Clone)]
+pub struct AuthIdentity {
+    pub key_id: String,
+    pub store_access: Vec<String>,
+}
+
+impl From<&ApiKey> for AuthIdentity {
+    fn from(key: &ApiKey) -> Self {
+        Self {
+            key_id: key.key_id.clone(),
+            store_access: key.store_access.clone(),
+        }
+    }
+}
+
+impl AuthIdentity {
+    pub fn allows_store(&self, store: &str) -> bool {
+        self.store_access.is_empty()
+            || self
+                .store_access
+                .iter()
+                .any(|allowed| allowed == "*" || allowed == store)
+    }
+
+    pub fn allows_unscoped_projection(&self) -> bool {
+        self.store_access.is_empty() || self.store_access.iter().any(|allowed| allowed == "*")
+    }
+}
+
 impl Session {
     pub fn new(api_key_id: &str, ttl_seconds: i64) -> Self {
         let now = Utc::now();

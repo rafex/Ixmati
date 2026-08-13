@@ -1826,3 +1826,29 @@ conocido, pero no se deshabilitan implícitamente en una instalación nueva.
 Los tests de API cubren el rechazo REST con 413 y el cierre del stream lento
 con cursor; la capacidad durable sigue dependiendo del perfil del writer y de
 la validación prolongada correspondiente.
+
+### DEC-0081 — Las API keys scoped protegen todas las rutas de datos
+
+- Fecha: 2026-08-13
+- Estado: `accepted`
+- Relacionado con: `SPEC-AUTH-0001`, `SPEC-PROTOBUF-0001`, `TASK-PROD-0003`
+- Implementación: `crates/ixmati-api/src/auth/`, `crates/ixmati-api/src/rest.rs`,
+  `crates/ixmati-api/src/grpc.rs`
+
+Una identidad autenticada conserva el alcance declarado en
+`IXMATI_API_KEY_SCOPES`, con formato `clave=store1|store2` y entradas separadas
+por `;`. El alcance se aplica de forma uniforme a escritura, lectura,
+consulta de estado y suscripción de eventos. Una clave sin alcance explícito
+mantiene compatibilidad legacy y acceso global; en despliegues multi-tenant se
+deben declarar todas las claves con alcance.
+
+`/health`, `/ready` y `/metrics` siguen siendo endpoints operativos públicos.
+Cuando la autenticación está habilitada, `/write`, `/read` y
+`/writes/{store}/{idempotency_key}` requieren credenciales. Una clave scoped no
+puede consultar una proyección sin store explícito porque esa consulta no tiene
+un límite de aislamiento demostrable. El rechazo es HTTP 403 o
+`PERMISSION_DENIED` en gRPC/Protobuf.
+
+El instalador persiste `IXMATI_API_KEY_SCOPES` junto con `IXMATI_API_KEYS` en
+`/etc/ixmati/ixmati.env`; omitirlo durante la instalación no debe convertir una
+configuración scoped en global después de un reinicio.

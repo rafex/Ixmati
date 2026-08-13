@@ -54,7 +54,8 @@ asíncrono. Si el commit no entra en el timeout, la API responde `202` y el
 cliente debe consultar:
 
 ```bash
-curl -sS http://127.0.0.1:8080/writes/pedidos/pedido-1
+curl -sS http://127.0.0.1:8080/writes/pedidos/pedido-1-v1 \
+  -H "Authorization: ApiKey $IXMATI_API_KEY"
 ```
 
 Los estados son `PENDING`, `APPLIED` y `REJECTED`. La clave de idempotencia es
@@ -65,7 +66,8 @@ la referencia estable para reintentar sin duplicar la escritura.
 Una lectura cache-aside usa `store`, `entity` y `key`:
 
 ```bash
-curl -sS 'http://127.0.0.1:8080/read?store=pedidos&entity=pedido&key=ped_1'
+curl -sS 'http://127.0.0.1:8080/read?store=pedidos&entity=pedido&key=ped_1' \
+  -H "Authorization: ApiKey $IXMATI_API_KEY"
 ```
 
 Antes de declarar saludable un despliegue:
@@ -129,6 +131,22 @@ systemctl status ixmati-litestream-file ixmati-litestream-s3
 
 El restore local no sustituye la validación de destino remoto ni un simulacro
 con RPO/RTO medidos.
+
+### Scopes de API keys en multi-store
+
+Para aislar tenants, define `IXMATI_API_KEY_SCOPES` junto con
+`IXMATI_API_KEYS`. Cada entrada usa `clave=store1|store2` y las entradas se
+separan con `;`:
+
+```bash
+IXMATI_API_KEYS='orders-key,audit-key' \
+IXMATI_API_KEY_SCOPES='orders-key=orders|users;audit-key=audit' \
+./install.sh
+```
+
+Una clave sin scope explícito conserva el comportamiento legacy de acceso
+global. Una clave scoped recibe `PERMISSION_DENIED`/HTTP `403` al acceder a
+otro store, y no puede consultar proyecciones sin store explícito.
 
 Para migrar stores no se deben mover archivos con el servicio activo. Usa
 `ixmati-store-migrate` en una ventana offline, valida el manifiesto, ejecuta

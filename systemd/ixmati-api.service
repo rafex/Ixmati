@@ -39,6 +39,9 @@ Environment=SQLITE_PATH=/var/lib/ixmati/stores/default.db
 #Environment=GRPC_MAX_MESSAGE_BYTES=1048576
 #Environment=GRPC_MAX_CONCURRENT_STREAMS=256
 #Environment=EVENT_STREAM_BUFFER_CAPACITY=128
+# Scopes opcionales para despliegues multi-store; se recomienda configurar
+# todas las claves en /etc/ixmati/ixmati.env, no dejar acceso global accidental.
+#Environment=IXMATI_API_KEY_SCOPES=orders-key=orders|users;audit-key=audit
 Restart=always
 RestartSec=5
 StandardOutput=journal

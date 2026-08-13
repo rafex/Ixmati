@@ -53,7 +53,11 @@ Accept: application/protobuf
 
 Para POST, el body es `ixmati.v1.ReadRequest` y la respuesta es
 `ixmati.v1.ReadResponse`. `GET /health` devuelve `HealthCheckResponse` cuando
-se solicita Protobuf. La autenticación REST existente no cambia.
+se solicita Protobuf. Cuando `IXMATI_API_KEYS` está configurado, `/write`,
+`/read` y `/writes/...` requieren `Authorization: ApiKey <clave>`; `/health`,
+`/ready` y `/metrics` permanecen públicos. Una clave scoped sólo puede usar
+stores declarados en `IXMATI_API_KEY_SCOPES`; otro store devuelve HTTP 403 o
+`ErrorDetail.PERMISSION_DENIED`.
 
 `GET /health` es diagnóstico y conserva HTTP `200` aunque reporte un estado
 degradado. `GET /ready` está destinado a load balancers y systemd: devuelve

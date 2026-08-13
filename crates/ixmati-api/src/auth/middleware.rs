@@ -6,7 +6,7 @@ use axum::{
 };
 use prost::Message;
 
-use crate::auth::session::{ApiKey, AuthCredentials};
+use crate::auth::session::{ApiKey, AuthCredentials, AuthIdentity};
 use ixmati_core::Error;
 
 #[derive(Clone)]
@@ -33,7 +33,7 @@ impl AuthConfig {
 
 pub async fn require_auth(
     axum::extract::State(config): axum::extract::State<AuthConfig>,
-    request: Request,
+    mut request: Request,
     next: Next,
 ) -> Result<Response, Response> {
     if !config.enabled {
@@ -49,13 +49,18 @@ pub async fn require_auth(
 
     match creds {
         Some(AuthCredentials::ApiKey(key)) => {
-            if crate::auth::session::validate_api_key(&key, &config.valid_keys).is_some() {
+            if let Some(api_key) = crate::auth::session::validate_api_key(&key, &config.valid_keys)
+            {
+                request.extensions_mut().insert(AuthIdentity::from(api_key));
                 return Ok(next.run(request).await);
             }
             Err(auth_error(&request, "invalid API key"))
         }
         Some(AuthCredentials::BearerToken(token)) => {
-            if crate::auth::session::validate_api_key(&token, &config.valid_keys).is_some() {
+            if let Some(api_key) =
+                crate::auth::session::validate_api_key(&token, &config.valid_keys)
+            {
+                request.extensions_mut().insert(AuthIdentity::from(api_key));
                 return Ok(next.run(request).await);
             }
             Err(auth_error(&request, "invalid session token"))
@@ -160,6 +165,46 @@ mod tests {
                 Request::builder()
                     .uri("/test")
                     .header("Authorization", "ApiKey ix-key-1")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn scoped_api_key_identity_is_attached_to_request() {
+        let config = AuthConfig::new(vec![ApiKey {
+            key_id: "orders-key".into(),
+            store_access: vec!["orders".into()],
+            created_at: Utc::now(),
+        }]);
+
+        let app =
+            Router::new()
+                .route(
+                    "/test",
+                    get(
+                        |axum::extract::Extension(identity): axum::extract::Extension<
+                            AuthIdentity,
+                        >| async move {
+                            if identity.allows_store("orders") && !identity.allows_store("users") {
+                                StatusCode::OK
+                            } else {
+                                StatusCode::INTERNAL_SERVER_ERROR
+                            }
+                        },
+                    ),
+                )
+                .route_layer(axum::middleware::from_fn_with_state(config, require_auth));
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/test")
+                    .header("Authorization", "ApiKey orders-key")
                     .body(Body::empty())
                     .unwrap(),
             )

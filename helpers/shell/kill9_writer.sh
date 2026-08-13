@@ -19,6 +19,7 @@ N_MESSAGES="${2:-100}"
 CONTAINER="${CONTAINER_NAME:-ixmati-load-test}"
 TEST_HOST="${TEST_HOST:-192.168.3.175}"
 API_PORT="${API_PORT:-30300}"
+API_KEY="${API_KEY:-ix-default-key}"
 DB_PATH="${DB_PATH:-/var/lib/ixmati/stores/${STORE}.db}"
 KILL_AFTER="${KILL_AFTER:-$((N_MESSAGES / 2))}"
 PUBLISH_DELAY_MS="${PUBLISH_DELAY_MS:-10}"
@@ -146,7 +147,7 @@ log "esperando confirmación durable de las claves"
 pending=0
 sqlite_count=0
 while IFS=$'\t' read -r key entity_key; do
-    status="$(curl -sS --max-time 5 "http://${TEST_HOST}:${API_PORT}/writes/${STORE}/${key}" || true)"
+    status="$(curl -sS --max-time 5 -H "Authorization: ApiKey ${API_KEY}" "http://${TEST_HOST}:${API_PORT}/writes/${STORE}/${key}" || true)"
     if grep -q '"status":"APPLIED"' <<< "$status"; then
         api_status=APPLIED
     else

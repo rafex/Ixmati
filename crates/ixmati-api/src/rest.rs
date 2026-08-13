@@ -3,7 +3,7 @@ use crate::cache_proxy::CacheProxy;
 use axum::{
     Router,
     body::Bytes,
-    extract::{DefaultBodyLimit, Path, Query, State},
+    extract::{DefaultBodyLimit, Extension, Path, Query, State},
     http::{HeaderMap, StatusCode, header},
     middleware,
     response::{IntoResponse, Json, Response},
@@ -244,17 +244,17 @@ impl AppState {
 pub fn routes(state: AppState, auth_config: crate::auth::AuthConfig) -> Router {
     let protected = Router::new()
         .route("/write", post(write_dispatch))
+        .route(
+            "/writes/{store}/{idempotency_key}",
+            get(write_status_dispatch),
+        )
+        .route("/read", get(read_dispatch).post(read_protobuf_dispatch))
         .route_layer(middleware::from_fn_with_state(
             auth_config,
             crate::auth::require_auth,
         ));
 
     let public = Router::new()
-        .route(
-            "/writes/{store}/{idempotency_key}",
-            get(write_status_dispatch),
-        )
-        .route("/read", get(read_dispatch).post(read_protobuf_dispatch))
         .route("/health", get(health_dispatch))
         .route("/ready", get(ready_dispatch))
         .route("/metrics", get(metrics_handler));
@@ -270,15 +270,15 @@ pub fn routes(state: AppState, auth_config: crate::auth::AuthConfig) -> Router {
 }
 
 fn wants_protobuf(headers: &HeaderMap) -> bool {
-    headers
-        .get(header::ACCEPT)
-        .and_then(|value| value.to_str().ok())
-        .map(|value| {
+    [header::ACCEPT, header::CONTENT_TYPE]
+        .into_iter()
+        .filter_map(|name| headers.get(name))
+        .filter_map(|value| value.to_str().ok())
+        .any(|value| {
             value
                 .split(',')
                 .any(|item| item.trim().starts_with(crate::grpc::PROTOBUF_CONTENT_TYPE))
         })
-        .unwrap_or(false)
 }
 
 fn protobuf_response<M: Message>(status: StatusCode, message: M) -> Response {
@@ -306,6 +306,38 @@ fn protobuf_error(status: StatusCode, error: &ixmati_core::Error) -> Response {
     )
 }
 
+fn forbidden_store_response(headers: &HeaderMap, store: &str) -> Response {
+    let detail = format!("API key is not authorized for store {store}");
+    if wants_protobuf(headers) {
+        return protobuf_response(
+            StatusCode::FORBIDDEN,
+            crate::grpc::pb::ErrorDetail {
+                error: "PERMISSION_DENIED".into(),
+                detail,
+                store: store.into(),
+                idempotency_key: String::new(),
+            },
+        );
+    }
+    (
+        StatusCode::FORBIDDEN,
+        Json(ixmati_core::Error::PermissionDenied {
+            store: store.into(),
+            detail,
+        }),
+    )
+        .into_response()
+}
+
+fn store_is_authorized(
+    identity: Option<&Extension<crate::auth::AuthIdentity>>,
+    store: &str,
+) -> bool {
+    identity
+        .map(|Extension(identity)| identity.allows_store(store))
+        .unwrap_or(true)
+}
+
 fn with_retry_after(mut response: Response, status: StatusCode) -> Response {
     if status == StatusCode::TOO_MANY_REQUESTS {
         let seconds = throttle_window_secs_from_env().max(1).to_string();
@@ -318,6 +350,7 @@ fn with_retry_after(mut response: Response, status: StatusCode) -> Response {
 
 async fn write_dispatch(
     State(state): State<AppState>,
+    identity: Option<Extension<crate::auth::AuthIdentity>>,
     headers: HeaderMap,
     body: Bytes,
 ) -> Response {
@@ -359,6 +392,9 @@ async fn write_dispatch(
                 );
             }
         };
+        if !store_is_authorized(identity.as_ref(), &envelope.store) {
+            return forbidden_store_response(&headers, &envelope.store);
+        }
         return match submit_write(state, envelope).await {
             Ok((status, response)) => {
                 let ack = response.0;
@@ -390,6 +426,9 @@ async fn write_dispatch(
                 .into_response();
         }
     };
+    if !store_is_authorized(identity.as_ref(), &envelope.store) {
+        return forbidden_store_response(&headers, &envelope.store);
+    }
     match submit_write(state, envelope).await {
         Ok(response) => response.into_response(),
         Err((status, error)) => with_retry_after((status, Json(error.0)).into_response(), status),
@@ -874,11 +913,40 @@ pub(crate) async fn read_handler(
     })))
 }
 
+fn authorize_read(
+    identity: Option<&Extension<crate::auth::AuthIdentity>>,
+    params: &ReadQuery,
+    headers: &HeaderMap,
+) -> Option<Response> {
+    if let Some(store) = params.store.as_deref()
+        && !store_is_authorized(identity, store)
+    {
+        return Some(forbidden_store_response(headers, store));
+    }
+
+    // A projection without an explicit store is a cross-store read.  Only a
+    // legacy/global key may perform it; a scoped key must name a store so its
+    // access boundary remains enforceable.
+    if params.projection.is_some()
+        && identity
+            .map(|Extension(identity)| !identity.allows_unscoped_projection())
+            .unwrap_or(false)
+    {
+        return Some(forbidden_store_response(headers, "<projection>"));
+    }
+
+    None
+}
+
 async fn read_dispatch(
     State(state): State<AppState>,
+    identity: Option<Extension<crate::auth::AuthIdentity>>,
     Query(params): Query<ReadQuery>,
     headers: HeaderMap,
 ) -> Response {
+    if let Some(response) = authorize_read(identity.as_ref(), &params, &headers) {
+        return response;
+    }
     let protobuf = wants_protobuf(&headers);
     match read_handler(State(state), Query(params)).await {
         Ok(Json(value)) if protobuf => match crate::grpc::read_response_from_json(value) {
@@ -899,7 +967,12 @@ async fn read_dispatch(
     }
 }
 
-async fn read_protobuf_dispatch(State(state): State<AppState>, body: Bytes) -> Response {
+async fn read_protobuf_dispatch(
+    State(state): State<AppState>,
+    identity: Option<Extension<crate::auth::AuthIdentity>>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Response {
     let request = match crate::grpc::pb::ReadRequest::decode(body.as_ref()) {
         Ok(request) => request,
         Err(error) => {
@@ -914,16 +987,16 @@ async fn read_protobuf_dispatch(State(state): State<AppState>, body: Bytes) -> R
             );
         }
     };
-    let result = read_handler(
-        State(state),
-        Query(ReadQuery {
-            store: (!request.store.is_empty()).then_some(request.store),
-            entity: (!request.entity.is_empty()).then_some(request.entity),
-            key: (!request.key.is_empty()).then_some(request.key),
-            projection: (!request.projection.is_empty()).then_some(request.projection),
-        }),
-    )
-    .await;
+    let params = ReadQuery {
+        store: (!request.store.is_empty()).then_some(request.store),
+        entity: (!request.entity.is_empty()).then_some(request.entity),
+        key: (!request.key.is_empty()).then_some(request.key),
+        projection: (!request.projection.is_empty()).then_some(request.projection),
+    };
+    if let Some(response) = authorize_read(identity.as_ref(), &params, &headers) {
+        return response;
+    }
+    let result = read_handler(State(state), Query(params)).await;
     match result {
         Ok(Json(value)) => match crate::grpc::read_response_from_json(value) {
             Ok(response) => protobuf_response(StatusCode::OK, response),
@@ -998,9 +1071,13 @@ async fn write_status_handler(
 
 async fn write_status_dispatch(
     State(state): State<AppState>,
+    identity: Option<Extension<crate::auth::AuthIdentity>>,
     Path(params): Path<WriteStatusParams>,
     headers: HeaderMap,
 ) -> Response {
+    if !store_is_authorized(identity.as_ref(), &params.store) {
+        return forbidden_store_response(&headers, &params.store);
+    }
     let protobuf = wants_protobuf(&headers);
     match write_status_handler(State(state), Path(params)).await {
         Ok(Json(value)) if protobuf => {
@@ -1390,5 +1467,128 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
+    }
+
+    #[tokio::test]
+    async fn scoped_key_cannot_read_another_store_or_query_status() {
+        let state = AppState::new(
+            "tcp://127.0.0.1:1",
+            Arc::new(NoOpBackend::new()),
+            None,
+            None,
+            None,
+        );
+        let app = routes(
+            state,
+            crate::auth::AuthConfig::new(vec![crate::auth::session::ApiKey {
+                key_id: "orders-key".into(),
+                store_access: vec!["orders".into()],
+                created_at: chrono::Utc::now(),
+            }]),
+        );
+
+        let read_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/read?store=users&entity=user&key=u-1")
+                    .header("Authorization", "ApiKey orders-key")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(read_response.status(), StatusCode::FORBIDDEN);
+
+        let status_response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/writes/users/ik-1")
+                    .header("Authorization", "ApiKey orders-key")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(status_response.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn protected_rest_reads_require_auth_when_enabled() {
+        let state = AppState::new(
+            "tcp://127.0.0.1:1",
+            Arc::new(NoOpBackend::new()),
+            None,
+            None,
+            None,
+        );
+        let app = routes(
+            state,
+            crate::auth::AuthConfig::new(vec![crate::auth::session::ApiKey {
+                key_id: "global-key".into(),
+                store_access: Vec::new(),
+                created_at: chrono::Utc::now(),
+            }]),
+        );
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .uri("/read?store=orders&entity=order&key=o-1")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn scoped_key_gets_protobuf_permission_error_for_read() {
+        let state = AppState::new(
+            "tcp://127.0.0.1:1",
+            Arc::new(NoOpBackend::new()),
+            None,
+            None,
+            None,
+        );
+        let app = routes(
+            state,
+            crate::auth::AuthConfig::new(vec![crate::auth::session::ApiKey {
+                key_id: "orders-key".into(),
+                store_access: vec!["orders".into()],
+                created_at: chrono::Utc::now(),
+            }]),
+        );
+        let mut request_bytes = Vec::new();
+        crate::grpc::pb::ReadRequest {
+            store: "users".into(),
+            entity: "user".into(),
+            key: "u-1".into(),
+            projection: String::new(),
+        }
+        .encode(&mut request_bytes)
+        .unwrap();
+
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/read")
+                    .header("Authorization", "ApiKey orders-key")
+                    .header("Content-Type", PROTOBUF_CONTENT_TYPE)
+                    .body(Body::from(request_bytes))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        assert_eq!(
+            response.headers().get(axum::http::header::CONTENT_TYPE),
+            Some(&axum::http::HeaderValue::from_static(PROTOBUF_CONTENT_TYPE))
+        );
+        let body = to_bytes(response.into_body(), 1024).await.unwrap();
+        let error = crate::grpc::pb::ErrorDetail::decode(body).unwrap();
+        assert_eq!(error.error, "PERMISSION_DENIED");
     }
 }

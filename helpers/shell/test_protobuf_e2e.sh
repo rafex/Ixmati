@@ -210,6 +210,7 @@ grep -q 'status: "COMMITTED"' "$TEST_DIR/write-response.txt"
 grep -q "idempotency_key: \"${idempotency_key}\"" "$TEST_DIR/write-response.txt"
 
 curl -fsS --max-time 5 -H 'Accept: application/protobuf' \
+    -H "Authorization: ApiKey ${API_KEY}" \
     "http://127.0.0.1:${API_PORT}/writes/smoke/${idempotency_key}" \
     -o "$TEST_DIR/status.pb"
 decode ixmati.v1.GetWriteStatusResponse "$PROTO_DIR/ixmati/v1/write.proto" \
@@ -217,6 +218,7 @@ decode ixmati.v1.GetWriteStatusResponse "$PROTO_DIR/ixmati/v1/write.proto" \
 grep -q 'status: WRITE_STATUS_COMMITTED' "$TEST_DIR/status.txt"
 
 curl -fsS --max-time 5 -H 'Accept: application/protobuf' \
+    -H "Authorization: ApiKey ${API_KEY}" \
     "http://127.0.0.1:${API_PORT}/read?store=smoke&entity=order&key=${order_key}" \
     -o "$TEST_DIR/read-get.pb"
 decode ixmati.v1.ReadResponse "$PROTO_DIR/ixmati/v1/read.proto" \
@@ -234,6 +236,7 @@ protoc -I"$PROTO_DIR" -I"$PROTO_INCLUDE" \
     <"$TEST_DIR/read.txtproto" >"$TEST_DIR/read.pb"
 curl -fsS --max-time 5 -X POST \
     -H 'Content-Type: application/protobuf' \
+    -H "Authorization: ApiKey ${API_KEY}" \
     --data-binary @"$TEST_DIR/read.pb" \
     "http://127.0.0.1:${API_PORT}/read" \
     -o "$TEST_DIR/read-post.pb"
