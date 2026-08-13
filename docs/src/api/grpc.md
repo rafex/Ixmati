@@ -65,3 +65,14 @@ Para regenerar/validar el contrato:
 make proto
 cargo test -p ixmati-api
 ```
+
+## Límites operativos
+
+El servidor limita el tamaño de mensajes recibidos y enviados mediante
+`GRPC_MAX_MESSAGE_BYTES` (predeterminado `1048576`) y limita los streams HTTP/2
+concurrentes por conexión mediante `GRPC_MAX_CONCURRENT_STREAMS`
+(predeterminado `256`). El stream de eventos usa
+`EVENT_STREAM_BUFFER_CAPACITY` (predeterminado `128`) por cliente y reserva un
+slot para entregar `RESOURCE_EXHAUSTED` junto con el cursor de reanudación si
+el consumidor no mantiene el ritmo. Los valores se configuran en
+`/etc/ixmati/ixmati.env` y deben mantenerse acotados en producción.

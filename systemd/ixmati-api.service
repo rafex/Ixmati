@@ -33,6 +33,12 @@ Environment=SQLITE_PATH=/var/lib/ixmati/stores/default.db
 #Environment=MAX_WRITES_PER_WINDOW=10
 #Environment=THROTTLE_WINDOW_SECS=1
 #Environment=OUTBOX_BACKPRESSURE_THRESHOLD=500
+# Límites de entrada y streams (los defaults seguros viven en el binario;
+# ajustar sólo para un contrato de payload y concurrencia conocidos):
+#Environment=MAX_REQUEST_BODY_BYTES=1048576
+#Environment=GRPC_MAX_MESSAGE_BYTES=1048576
+#Environment=GRPC_MAX_CONCURRENT_STREAMS=256
+#Environment=EVENT_STREAM_BUFFER_CAPACITY=128
 Restart=always
 RestartSec=5
 StandardOutput=journal

@@ -1803,3 +1803,26 @@ usar el mismo camino durable; (-) cada sondeo abre una conexión de lectura y
 su impacto debe medirse nuevamente en Debian; (-) la capacidad productiva no
 se amplía hasta que una prueba prolongada del SHA que contiene este cambio lo
 demuestre.
+
+### DEC-0080 — Límites explícitos de recursos en REST y gRPC
+
+- Fecha: 2026-08-13
+- Estado: `accepted`
+- Relacionado con: `SPEC-PROTOBUF-0001`, `TASK-PROTO-0004`, producción segura
+- Implementación: `crates/ixmati-api/src/rest.rs`,
+  `crates/ixmati-api/src/grpc.rs`
+
+REST aplica `MAX_REQUEST_BODY_BYTES` con un valor predeterminado de 1 MiB a
+JSON y Protobuf. gRPC aplica `GRPC_MAX_MESSAGE_BYTES` de 1 MiB y
+`GRPC_MAX_CONCURRENT_STREAMS` de 256 por conexión. El stream de eventos usa un
+buffer acotado configurable (`EVENT_STREAM_BUFFER_CAPACITY`, 128 por defecto)
+y reserva un slot para que un consumidor lento reciba `RESOURCE_EXHAUSTED` con
+el cursor de reanudación; antes el canal podía llenarse y descartar ese error,
+dejando un EOF silencioso.
+
+Estos límites son controles de seguridad y aislamiento de recursos, no una
+promesa de throughput. Se pueden ampliar explícitamente para un workload
+conocido, pero no se deshabilitan implícitamente en una instalación nueva.
+Los tests de API cubren el rechazo REST con 413 y el cierre del stream lento
+con cursor; la capacidad durable sigue dependiendo del perfil del writer y de
+la validación prolongada correspondiente.

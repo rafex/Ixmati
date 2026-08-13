@@ -45,7 +45,9 @@ durabilidad.
 
 - **En curso**: iniciativa `protobuf-api`: gRPC unary y streaming en `30100`,
   REST/Protobuf y compatibilidad REST/JSON. Falta cerrar integración real con
-  clientes tonic/reqwest y medir impacto sobre ACK durable.
+  clientes tonic/reqwest, retención/reconexión del stream y medir impacto sobre
+  ACK durable. Los límites de entrada y el cierre diagnosticable de clientes
+  lentos ya están implementados.
 - **Completado para el perfil base**: `6c38eb8` sostuvo 10/s durante una hora
   con confirmación durable completa y drenado correcto. La prueba prolongada
   de 150/s y 200/s sigue pendiente y no debe extrapolarse desde el perfil

@@ -44,7 +44,7 @@ state = "in_progress"
 owner = "team-core"
 dependencies = ["TASK-PROTO-0001", "TASK-PROTO-0002"]
 close_criteria = "Replay, transición live, filtros, OUT_OF_RANGE y backpressure tienen evidencia"
-validation = ["pruebas de cursor y stream con SQLite temporal", "integración MQTT", "spec-native/evidence/PROTOBUF-E2E-20260812.md"]
+validation = ["pruebas de cursor y stream con SQLite temporal", "test local de cliente lento y RESOURCE_EXHAUSTED con cursor", "integración MQTT", "spec-native/evidence/PROTOBUF-E2E-20260812.md"]
 ```
 
 ### TASK-PROTO-0005 — Despliegue y documentación

@@ -37,3 +37,10 @@ Las instalaciones nuevas publican REST en `30000` y gRPC en `30100`. El
 listener gRPC puede deshabilitarse con `GRPC_PORT=0` durante una migración
 legacy. El contrato binario se valida con `make proto`; no se requiere
 `grpcurl` en runtime porque reflection no está habilitada.
+
+Los límites de entrada seguros son `MAX_REQUEST_BODY_BYTES=1048576`,
+`GRPC_MAX_MESSAGE_BYTES=1048576`, `GRPC_MAX_CONCURRENT_STREAMS=256` y
+`EVENT_STREAM_BUFFER_CAPACITY=128`. En Compose se pueden sobrescribir mediante
+variables de entorno del servicio `api`; en la instalación systemd se usan
+`/etc/ixmati/ixmati.env`. El buffer del stream reserva un elemento para
+informar `RESOURCE_EXHAUSTED` y el cursor de reanudación a clientes lentos.

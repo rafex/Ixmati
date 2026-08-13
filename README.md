@@ -78,6 +78,13 @@ confirma `_idempotency`, mientras `PENDING`/`202` se consulta con
 `GetWriteStatus` o `GET /writes/...`. El stream gRPC de eventos usa el cursor
 durable de `_outbox`, replay acotado y entrega at-least-once.
 
+La API aplica límites de recursos por defecto: `MAX_REQUEST_BODY_BYTES=1048576`
+(REST JSON/Protobuf), `GRPC_MAX_MESSAGE_BYTES=1048576` y
+`GRPC_MAX_CONCURRENT_STREAMS=256`. El stream reserva un elemento del buffer
+para devolver `RESOURCE_EXHAUSTED` con el cursor de reanudación cuando el
+cliente es demasiado lento. Estos valores se pueden ajustar explícitamente en
+`/etc/ixmati/ixmati.env`; no se recomienda deshabilitarlos en el borde público.
+
 ## Capacidad y límites conocidos
 
 - El throttle predeterminado es de 10 escrituras por segundo por store. Una

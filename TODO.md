@@ -711,7 +711,9 @@ Tablero de tareas activo. Persiste entre sesiones.
       Debian amd64 en `PROTOBUF-E2E-20260812.md` y
       `PROTOBUF-BENCH-20260812.md`.
 - [ ] `TASK-PROTO-0004` — ampliar replay/live con cliente lento, buffer lleno,
-      `OUT_OF_RANGE` tras retención y reconexión con cursor.
+      `OUT_OF_RANGE` tras retención y reconexión con cursor. El buffer por
+      cliente ya está acotado y reserva un slot para `RESOURCE_EXHAUSTED`, con
+      test local; faltan retención/reconexión contra el stack remoto.
 
 - [ ] `TASK-CAP-0001` — Ejecutar soak rate-controlled de 150/s y 200/s durante
       una hora por escalón en contenedores Debian nuevos; conservar JTL/JSONL,
@@ -733,6 +735,11 @@ Tablero de tareas activo. Persiste entre sesiones.
       `STORE-MIGRATION-E2E-20260813.md`.
 - [x] `TASK-STORE-0006` — Documentar runbook, decisión, ejemplo de manifiesto,
       comandos y trazabilidad.
+
+- [x] `TASK-PROD-0002` — Hardening de límites de entrada: REST rechaza cuerpos
+      mayores que `MAX_REQUEST_BODY_BYTES`; gRPC limita mensajes y streams por
+      conexión; el stream lento entrega `RESOURCE_EXHAUSTED` con cursor. Tests
+      locales pasan; los límites no amplían la capacidad durable demostrada.
 
 ## Cancelled / Replaced
 

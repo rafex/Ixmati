@@ -63,3 +63,11 @@ Protobuf.
 
 Una escritura rechazada por backpressure (`429`) incluye `Retry-After`. El
 cliente debe respetar ese valor y reintentar con la misma `idempotency_key`.
+
+## Límites de entrada
+
+Para evitar que un payload consuma memoria sin límite, REST rechaza con `413`
+los cuerpos mayores que `MAX_REQUEST_BODY_BYTES`. El valor predeterminado es
+`1048576` bytes y aplica tanto a JSON como a `application/protobuf`, incluido
+`POST /read`. Se puede ajustar en `/etc/ixmati/ixmati.env` para un contrato de
+payload conocido; el valor debe ser positivo.

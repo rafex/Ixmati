@@ -20,8 +20,10 @@ configuración de despliegue implementados localmente. `TASK-PROTO-0001`..`0003`
 escritura, estado, lectura cacheada y health; el cliente tonic confirmó unary y
 stream replay/live con Mosquitto y SQLite temporales.
 
-Unary y REST binario están cerrados con E2E local; el stream conserva pendiente
-la validación específica de cliente lento/backpressure. El benchmark comparativo
+Unary y REST binario están cerrados con E2E local; el stream ahora tiene buffer
+acotado con slot reservado para `RESOURCE_EXHAUSTED` y test local de cliente
+lento con cursor de reanudación. La validación remota específica de retención,
+reconexión y backpressure sigue pendiente. El benchmark comparativo
 JSON/REST-Protobuf/gRPC ya fue ejecutado en Debian amd64 desde el SHA publicado.
 
 El contrato durable no cambia: `accepted` es alias de `committed`, `200`/`COMMITTED`
@@ -76,9 +78,9 @@ split reproducible, backup local, reconciler, cache, integridad y outbox.
 
 ## Next steps
 
-Siguiente paso de `protobuf-api`: ampliar las pruebas de integración con
-cliente lento, backpressure, `OUT_OF_RANGE` tras retención y reconexión con
-cursor. La evidencia `STORE-MIGRATION-E2E-20260813.md` ya cubre merge/split,
+Siguiente paso de `protobuf-api`: ampliar las pruebas de integración remota con
+`OUT_OF_RANGE` tras retención y reconexión con cursor. La evidencia
+`STORE-MIGRATION-E2E-20260813.md` ya cubre merge/split,
 tombstone, checksums reproducibles, backup local y reconciler/cache. Siguen
 pendientes el restore remoto de Litestream, el segundo destino, RPO/RTO, topics
 antiguos, cutover de routing, rollback y la prueba prolongada de 150/s y 200/s.

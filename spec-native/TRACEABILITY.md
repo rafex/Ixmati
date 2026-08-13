@@ -14,7 +14,7 @@ Vínculos entre artefactos del proyecto.
 
 ## Total
 
-- **Decisiones**: el histórico está en `DECISIONS.md`; la última es `DEC-0078`
+- **Decisiones**: el histórico está en `DECISIONS.md`; la última es `DEC-0080`
 - **Tareas**: el histórico está en las carpetas de `tasks/`; se agregó
   `protobuf-api` con seis tareas
 | SPEC-WRITE-0001 | spec-native/specs/write-engine/SPEC.md | closed | 2026-07-30 |
@@ -39,6 +39,7 @@ Vínculos entre artefactos del proyecto.
 | `TASK-WRITE-0014` | `config/litestream.yml`, `containers/litestream/`, `helpers/python/installer.py`, `helpers/shell/litestream_restore.sh`, `helpers/shell/test_litestream_s3.sh` | `PRODUCTION-BACKUP-LOCAL-20260813.md` + `PRODUCTION-BACKUP-S3-COMPAT-20260813.md`; bucket remoto real, segundo destino y RPO/RTO pendientes | `DEC-0078` |
 | `TASK-PROTO-0001` | `proto/ixmati/v1/`, `build.rs`, `make proto` | `cargo check -p ixmati-api`, `make proto` | `DEC-0069` |
 | `TASK-PROTO-0002`..`0003` | `crates/ixmati-api/src/grpc.rs`, REST dispatch and generated tonic client | `spec-native/evidence/PROTOBUF-E2E-20260812.md` | `DEC-0069` |
-| `TASK-PROTO-0004` | `EventService.SubscribeEvents` replay/live | `spec-native/evidence/PROTOBUF-E2E-20260812.md`; cliente lento/backpressure pendiente | `DEC-0069` |
+| `TASK-PROTO-0004` | `EventService.SubscribeEvents` replay/live, buffer acotado y cursor de reanudación | `spec-native/evidence/PROTOBUF-E2E-20260812.md`; tests locales de cliente lento/backpressure; integración remota de retención/reconexión pendiente | `DEC-0069`, `DEC-0080` |
 | `TASK-PROTO-0005` | deployment, OpenAPI, README, docs and SpecNative | `spec-native/evidence/PROTOBUF-E2E-20260812.md`; config/distribution gates pass | `DEC-0069` |
 | `TASK-PROTO-0006` | `benchmarks/protocol_benchmark.sh`, `ixmati-protocol-bench` | `spec-native/evidence/PROTOBUF-BENCH-20260812.md` | `DEC-0069` |
+| `TASK-PROD-0002` | REST body limits, gRPC message/stream limits, slow-stream terminal cursor | `cargo test -p ixmati-api` (47 tests), `cargo clippy -p ixmati-api --all-targets --all-features -- -D warnings` | `DEC-0080` |

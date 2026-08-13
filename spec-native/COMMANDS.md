@@ -57,6 +57,9 @@ cargo test -p ixmati-api  # conversiones Struct, cursor y contrato API
 # REST JSON: 30000; REST/Protobuf: application/protobuf; gRPC: 30100
 # readiness operativo: GET /ready (503 si un store o MQTT no está saludable)
 # GRPC_PORT=0 deshabilita gRPC en despliegues legacy
+# límites seguros: MAX_REQUEST_BODY_BYTES=1048576,
+# GRPC_MAX_MESSAGE_BYTES=1048576, GRPC_MAX_CONCURRENT_STREAMS=256,
+# EVENT_STREAM_BUFFER_CAPACITY=128 (ajustables en /etc/ixmati/ixmati.env)
 ```
 
 ## Instalador nativo (systemd)

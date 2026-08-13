@@ -3,7 +3,7 @@ use crate::cache_proxy::CacheProxy;
 use axum::{
     Router,
     body::Bytes,
-    extract::{Path, Query, State},
+    extract::{DefaultBodyLimit, Path, Query, State},
     http::{HeaderMap, StatusCode, header},
     middleware,
     response::{IntoResponse, Json, Response},
@@ -78,6 +78,12 @@ pub struct AppState {
 const DEFAULT_MAX_WRITES_PER_WINDOW: usize = 10;
 const DEFAULT_THROTTLE_WINDOW_SECS: u64 = 1;
 const DEFAULT_OUTBOX_BACKPRESSURE_THRESHOLD: i64 = 500;
+/// Bound request memory use before a body reaches the JSON/Protobuf decoder.
+///
+/// Payloads are business objects, not file uploads.  A bounded default makes
+/// the API safe when it is accidentally exposed without a reverse proxy;
+/// operators can raise it explicitly for a known workload.
+const DEFAULT_MAX_REQUEST_BODY_BYTES: usize = 1024 * 1024;
 
 fn max_writes_per_window_from_env() -> usize {
     std::env::var("MAX_WRITES_PER_WINDOW")
@@ -98,6 +104,14 @@ fn outbox_backpressure_threshold_from_env() -> i64 {
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(DEFAULT_OUTBOX_BACKPRESSURE_THRESHOLD)
+}
+
+fn max_request_body_bytes_from_env() -> usize {
+    std::env::var("MAX_REQUEST_BODY_BYTES")
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(DEFAULT_MAX_REQUEST_BODY_BYTES)
 }
 
 impl AppState {
@@ -249,6 +263,10 @@ pub fn routes(state: AppState, auth_config: crate::auth::AuthConfig) -> Router {
         .merge(protected)
         .merge(public)
         .with_state(state)
+        // Apply the same bound to JSON, REST/Protobuf and POST /read.  The
+        // extractor turns an over-limit body into HTTP 413 before parsing or
+        // allocating an unbounded request buffer.
+        .layer(DefaultBodyLimit::max(max_request_body_bytes_from_env()))
 }
 
 fn wants_protobuf(headers: &HeaderMap) -> bool {
@@ -1341,5 +1359,36 @@ mod tests {
              (5000) — a la tasa máxima de drenado eso tardaba minutos en \
              notarse"
         );
+    }
+
+    #[test]
+    fn request_body_limit_has_a_bounded_production_default() {
+        assert_eq!(DEFAULT_MAX_REQUEST_BODY_BYTES, 1024 * 1024);
+    }
+
+    #[tokio::test]
+    async fn oversized_write_body_is_rejected_before_handler() {
+        let state = AppState::new(
+            "tcp://127.0.0.1:1",
+            Arc::new(NoOpBackend::new()),
+            None,
+            None,
+            None,
+        );
+        let app = routes(state, crate::auth::AuthConfig::disabled());
+        let body = vec![b'x'; DEFAULT_MAX_REQUEST_BODY_BYTES + 1];
+        let response = app
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/write")
+                    .header(axum::http::header::CONTENT_TYPE, "application/json")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
     }
 }

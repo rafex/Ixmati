@@ -15,6 +15,35 @@ pub mod pb {
 }
 
 pub(crate) const PROTOBUF_CONTENT_TYPE: &str = "application/protobuf";
+const DEFAULT_GRPC_MAX_MESSAGE_BYTES: usize = 1024 * 1024;
+const DEFAULT_GRPC_MAX_CONCURRENT_STREAMS: u32 = 256;
+const DEFAULT_EVENT_STREAM_BUFFER_CAPACITY: usize = 128;
+
+fn grpc_max_message_bytes_from_env() -> usize {
+    std::env::var("GRPC_MAX_MESSAGE_BYTES")
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(DEFAULT_GRPC_MAX_MESSAGE_BYTES)
+}
+
+fn grpc_max_concurrent_streams_from_env() -> u32 {
+    std::env::var("GRPC_MAX_CONCURRENT_STREAMS")
+        .ok()
+        .and_then(|value| value.parse::<u32>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(DEFAULT_GRPC_MAX_CONCURRENT_STREAMS)
+}
+
+fn event_stream_buffer_capacity_from_env() -> usize {
+    std::env::var("EVENT_STREAM_BUFFER_CAPACITY")
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        // One slot is always reserved for RESOURCE_EXHAUSTED so a slow
+        // client receives a resumable cursor instead of a silent EOF.
+        .filter(|value| *value >= 2)
+        .unwrap_or(DEFAULT_EVENT_STREAM_BUFFER_CAPACITY)
+}
 
 pub(crate) fn read_response_from_json(
     value: serde_json::Value,
@@ -426,7 +455,7 @@ impl pb::event_service_server::EventService for EventServiceImpl {
                 return Err(Status::out_of_range(message));
             }
         }
-        let (tx, rx) = tokio::sync::mpsc::channel(128);
+        let (tx, rx) = tokio::sync::mpsc::channel(event_stream_buffer_capacity_from_env());
         tokio::spawn(async move {
             let mut cursor = request.after_outbox_seq.max(0);
             let mut seen = HashSet::new();
@@ -464,16 +493,23 @@ impl pb::event_service_server::EventService for EventServiceImpl {
                         cursor = id;
                         continue;
                     }
-                    match tokio::time::timeout(Duration::from_secs(5), tx.send(Ok(event))).await {
-                        Ok(Ok(())) => cursor = id,
-                        Ok(Err(_)) => return,
-                        Err(_) => {
-                            let _ = tx.try_send(Err(Status::resource_exhausted(format!(
-                                "event stream consumer is behind; resume from cursor {cursor}"
-                            ))));
-                            return;
-                        }
+                    // Keep one bounded-channel slot free for the terminal
+                    // RESOURCE_EXHAUSTED item.  Without this reservation a
+                    // slow client filled the channel and the diagnostic error
+                    // itself was dropped, making the stream look like a
+                    // successful EOF and losing the resume cursor.
+                    if tx.capacity() <= 1 {
+                        let _ = tx.try_send(Err(Status::resource_exhausted(format!(
+                            "event stream consumer is behind; resume from cursor {cursor}"
+                        ))));
+                        return;
                     }
+                    let permit = match tx.try_reserve() {
+                        Ok(permit) => permit,
+                        Err(_) => return,
+                    };
+                    permit.send(Ok(event));
+                    cursor = id;
                 }
             }
         });
@@ -537,27 +573,44 @@ pub async fn serve(
     let addr = format!("{host}:{port}")
         .parse()
         .expect("valid gRPC address");
+    let max_message_bytes = grpc_max_message_bytes_from_env();
+    let max_concurrent_streams = grpc_max_concurrent_streams_from_env();
+    tracing::info!(
+        max_message_bytes,
+        max_concurrent_streams,
+        "gRPC resource limits configured"
+    );
+
     Server::builder()
-        .add_service(pb::write_service_server::WriteServiceServer::new(
-            WriteServiceImpl {
+        .max_concurrent_streams(Some(max_concurrent_streams))
+        .add_service(
+            pb::write_service_server::WriteServiceServer::new(WriteServiceImpl {
                 state: state.clone(),
                 auth: auth.clone(),
-            },
-        ))
-        .add_service(pb::read_service_server::ReadServiceServer::new(
-            ReadServiceImpl {
+            })
+            .max_decoding_message_size(max_message_bytes)
+            .max_encoding_message_size(max_message_bytes),
+        )
+        .add_service(
+            pb::read_service_server::ReadServiceServer::new(ReadServiceImpl {
                 state: state.clone(),
                 auth: auth.clone(),
-            },
-        ))
-        .add_service(pb::health_service_server::HealthServiceServer::new(
-            HealthServiceImpl {
+            })
+            .max_decoding_message_size(max_message_bytes)
+            .max_encoding_message_size(max_message_bytes),
+        )
+        .add_service(
+            pb::health_service_server::HealthServiceServer::new(HealthServiceImpl {
                 state: state.clone(),
-            },
-        ))
-        .add_service(pb::event_service_server::EventServiceServer::new(
-            EventServiceImpl { state, auth },
-        ))
+            })
+            .max_decoding_message_size(max_message_bytes)
+            .max_encoding_message_size(max_message_bytes),
+        )
+        .add_service(
+            pb::event_service_server::EventServiceServer::new(EventServiceImpl { state, auth })
+                .max_decoding_message_size(max_message_bytes)
+                .max_encoding_message_size(max_message_bytes),
+        )
         .serve(addr)
         .await
 }
@@ -565,6 +618,8 @@ pub async fn serve(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use pb::event_service_server::EventService;
+    use tokio_stream::StreamExt;
 
     #[test]
     fn struct_round_trip_preserves_nested_json() {
@@ -711,6 +766,90 @@ mod tests {
             event_payload.fields["status"].kind.as_ref(),
             Some(Kind::StringValue(value)) if value == "paid"
         ));
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[tokio::test]
+    async fn slow_event_client_receives_resource_exhausted_with_cursor() {
+        let path = std::env::temp_dir().join(format!(
+            "ixmati-grpc-slow-stream-{}.db",
+            uuid::Uuid::new_v4()
+        ));
+        let conn = rusqlite::Connection::open(&path).expect("temporary SQLite database");
+        conn.execute_batch(
+            "CREATE TABLE _outbox (
+                id INTEGER PRIMARY KEY,
+                event_id TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                store TEXT NOT NULL,
+                entity TEXT NOT NULL,
+                key TEXT NOT NULL,
+                version INTEGER NOT NULL,
+                occurred_at TEXT NOT NULL,
+                payload BLOB NOT NULL,
+                published_at TEXT
+            );",
+        )
+        .expect("outbox schema");
+        let payload = serde_json::to_vec(&serde_json::json!({
+            "event_id": "evt",
+            "payload": {"status": "paid"}
+        }))
+        .unwrap();
+        for id in 1..=130 {
+            conn.execute(
+                "INSERT INTO _outbox (id,event_id,event_type,store,entity,key,version,occurred_at,payload)
+                 VALUES (?1,?2,'order.updated','orders','order',?3,1,'2026-08-12T00:00:00Z',?4)",
+                rusqlite::params![id, format!("evt-{id}"), format!("o-{id}"), &payload],
+            )
+            .expect("event fixture");
+        }
+        drop(conn);
+
+        let state = crate::rest::AppState::new(
+            "tcp://127.0.0.1:1",
+            std::sync::Arc::new(ixmati_cache::NoOpBackend::new()),
+            None,
+            None,
+            None,
+        )
+        .with_db_paths(std::collections::HashMap::from([(
+            "orders".to_string(),
+            path.to_string_lossy().into_owned(),
+        )]));
+        let service = EventServiceImpl {
+            state,
+            auth: AuthConfig::disabled(),
+        };
+        let response = service
+            .subscribe_events(Request::new(pb::SubscribeEventsRequest {
+                store: "orders".into(),
+                ..Default::default()
+            }))
+            .await
+            .expect("subscribe");
+        let mut stream = response.into_inner();
+
+        // Do not consume while the producer fills the bounded queue.  The
+        // implementation must still leave a terminal diagnostic available.
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        let mut saw_resource_exhausted = false;
+        while let Some(item) = stream.next().await {
+            match item {
+                Ok(_) => {}
+                Err(error) => {
+                    assert_eq!(error.code(), tonic::Code::ResourceExhausted);
+                    assert!(error.message().contains("resume from cursor"));
+                    saw_resource_exhausted = true;
+                    break;
+                }
+            }
+        }
+        assert!(
+            saw_resource_exhausted,
+            "slow client must receive a terminal status"
+        );
+
         let _ = std::fs::remove_file(path);
     }
 }
