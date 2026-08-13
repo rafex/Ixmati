@@ -43,4 +43,4 @@ Vínculos entre artefactos del proyecto.
 | `TASK-PROTO-0005` | deployment, OpenAPI, README, docs and SpecNative | `spec-native/evidence/PROTOBUF-E2E-20260812.md`; config/distribution gates pass | `DEC-0069` |
 | `TASK-PROTO-0006` | `benchmarks/protocol_benchmark.sh`, `ixmati-protocol-bench` | `spec-native/evidence/PROTOBUF-BENCH-20260812.md` | `DEC-0069` |
 | `TASK-PROD-0002` | REST body limits, gRPC message/stream limits, slow-stream terminal cursor | `spec-native/evidence/API-HARDENING-20260813.md`; gates locales y distribución amd64 | `DEC-0080` |
-| `TASK-PROD-0003` | API-key scopes en REST/gRPC, protección de lecturas/estados y persistencia del instalador | `cargo test -p ixmati-api` (53/53); pruebas REST scoped y Protobuf | `DEC-0081` |
+| `TASK-PROD-0003` | API-key scopes en REST/gRPC, protección de lecturas/estados y persistencia del instalador | `spec-native/evidence/API-SCOPES-20260813.md`; `cargo test -p ixmati-api` (53/53) | `DEC-0081` |
