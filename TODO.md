@@ -723,8 +723,10 @@ Tablero de tareas activo. Persiste entre sesiones.
       `df381f4` se detuvo al demostrar que 150/s activa backpressure y 202
       antes de saturar el generador (`17,468/1,274/751` en ~130s), mientras
       200/s saturó al cliente (`2,338` ticks y `2,833` 202 en ~200s). Ambos
-      quedan fuera del perfil productivo; falta optimizar el writer/outbox y
-      repetir una hora completa con generador distribuido. Ver
+      quedan fuera del perfil productivo. `8451d05` elimina la espera de lote
+      completo por PUBACK, limita las colas y corrige el timeout por publish
+      fallido; falta repetir una hora completa con generador distribuido y
+      confirmar el impacto real. Ver `DEC-0083` y
       `spec-native/evidence/SOAK-CAPACITY-20260813.md`.
 - [x] `TASK-STORE-0001` — Añadir `_tombstones`, operación y digest de comando
       en `_idempotency`, con migración idempotente de esquemas existentes.

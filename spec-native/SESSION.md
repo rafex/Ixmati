@@ -5,7 +5,7 @@ agent = "codex"
 initiative = "protobuf-api"
 task = "TASK-PROTO-0004"
 intent = "Completar gRPC, REST/Protobuf, replay/live, despliegue y pruebas sin alterar la durabilidad existente"
-last_updated = "2026-08-13T04:30:00Z"
+last_updated = "2026-08-13T04:55:00Z"
 +++
 
 # Active Session
@@ -28,6 +28,14 @@ JSON/REST-Protobuf/gRPC ya fue ejecutado en Debian amd64 desde el SHA publicado.
 
 El contrato durable no cambia: `accepted` es alias de `committed`, `200`/`COMMITTED`
 confirma `_idempotency` y `202`/`PENDING` requiere consulta de estado.
+
+En `8451d05` el publicador del outbox pasó a un flujo impulsado por PUBACK:
+ya no espera el lote completo durante cinco segundos, no espera ACKs de
+publicaciones rechazadas, conserva reintentos de marcado y limita las colas de
+PUBACK. Los gates locales pasan y `helpers/shell/test_litestream_local.sh`
+validó réplica/restore contra una ruta montada `file://`. La capacidad de
+150–200/s sigue sin estar demostrada; debe repetirse el soak prolongado antes
+de cambiar el perfil productivo.
 
 Validación de cache y proyecciones ejecutada en Debian amd64. El compose
 multi-store fue corregido para montar cada SQLite como directorio de store;

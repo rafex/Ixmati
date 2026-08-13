@@ -14,7 +14,7 @@ Vínculos entre artefactos del proyecto.
 
 ## Total
 
-- **Decisiones**: el histórico está en `DECISIONS.md`; la última es `DEC-0082`
+- **Decisiones**: el histórico está en `DECISIONS.md`; la última es `DEC-0083`
 - **Tareas**: el histórico está en las carpetas de `tasks/`; se agregó
   `protobuf-api` con seis tareas
 | SPEC-WRITE-0001 | spec-native/specs/write-engine/SPEC.md | closed | 2026-07-30 |
@@ -34,9 +34,9 @@ Vínculos entre artefactos del proyecto.
 | `TASK-VAL-0036` | Pattern R reverse index + reconciler rebuild | `spec-native/evidence/PRODUCTION-HARDENING-20260811.md` | `DEC-0065` |
 | `TASK-VAL-0025` | post-index durable writer baseline and rate-controlled staircase | `spec-native/evidence/LOAD-POST-INDEX-20260811.md` | `DEC-0067` |
 | `TASK-PROD-0001` | `benchmarks/ixmati-soak.jmx`, `benchmarks/soak_capacity.sh`, `ixmati-protocol-bench` | `spec-native/evidence/PRODUCTION-PROFILE-10S-SHA-6C38EB8-20260813.md`; smoke post-hardening `PRODUCTION-PROFILE-10S-SHA-359CF89-SMOKE-20260813.md` | `DEC-0077` |
-| `TASK-CAP-0001` | `benchmarks/ixmati-soak.jmx`, `benchmarks/soak_capacity.sh`, bounded `rate_load.py` | `spec-native/evidence/SOAK-CAPACITY-20260813.md`: 150/s activa backpressure; 200/s satura el generador | pending |
+| `TASK-CAP-0001` | `benchmarks/ixmati-soak.jmx`, `benchmarks/soak_capacity.sh`, bounded `rate_load.py`, `crates/ixmati-writer/src/event_publisher.rs` ACK-driven | `spec-native/evidence/SOAK-CAPACITY-20260813.md`; `DEC-0083`; 150/s activa backpressure y 200/s satura el generador; falta repetir soak | pending |
 | `TASK-STORE-0001`..`0006` | `crates/ixmati-store-migrate`, tombstones, migration runbook | `spec-native/evidence/STORE-MIGRATION-E2E-20260813.md`; cutover remoto pendiente | `DEC-0068` |
-| `TASK-WRITE-0014` | `config/litestream.yml`, `containers/litestream/`, `helpers/python/installer.py`, `helpers/shell/litestream_restore.sh`, `helpers/shell/test_litestream_s3.sh` | `PRODUCTION-BACKUP-LOCAL-20260813.md` + `PRODUCTION-BACKUP-S3-COMPAT-20260813.md`; bucket remoto real, segundo destino y RPO/RTO pendientes | `DEC-0078` |
+| `TASK-WRITE-0014` | `config/litestream.yml`, `containers/litestream/`, `helpers/python/installer.py`, `helpers/shell/litestream_restore.sh`, `helpers/shell/test_litestream_local.sh`, `helpers/shell/test_litestream_s3.sh` | `PRODUCTION-BACKUP-LOCAL-20260813.md` + `PRODUCTION-BACKUP-LOCAL-FILE-20260813.md` + `PRODUCTION-BACKUP-S3-COMPAT-20260813.md`; bucket remoto real, segundo destino y RPO/RTO pendientes | `DEC-0078` |
 | `TASK-PROTO-0001` | `proto/ixmati/v1/`, `build.rs`, `make proto` | `cargo check -p ixmati-api`, `make proto` | `DEC-0069` |
 | `TASK-PROTO-0002`..`0003` | `crates/ixmati-api/src/grpc.rs`, REST dispatch and generated tonic client | `spec-native/evidence/PROTOBUF-E2E-20260812.md` | `DEC-0069` |
 | `TASK-PROTO-0004` | `EventService.SubscribeEvents` replay/live, buffer acotado y cursor de reanudación | `spec-native/evidence/PROTOBUF-E2E-20260812.md`; tests locales de cliente lento/backpressure; integración remota de retención/reconexión pendiente | `DEC-0069`, `DEC-0080` |

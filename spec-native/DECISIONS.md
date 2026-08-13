@@ -1874,3 +1874,26 @@ se mantiene en 10/s por store, validada durante una hora. No se elevará el
 throttle productivo para maquillar estos resultados; la siguiente optimización
 debe aumentar la capacidad real del writer/outbox y repetirse con un generador
 distribuido.
+
+### DEC-0083 — Publicación del outbox impulsada por PUBACK y con límites
+
+- Fecha: 2026-08-13
+- Estado: `accepted`
+- Relacionado con: `TASK-CAP-0001`, `TASK-WRITE-0018`
+- Implementación: `crates/ixmati-writer/src/event_publisher.rs`,
+  `crates/ixmati-writer/src/metrics.rs`
+- Evidencia local: `spec-native/evidence/PRODUCTION-BACKUP-LOCAL-FILE-20260813.md`
+
+El publicador ya no espera hasta cinco segundos a que un lote completo reciba
+PUBACK antes de continuar. Procesa los PUBACK individualmente, los agrupa para
+marcar `published_at` en SQLite y conserva los IDs si el marcado falla. Una
+publicación que falla al entrar a rumqttc se retira del tracker y no se espera
+un ACK inexistente. Los canales de PUBACK y el conjunto de pendientes son
+acotados; si se llenan, el evento permanece en `_outbox` y se reintenta, con
+una métrica explícita de descarte de ACK.
+
+La frontera durable no cambia: sólo un PUBACK permite marcar el evento como
+publicado y la entrega sigue siendo at-least-once. Esta decisión elimina
+head-of-line blocking y hace observable el marcado, pero no demuestra por sí
+sola capacidad sostenible de 150–200/s; esa capacidad debe repetirse en
+Debian con una prueba prolongada.
