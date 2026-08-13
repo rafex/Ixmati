@@ -44,6 +44,14 @@ que usa MinIO fijado por digest, replica SQLite y restaura desde el objeto
 remoto. Esta prueba valida compatibilidad de transporte; no reemplaza un
 simulacro contra el bucket remoto de producción.
 
+El caso normal con un disco o NAS montado se valida sin S3 con
+[`helpers/shell/test_litestream_local.sh`](helpers/shell/test_litestream_local.sh)
+o `just litestream-local`. El arnés ejecuta `litestream replicate` hacia
+`file:///backup/`, restaura desde esa ruta y verifica integridad, idempotencia
+y outbox en volúmenes Podman desechables. En una instalación nativa, el mismo
+flujo queda gestionado por `ixmati-litestream-file.service` y usa
+`/var/lib/ixmati/backups` como destino local.
+
 En un despliegue multi-store se pueden limitar las claves por store. Las
 claves sin entrada en `IXMATI_API_KEY_SCOPES` conservan compatibilidad y tienen
 acceso global; para producción multi-tenant se recomienda declarar todas las

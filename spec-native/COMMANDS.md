@@ -199,6 +199,19 @@ systemctl status ixmati-litestream-s3
 sqlite3 /tmp/pedidos-restored.db "PRAGMA integrity_check;"
 ```
 
+La prueba reproducible del caso de uso local replica directamente a un
+almacenamiento montado mediante `file://` y restaura desde la misma ruta:
+
+```bash
+just litestream-local
+# equivalente:
+helpers/shell/test_litestream_local.sh
+```
+
+El arnés usa volúmenes Podman desechables, escribe datos antes y después de
+iniciar la réplica, ejecuta `litestream replicate ... file:///backup/` y valida
+el restore con `PRAGMA integrity_check`, `_idempotency` y `_outbox`.
+
 Variables soportadas por el instalador: `IXMATI_LITESTREAM_S3_BUCKET`,
 `IXMATI_LITESTREAM_S3_PREFIX`, `IXMATI_LITESTREAM_S3_REGION`,
 `IXMATI_LITESTREAM_S3_ENDPOINT`, `AWS_ACCESS_KEY_ID`,

@@ -208,6 +208,37 @@ pub static OUTBOX_PUBACK_TIMEOUTS: LazyLock<Counter<u64>> = LazyLock::new(|| {
         .build()
 });
 
+pub static OUTBOX_PUBLISHED: LazyLock<Counter<u64>> = LazyLock::new(|| {
+    METER
+        .u64_counter("outbox_published")
+        .with_description("Outbox rows marked published after a PUBACK")
+        .build()
+});
+
+pub static OUTBOX_MARK_FAILURES: LazyLock<Counter<u64>> = LazyLock::new(|| {
+    METER
+        .u64_counter("outbox_mark_failures")
+        .with_description("Failed attempts to mark PUBACKed outbox rows")
+        .build()
+});
+
+pub static OUTBOX_PUBACK_QUEUE_DROPS: LazyLock<Counter<u64>> = LazyLock::new(|| {
+    METER
+        .u64_counter("outbox_puback_queue_drops")
+        .with_description("PUBACKs dropped because the bounded acknowledgement queue was full")
+        .build()
+});
+
+pub static OUTBOX_MARK_DURATION: LazyLock<Histogram<f64>> = LazyLock::new(|| {
+    METER
+        .f64_histogram("outbox_mark_duration_seconds")
+        .with_description("Time to mark PUBACKed outbox rows as published")
+        .with_boundaries(vec![
+            0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0,
+        ])
+        .build()
+});
+
 pub static OUTBOX_LAST_PUBACK_UNIX_SECONDS: LazyLock<Gauge<i64>> = LazyLock::new(|| {
     METER
         .i64_gauge("outbox_last_puback_unix_seconds")
@@ -307,6 +338,10 @@ mod tests {
         CACHE_SYNC_ERRORS.add(1, &[]);
         CACHE_SYNC_DEFERRED.add(1, &[]);
         OUTBOX_PUBACK_TIMEOUTS.add(1, &[]);
+        OUTBOX_PUBLISHED.add(1, &[]);
+        OUTBOX_MARK_FAILURES.add(1, &[]);
+        OUTBOX_PUBACK_QUEUE_DROPS.add(1, &[]);
+        OUTBOX_MARK_DURATION.record(0.01, &[]);
         let out = encode_metrics();
         assert!(out.contains("ixmati_write_batch_duration_seconds_bucket"));
         assert!(out.contains("ixmati_mqtt_ack_failures_total"));
@@ -315,6 +350,10 @@ mod tests {
         assert!(out.contains("ixmati_mqtt_commands_acked_total"));
         assert!(out.contains("ixmati_cache_sync_errors_total"));
         assert!(out.contains("ixmati_outbox_puback_timeouts_total"));
+        assert!(out.contains("ixmati_outbox_published_total"));
+        assert!(out.contains("ixmati_outbox_mark_failures_total"));
+        assert!(out.contains("ixmati_outbox_puback_queue_drops_total"));
+        assert!(out.contains("ixmati_outbox_mark_duration_seconds_bucket"));
         assert!(!out.contains("ixmati_ixmati_"));
         assert!(!out.contains("_total_total"));
     }

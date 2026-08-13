@@ -12,3 +12,8 @@ installer-dist:
 [group('installer')]
 installer-test:
     @{{repo_root}}/helpers/shell/test_installer_debian.sh
+
+# verifica la réplica y el restore usando un destino local montado y file://
+[group('installer')]
+litestream-local:
+    @{{repo_root}}/helpers/shell/test_litestream_local.sh

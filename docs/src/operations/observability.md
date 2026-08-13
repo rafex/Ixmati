@@ -26,6 +26,10 @@ con varios stores; el instalador no abre puertos por defecto.
 | `ixmati_mqtt_ack_failures_total` | writer | ACKs de comandos que fallaron |
 | `ixmati_outbox_publish_attempts_total` | writer | Filas entregadas al cliente MQTT |
 | `ixmati_outbox_puback_timeouts_total` | writer | Filas sin PUBACK dentro del timeout |
+| `ixmati_outbox_published_total` | writer | Filas marcadas después de PUBACK |
+| `ixmati_outbox_mark_failures_total` | writer | Fallos al marcar filas confirmadas |
+| `ixmati_outbox_mark_duration_seconds` | writer | Duración del marcado durable posterior a PUBACK |
+| `ixmati_outbox_puback_queue_drops_total` | writer | PUBACKs descartados por cola acotada; el outbox se reintenta |
 | `ixmati_outbox_last_puback_unix_seconds` | writer | Último PUBACK del outbox |
 | `ixmati_projector_events_processed_total` | projector | Eventos procesados |
 | `ixmati_projector_last_event_unix_seconds` | projector | Último evento procesado |

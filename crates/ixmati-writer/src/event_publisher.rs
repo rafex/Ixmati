@@ -2,7 +2,8 @@ use rumqttc::{Client, Connection, Event, MqttOptions, Outgoing, Packet, QoS};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::mpsc::{self, Receiver, SyncSender};
+use std::time::{Duration, Instant};
 
 use crate::outbox::Outbox;
 use crate::write_thread::WriteHandle;
@@ -11,15 +12,21 @@ use crate::write_thread::WriteHandle;
 struct PublishTracker {
     queued: VecDeque<i64>,
     inflight: HashMap<u16, i64>,
+    pending_since: HashMap<i64, Instant>,
+    timeout_reported: HashSet<i64>,
 }
 
 impl PublishTracker {
     fn queue(&mut self, row_id: i64) {
         self.queued.push_back(row_id);
+        self.pending_since.insert(row_id, Instant::now());
+        self.timeout_reported.remove(&row_id);
     }
 
     fn remove_queued(&mut self, row_id: i64) {
         self.queued.retain(|id| *id != row_id);
+        self.pending_since.remove(&row_id);
+        self.timeout_reported.remove(&row_id);
     }
 
     fn contains_row(&self, row_id: i64) -> bool {
@@ -39,9 +46,26 @@ impl PublishTracker {
     }
 
     fn on_puback(&mut self, packet_id: u16) -> Option<i64> {
-        self.inflight.remove(&packet_id)
+        let row_id = self.inflight.remove(&packet_id)?;
+        self.pending_since.remove(&row_id);
+        self.timeout_reported.remove(&row_id);
+        Some(row_id)
+    }
+
+    fn count_new_timeouts(&mut self, timeout: Duration) -> usize {
+        let mut count = 0;
+        for (&row_id, since) in &self.pending_since {
+            if since.elapsed() >= timeout && self.timeout_reported.insert(row_id) {
+                count += 1;
+            }
+        }
+        count
     }
 }
+
+const PUBACK_TIMEOUT: Duration = Duration::from_secs(5);
+const PUBACK_CHANNEL_CAPACITY: usize = 4096;
+const PENDING_PUBACK_CAPACITY: usize = 4096;
 
 /// Publicador de eventos del outbox, sin tokio (ver DEC-0052). Antes
 /// (DEC-0050/`TASK-VAL-0019`) esta función corría dentro de una `async fn`
@@ -58,7 +82,7 @@ pub struct EventPublisher {
     write_handle: WriteHandle,
     tracker: Arc<Mutex<PublishTracker>>,
     puback_rx: Mutex<Receiver<i64>>,
-    late_acks: Mutex<HashSet<i64>>,
+    pending_pubacks: Mutex<HashSet<i64>>,
 }
 
 impl EventPublisher {
@@ -82,7 +106,7 @@ impl EventPublisher {
 
         let (client, connection) = Client::new(mqtt_options, 100);
         let tracker = Arc::new(Mutex::new(PublishTracker::default()));
-        let (puback_tx, puback_rx) = mpsc::channel();
+        let (puback_tx, puback_rx) = mpsc::sync_channel(PUBACK_CHANNEL_CAPACITY);
 
         Self::spawn_eventloop(
             connection,
@@ -98,7 +122,7 @@ impl EventPublisher {
             write_handle,
             tracker,
             puback_rx: Mutex::new(puback_rx),
-            late_acks: Mutex::new(HashSet::new()),
+            pending_pubacks: Mutex::new(HashSet::new()),
         }
     }
 
@@ -109,7 +133,7 @@ impl EventPublisher {
     fn spawn_eventloop(
         mut connection: Connection,
         tracker: Arc<Mutex<PublishTracker>>,
-        puback_tx: Sender<i64>,
+        puback_tx: SyncSender<i64>,
         store: String,
     ) {
         std::thread::Builder::new()
@@ -126,8 +150,17 @@ impl EventPublisher {
                                 &[opentelemetry::KeyValue::new("store", store.clone())],
                             );
                             let row_id = tracker.lock().unwrap().on_puback(puback.pkid);
-                            if let Some(row_id) = row_id {
-                                let _ = puback_tx.send(row_id);
+                            if let Some(row_id) = row_id
+                                && puback_tx.try_send(row_id).is_err()
+                            {
+                                crate::metrics::OUTBOX_PUBACK_QUEUE_DROPS.add(
+                                    1,
+                                    &[opentelemetry::KeyValue::new("store", store.clone())],
+                                );
+                                tracing::warn!(
+                                    row_id,
+                                    "PUBACK queue full; outbox row will be retried"
+                                );
                             }
                         }
                         Ok(_) => continue,
@@ -150,17 +183,24 @@ impl EventPublisher {
     /// `UPDATE` durable sólo ocurre después de observar el PUBACK asociado al
     /// packet id MQTT. Si el proceso cae antes de ese punto, el evento queda
     /// en el outbox y se reintenta de forma segura.
+    ///
+    /// El ciclo es deliberadamente ACK-driven: no espera a que un lote entero
+    /// reciba PUBACK. Esperar el lote completo introduce head-of-line blocking
+    /// y puede consumir cinco segundos aunque sólo una publicación haya
+    /// fallado. Los PUBACK se acumulan en un buffer acotado por la iteración
+    /// del publicador y se marcan en SQLite en lotes pequeños.
     pub fn publish_unpublished(&self, store: &str, limit: usize) -> rusqlite::Result<usize> {
+        let mark_limit = limit.max(1);
+        let mut marked = self.drain_pubacks(mark_limit)?;
         let rows = {
             let conn = crate::db::open_with_pragmas(&self.db_path)?;
             Outbox::fetch_unpublished(&conn, store, limit)?
         };
 
         if rows.is_empty() {
-            return Ok(0);
+            return Ok(marked);
         }
 
-        let mut queued_ids = HashSet::with_capacity(rows.len());
         for row in &rows {
             let topic = format!("ixmati/evt/{}/{}/{}", row.store, row.entity, row.key);
             let already_tracked = {
@@ -172,7 +212,6 @@ impl EventPublisher {
                     false
                 }
             };
-            queued_ids.insert(row.id);
             if already_tracked {
                 continue;
             }
@@ -197,60 +236,83 @@ impl EventPublisher {
             }
         }
 
-        let published_ids = self.wait_for_pubacks(&queued_ids, std::time::Duration::from_secs(5));
-        let timed_out = queued_ids.len().saturating_sub(published_ids.len());
+        // Report stalled acknowledgements without blocking the publisher. A
+        // row remains tracked and will be retried according to the normal
+        // outbox loop; the metric is emitted once per pending row until an
+        // ACK arrives or the publish attempt is removed.
+        let timed_out = self
+            .tracker
+            .lock()
+            .unwrap()
+            .count_new_timeouts(PUBACK_TIMEOUT);
         if timed_out > 0 {
             crate::metrics::OUTBOX_PUBACK_TIMEOUTS.add(
                 timed_out as u64,
                 &[opentelemetry::KeyValue::new("store", self.store.clone())],
             );
         }
-        if !published_ids.is_empty() {
-            if published_ids.len() == queued_ids.len() {
-                pause_after_puback_for_test(&self.store, &published_ids);
-            }
-            self.write_handle
-                .mark_published_batch(published_ids.clone())?;
-        }
 
-        Ok(published_ids.len())
+        // A fast broker can deliver PUBACKs before this iteration returns.
+        // Drain once more so those acknowledgements do not wait for the next
+        // timer tick; acknowledgements arriving later are handled at the next
+        // iteration without blocking this publisher thread.
+        marked += self.drain_pubacks(mark_limit)?;
+
+        Ok(marked)
     }
 
-    fn wait_for_pubacks(&self, expected: &HashSet<i64>, timeout: std::time::Duration) -> Vec<i64> {
-        if expected.is_empty() {
-            return Vec::new();
-        }
-
-        let deadline = std::time::Instant::now() + timeout;
-        let mut acked = self.late_acks.lock().unwrap();
+    /// Drena los PUBACK recibidos y marca sus filas en SQLite. Si el UPDATE
+    /// falla, conserva los IDs para que la siguiente iteración pueda reintentar
+    /// sin convertir un error transitorio en pérdida de estado de publicación.
+    fn drain_pubacks(&self, limit: usize) -> rusqlite::Result<usize> {
         let rx = self.puback_rx.lock().unwrap();
-
-        loop {
-            while let Ok(row_id) = rx.try_recv() {
-                acked.insert(row_id);
-            }
-
-            if expected.iter().all(|row_id| acked.contains(row_id)) {
-                break;
-            }
-
-            let Some(remaining) = deadline.checked_duration_since(std::time::Instant::now()) else {
-                break;
-            };
-            match rx.recv_timeout(remaining.min(std::time::Duration::from_millis(100))) {
-                Ok(row_id) => {
-                    acked.insert(row_id);
-                }
-                Err(mpsc::RecvTimeoutError::Timeout) => {}
-                Err(mpsc::RecvTimeoutError::Disconnected) => break,
+        let mut pending = self.pending_pubacks.lock().unwrap();
+        while let Ok(row_id) = rx.try_recv() {
+            if pending.len() < PENDING_PUBACK_CAPACITY {
+                pending.insert(row_id);
+            } else {
+                crate::metrics::OUTBOX_PUBACK_QUEUE_DROPS.add(
+                    1,
+                    &[opentelemetry::KeyValue::new("store", self.store.clone())],
+                );
+                tracing::warn!(
+                    row_id,
+                    "PUBACK pending set full; outbox row will be retried"
+                );
             }
         }
+        drop(rx);
 
-        expected
-            .iter()
-            .filter(|row_id| acked.remove(row_id))
-            .copied()
-            .collect()
+        if pending.is_empty() {
+            return Ok(0);
+        }
+
+        let ids = pending.iter().copied().take(limit).collect::<Vec<_>>();
+        pause_after_puback_for_test(&self.store, &ids);
+        let started = std::time::Instant::now();
+        match self.write_handle.mark_published_batch(ids.clone()) {
+            Ok(marked) => {
+                for id in &ids {
+                    pending.remove(id);
+                }
+                crate::metrics::OUTBOX_PUBLISHED.add(
+                    marked as u64,
+                    &[opentelemetry::KeyValue::new("store", self.store.clone())],
+                );
+                crate::metrics::OUTBOX_MARK_DURATION.record(
+                    started.elapsed().as_secs_f64(),
+                    &[opentelemetry::KeyValue::new("store", self.store.clone())],
+                );
+                Ok(marked)
+            }
+            Err(error) => {
+                crate::metrics::OUTBOX_MARK_FAILURES.add(
+                    1,
+                    &[opentelemetry::KeyValue::new("store", self.store.clone())],
+                );
+                Err(error)
+            }
+        }
     }
 
     pub fn publish_loop(
@@ -319,6 +381,7 @@ mod tests {
     use crate::outbox::Outbox;
     use ixmati_core::EventEnvelope;
     use rusqlite::Connection;
+    use std::time::Duration;
 
     fn make_event() -> EventEnvelope {
         EventEnvelope {
@@ -363,5 +426,28 @@ mod tests {
         assert_eq!(tracker.inflight.get(&8), Some(&11));
         assert_eq!(tracker.on_puback(7), Some(10));
         assert_eq!(tracker.on_puback(7), None);
+    }
+
+    #[test]
+    fn failed_publish_is_removed_without_waiting_for_a_puback() {
+        let mut tracker = PublishTracker::default();
+        tracker.queue(10);
+        tracker.remove_queued(10);
+
+        assert!(!tracker.contains_row(10));
+        assert_eq!(tracker.count_new_timeouts(Duration::ZERO), 0);
+    }
+
+    #[test]
+    fn timeout_is_counted_once_until_puback() {
+        let mut tracker = PublishTracker::default();
+        tracker.queue(10);
+
+        assert_eq!(tracker.count_new_timeouts(Duration::ZERO), 1);
+        assert_eq!(tracker.count_new_timeouts(Duration::ZERO), 0);
+
+        tracker.on_outgoing_publish(7);
+        assert_eq!(tracker.on_puback(7), Some(10));
+        assert_eq!(tracker.count_new_timeouts(Duration::ZERO), 0);
     }
 }
