@@ -87,7 +87,8 @@ deben deduplicar por identificador de evento.
 
 ## Capacidad de referencia
 
-El throttle predeterminado de 10/s es un límite provisional de admisión. En una
+El throttle predeterminado de 10/s por store es el perfil operativo demostrado.
+En una
 prueba de capacidad con throttle temporal elevado sobre Debian amd64 se
 observaron 40–120/s sin respuestas `202` ni crecimiento de cola. A 150/s
 aparecieron `202`, latencia de segundos y cola; ese escalón representa
@@ -99,9 +100,11 @@ La comparativa histórica con el perfil anterior observó p99 cercana a 2 s en
 `ack_mode=committed`. El perfil actual de 10/s usa batches de 100 ms y cache
 post-commit; un control limpio de cinco minutos obtuvo 3,001/3,001 `200` y
 p99 de 212.75 ms, pero la corrida exacta de unos 12 minutos sobre
-`b023819` acumuló 283 `PENDING`. La capacidad productiva sigue sin estar
-cerrada; debe repetirse una hora después de corregir la segunda ruta de
-escritura SQLite del publicador. Ixmati continúa siendo beta viable para
+`b023819` acumuló 283 `PENDING`; después de corregir la segunda ruta de
+escritura SQLite del publicador, `6c38eb8` completó una hora con
+`36,001/36,001` respuestas `200`, p99 de 212.86 ms y outbox drenado. Ixmati
+queda validado para este perfil de escritura moderada y continúa siendo beta
+viable para
 escritura moderada y alta fan-out de lectura, no un reemplazo de PostgreSQL
 para cargas intensivas de escritura. Los `429` por encima del límite son
 backpressure esperado y deben monitorizarse junto con el último commit,

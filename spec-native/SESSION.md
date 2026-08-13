@@ -61,8 +61,10 @@ por timeout aunque las claves terminaron comprometidas. Una ejecución exacta
 de 10/s sobre `b023819` acumuló 283 `PENDING` en aproximadamente 12 minutos
 y se documentó en `PRODUCTION-PROFILE-10S-SHA-B023819-20260813.md`. El
 publicador de eventos escribía `published_at` desde una segunda conexión
-SQLite; la corrección para devolver esa operación al hilo único de escritura
-está en progreso y requiere una nueva validación de una hora.
+SQLite. La corrección devolvió esa operación al hilo único de escritura; la
+validación exacta de `6c38eb8` completó una hora a 10/s con `36,001/36,001`
+respuestas `200`, p99 de 212.86 ms, outbox drenado e `integrity_check=ok`.
+El resultado está en `PRODUCTION-PROFILE-10S-SHA-6C38EB8-20260813.md`.
 
 ## Next steps
 
@@ -71,7 +73,7 @@ cliente lento, backpressure, `OUT_OF_RANGE` tras retención y reconexión con
 cursor. La prueba
 prolongada de 150/s y 200/s, merge conflictivo de stores, topics antiguos y
 restauración desde backup siguen siendo trabajo independiente. El perfil
-recomendado queda en 10/s con margen operativo; 40/s es diagnóstico. `mdbook` continúa
+recomendado queda en 10/s con evidencia de una hora; 40/s es diagnóstico. `mdbook` continúa
 pendiente por no estar instalado localmente.
 
 ## Context for next agent

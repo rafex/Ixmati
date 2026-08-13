@@ -696,14 +696,12 @@ Tablero de tareas activo. Persiste entre sesiones.
 
 ## Active — Capacity and Store Lifecycle
 
-- [ ] `TASK-PROD-0001` — Validar el perfil productivo recomendado de 10/s
-      durante una hora con 200 clientes, `Retry-After`, cero escrituras
-      confirmadas perdidas, outbox drenado, integrity check y snapshots de
-      readiness y métricas. `15/s` falló durante la validación prolongada:
-      el API acumuló `PENDING` por vencimiento del límite de 2s aunque las
-      claves terminaron comprometidas; se redujo el límite para recuperar
-      margen. Falta cerrar la hora completa del perfil de 10/s sobre el SHA
-      publicado.
+- [x] `TASK-PROD-0001` — Perfil productivo de 10/s validado durante una hora
+      contra el SHA publicado `6c38eb8`, con 200 clientes y generador no
+      saturado: 36,001/36,001 respuestas `200`, p99=212.86ms, cero timeouts,
+      outbox drenado, `integrity_check=ok` y cinco minutos de drenado. 15/s
+      falló en una corrida previa; 150/s y 200/s siguen abiertos como
+      capacidad independiente.
 
 - [x] `TASK-PROTO-0002..0003,0005..0006` — gRPC unary, REST/Protobuf,
       despliegue y benchmark comparativo cerrados con E2E local y evidencia

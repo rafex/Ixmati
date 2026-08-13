@@ -46,11 +46,10 @@ durabilidad.
 - **En curso**: iniciativa `protobuf-api`: gRPC unary y streaming en `30100`,
   REST/Protobuf y compatibilidad REST/JSON. Falta cerrar integración real con
   clientes tonic/reqwest y medir impacto sobre ACK durable.
-- **Bloqueado por evidencia**: prueba prolongada de capacidad. La ejecución
-  exacta de 10/s sobre `b023819` acumuló `PENDING` antes de una hora; primero
-  debe validarse la corrección single-writer de SQLite y después repetirse el
-  soak. 10/s es sólo límite provisional de admisión; 150/s y 200/s siguen
-  siendo diagnóstico.
+- **Completado para el perfil base**: `6c38eb8` sostuvo 10/s durante una hora
+  con confirmación durable completa y drenado correcto. La prueba prolongada
+  de 150/s y 200/s sigue pendiente y no debe extrapolarse desde el perfil
+  base; esas tasas continúan siendo diagnóstico.
 - **En curso**: ciclo de vida offline de stores (renombrar, merge, split),
   con tombstones, LWW determinista y reconstrucción mediante reconciler.
 - Siguiente iniciativa: sharding interno de un store.

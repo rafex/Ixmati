@@ -52,18 +52,19 @@ durable de `_outbox`, replay acotado y entrega at-least-once.
 
 ## Capacidad y límites conocidos
 
-- El throttle predeterminado es de 10 escrituras por segundo como límite
-  provisional de admisión, no como capacidad productiva demostrada. La
+- El throttle predeterminado es de 10 escrituras por segundo por store. Una
+  corrida de una hora contra el SHA `6c38eb8`, con 200 clientes y generador no
+  saturado, demostró este perfil como sostenible. La
   admisión usa un token bucket por store con una ráfaga máxima pequeña para no
   convertir el jitter normal del cliente en rechazos espurios.
 - El perfil de despliegue usa `BATCH_INTERVAL_MS=100` y sincronización de cache
   post-commit con cola acotada (`CACHE_SYNC_QUEUE_CAPACITY=1000`); la cache no
   forma parte de la frontera de durabilidad.
-- Un control rate-controlled de cinco minutos a 10/s, con 200 clientes y
-  generador no saturado, confirmó 3,001/3,001 respuestas `200`, p99 de
-  212.75 ms, integridad SQLite correcta y outbox drenado. La ejecución
-  posterior contra el SHA exacto `b023819` acumuló 283 `202/PENDING` en unos
-  12 minutos; por tanto, 10/s todavía no es una capacidad productiva cerrada.
+- La primera ejecución exacta sobre `b023819` acumuló 283 `202/PENDING` en
+  unos 12 minutos. Se corrigió la segunda ruta de escritura SQLite del
+  publicador y la ejecución exacta posterior sobre `6c38eb8` obtuvo
+  `36,001/36,001` respuestas `200`, p99 de `212.86 ms`, cero saturación,
+  `integrity_check=ok` y outbox drenado durante una hora más cinco minutos.
 - El candidato anterior de 15/s no fue estable: en una corrida prolongada
   acumuló respuestas `202/PENDING` por vencer el límite de confirmación de 2 s,
   aunque las claves terminaron comprometidas. Por eso 15/s queda como
@@ -79,9 +80,9 @@ durable de `_outbox`, replay acotado y entrega at-least-once.
   puede producir duplicados, pero no debe perder eventos confirmados.
 - Cada store tiene un writer y un archivo SQLite; sharding interno, clustering
   de Mosquitto y failover transparente siguen fuera del alcance de esta beta.
-- El publicador de eventos debe usar el mismo hilo dueño de SQLite para marcar
-  `published_at`; cualquier build anterior a esta corrección no debe usarse
-  para validar capacidad.
+- El publicador de eventos usa el mismo hilo dueño de SQLite para marcar
+  `published_at`; cualquier build anterior a `6c38eb8` no debe usarse para
+  validar capacidad.
 
 ## Comparativa de capacidad
 

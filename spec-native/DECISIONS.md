@@ -1733,7 +1733,9 @@ introducir contención en el mismo archivo durante carga sostenida.
 
 La corrección consiste en enviar las marcas de `published_at` como trabajos al
 `WriteHandle`; sólo ese hilo ejecuta escrituras SQLite. El cambio tiene prueba
-unitaria específica, pero aún requiere build amd64, repetición limpia de 10/s
-durante una hora, drenado de cinco minutos y luego una nueva evaluación de
-150/s/200/s. Hasta entonces, 10/s permanece como límite provisional de
-admisión, no como capacidad productiva certificada.
+unitaria específica y fue validado en amd64 con `6c38eb8`: una hora a 10/s
+produjo `36,001/36,001` respuestas `200`, p99 de 212.86 ms, cero saturación
+del cliente, cero outbox pendiente tras cinco minutos de drenado e
+`integrity_check=ok`. Por tanto, 10/s queda como perfil productivo
+demostrado para este host y configuración. La evaluación independiente de
+150/s/200/s sigue pendiente y no debe extrapolarse desde este resultado.
