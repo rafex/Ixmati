@@ -1897,3 +1897,24 @@ publicado y la entrega sigue siendo at-least-once. Esta decisión elimina
 head-of-line blocking y hace observable el marcado, pero no demuestra por sí
 sola capacidad sostenible de 150–200/s; esa capacidad debe repetirse en
 Debian con una prueba prolongada.
+
+### DEC-0084 — El perfil productivo permanece en 10/s tras el ajuste del publisher
+
+- Fecha: 2026-08-13
+- Estado: `accepted`
+- Relacionado con: `TASK-CAP-0001`, `TASK-PROD-0001`, `TASK-WRITE-0014`
+- Evidencia: `spec-native/evidence/PRODUCTION-STATUS-20260813.md`
+
+La primera validación posterior a `8451d05`, ejecutada desde el SHA publicado
+`766b411`, mantuvo una tasa controlada de 150/s durante 300 segundos sin
+saturación del generador. El sistema procesó 45,000 comandos, de los cuales
+42,265 terminaron en HTTP 200 dentro de la ventana durable de 2 segundos y
+2,735 en HTTP 202/PENDING. El p99 fue 2,076.592 ms; después del drenado el
+outbox quedó en cero y `PRAGMA integrity_check` fue `ok`.
+
+El ajuste corrigió el bloqueo del publicador y evitó pérdida observable, pero
+no convirtió 150/s en un perfil productivo: el porcentaje durable confirmado
+dentro de la ventana fue 93.92%, por debajo del guardrail operativo de 99.5%.
+El perfil recomendado sigue siendo 10 escrituras durables/s por store, que sí
+tiene evidencia de una hora con 36,001/36,001 respuestas 200. Los resultados
+de 200/s siguen inconclusos cuando el generador se satura.

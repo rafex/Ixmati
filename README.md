@@ -140,6 +140,12 @@ cliente es demasiado lento. Estos valores se pueden ajustar explícitamente en
   `202` en unos 200 segundos. Ver
   [`SOAK-CAPACITY-20260813.md`](spec-native/evidence/SOAK-CAPACITY-20260813.md).
   Ninguna de esas tasas es un perfil productivo demostrado.
+- La repetición posterior a `8451d05`, sobre `766b411`, procesó 45,000
+  operaciones a 150/s durante 300 segundos sin saturar el generador: 42,265
+  respuestas `200`, 2,735 `202`, p99=2,076.592 ms, outbox drenado e
+  integridad SQLite correcta. El resultado confirma que el publisher mejoró,
+  pero 150/s sigue fuera del perfil productivo; el detalle está en
+  [`PRODUCTION-STATUS-20260813.md`](spec-native/evidence/PRODUCTION-STATUS-20260813.md).
 - La entrega de eventos es at-least-once: un crash en la ventana de PUBACK
   puede producir duplicados, pero no debe perder eventos confirmados.
 - Cada store tiene un writer y un archivo SQLite; sharding interno, clustering

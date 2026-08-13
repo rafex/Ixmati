@@ -720,14 +720,15 @@ Tablero de tareas activo. Persiste entre sesiones.
       test local; faltan retención/reconexión contra el stack remoto.
 
 - [ ] `TASK-CAP-0001` — Soak prolongado de 150/s y 200/s: la ejecución sobre
-      `df381f4` se detuvo al demostrar que 150/s activa backpressure y 202
-      antes de saturar el generador (`17,468/1,274/751` en ~130s), mientras
-      200/s saturó al cliente (`2,338` ticks y `2,833` 202 en ~200s). Ambos
-      quedan fuera del perfil productivo. `8451d05` elimina la espera de lote
-      completo por PUBACK, limita las colas y corrige el timeout por publish
-      fallido; falta repetir una hora completa con generador distribuido y
-      confirmar el impacto real. Ver `DEC-0083` y
-      `spec-native/evidence/SOAK-CAPACITY-20260813.md`.
+      `df381f4` demostró que 150/s activa backpressure y 202 antes de saturar
+      el generador (`17,468/1,274/751` en ~130s), mientras 200/s saturó al
+      cliente (`2,338` ticks y `2,833` 202 en ~200s). Tras `8451d05`, una
+      corrida rate-controlled de 300s a 150/s sobre `766b411` procesó 45,000
+      comandos sin saturación del cliente: 42,265 HTTP 200, 2,735 HTTP 202,
+      p99=2,076.592ms, outbox=0 e integridad SQLite OK. El fix mejora el
+      publisher, pero 150/s sigue fuera del perfil productivo y no sustituye
+      el soak de una hora; 200/s continúa inconcluso. Ver `DEC-0083`,
+      `DEC-0084` y `spec-native/evidence/PRODUCTION-STATUS-20260813.md`.
 - [x] `TASK-STORE-0001` — Añadir `_tombstones`, operación y digest de comando
       en `_idempotency`, con migración idempotente de esquemas existentes.
 - [x] `TASK-STORE-0002` — Crear `ixmati-store-migrate` con manifiesto,

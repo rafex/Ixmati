@@ -5,7 +5,7 @@ agent = "codex"
 initiative = "protobuf-api"
 task = "TASK-PROTO-0004"
 intent = "Completar gRPC, REST/Protobuf, replay/live, despliegue y pruebas sin alterar la durabilidad existente"
-last_updated = "2026-08-13T04:55:00Z"
+last_updated = "2026-08-13T05:20:00Z"
 +++
 
 # Active Session
@@ -88,6 +88,14 @@ extrae los binarios desde el builder Podman actual y `dist-validate` exige ELF
 local y la prueba Debian valida restore local íntegro. La suite de migración
 offline también valida merge con una idempotencia deduplicada, tombstone ganador,
 split reproducible, backup local, reconciler, cache, integridad y outbox.
+
+La revisión posterior a la interrupción confirmó que `main` y `origin/main`
+están en `766b411`. La corrida de 150/s posterior a `8451d05` procesó 45,000
+comandos en 300s con tasa controlada, 42,265 HTTP 200, 2,735 HTTP 202,
+p99=2,076.592ms, outbox 0 e integridad SQLite OK. Una nueva corrida de una
+hora a 10/s fue iniciada en un contenedor efímero, pero se canceló antes de
+completar; no se cuenta como evidencia. La evidencia de una hora válida sigue
+siendo `6c38eb8`.
 
 ## Next steps
 
