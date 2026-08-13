@@ -27,16 +27,43 @@ if [ ! -x "$LITESTREAM_BIN" ]; then
     fi
 fi
 
-REPLICA_URL="${LITESTREAM_REPLICA_URL:-${LITESTREAM_S3_URL:-s3://ixmati-backups/$STORE}}"
+BACKUP_DIR="${IXMATI_LITESTREAM_BACKUP_DIR:-/var/lib/ixmati/backups}"
+S3_BUCKET="${IXMATI_LITESTREAM_S3_BUCKET:-${LITESTREAM_S3_BUCKET:-}}"
+S3_PREFIX="${IXMATI_LITESTREAM_S3_PREFIX:-${LITESTREAM_S3_PREFIX:-ixmati}}"
+if [ -n "${LITESTREAM_REPLICA_URL:-}" ]; then
+    REPLICA_URL="$LITESTREAM_REPLICA_URL"
+elif [ -n "${LITESTREAM_S3_URL:-}" ]; then
+    REPLICA_URL="$LITESTREAM_S3_URL"
+elif [ -n "$S3_BUCKET" ]; then
+    if [ -n "$S3_PREFIX" ]; then
+        REPLICA_URL="s3://${S3_BUCKET%/}/${S3_PREFIX%/}/${STORE}.db"
+    else
+        REPLICA_URL="s3://${S3_BUCKET%/}/${STORE}.db"
+    fi
+elif [ -e "${BACKUP_DIR}/${STORE}.db" ]; then
+    # Native installs use Litestream's directory watcher. The per-store
+    # replica URL is the database path inside that directory.
+    REPLICA_URL="file://${BACKUP_DIR}/${STORE}.db"
+else
+    die "no hay réplica configurada para ${STORE}; define LITESTREAM_REPLICA_URL, LITESTREAM_S3_URL, LITESTREAM_S3_BUCKET o restaura desde ${BACKUP_DIR}/${STORE}.db"
+fi
 
 log "restaurando store=$STORE desde $REPLICA_URL..."
 
+RESTORE_CONFIG_ARGS=()
+if [[ "$REPLICA_URL" == s3://* ]]; then
+    S3_CONFIG="${IXMATI_LITESTREAM_S3_CONFIG:-/etc/ixmati/litestream-s3.yml}"
+    if [ -f "$S3_CONFIG" ]; then
+        RESTORE_CONFIG_ARGS=(-config "$S3_CONFIG")
+    fi
+fi
+
 if [ -n "$TIMESTAMP" ]; then
     log "punto en el tiempo: $TIMESTAMP"
-    "$LITESTREAM_BIN" restore -o "$OUTPUT" --timestamp "$TIMESTAMP" "$REPLICA_URL"
+    "$LITESTREAM_BIN" restore "${RESTORE_CONFIG_ARGS[@]}" -o "$OUTPUT" --timestamp "$TIMESTAMP" "$REPLICA_URL"
 else
     log "ultimo backup disponible"
-    "$LITESTREAM_BIN" restore -o "$OUTPUT" "$REPLICA_URL"
+    "$LITESTREAM_BIN" restore "${RESTORE_CONFIG_ARGS[@]}" -o "$OUTPUT" "$REPLICA_URL"
 fi
 
 ok "restauracion completa: $OUTPUT"

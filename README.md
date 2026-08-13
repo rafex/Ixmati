@@ -44,6 +44,11 @@ que usa MinIO fijado por digest, replica SQLite y restaura desde el objeto
 remoto. Esta prueba valida compatibilidad de transporte; no reemplaza un
 simulacro contra el bucket remoto de producción.
 
+Para recuperar un store, usa
+[`helpers/shell/litestream_restore.sh`](helpers/shell/litestream_restore.sh);
+detecta la réplica local nativa o las variables S3 configuradas y falla si no
+hay una fuente explícita de restauración.
+
 Una escritura durable se envía así:
 
 ```bash

@@ -168,6 +168,20 @@ litestream restore -o /data/pedidos_restored.db s3://ixmati-backups/pedidos
 sqlite3 /data/pedidos_restored.db "PRAGMA integrity_check;"
 ```
 
+El helper reproducible selecciona la réplica local nativa cuando existe y
+respeta `LITESTREAM_REPLICA_URL`, `LITESTREAM_S3_URL` o las variables del
+instalador (`IXMATI_LITESTREAM_S3_BUCKET`/`IXMATI_LITESTREAM_S3_PREFIX`):
+
+```bash
+helpers/shell/litestream_restore.sh pedidos /tmp/pedidos-restored.db
+```
+
+Para un endpoint S3 no estándar se usa automáticamente
+`/etc/ixmati/litestream-s3.yml` si existe; también puede indicarse otro con
+`IXMATI_LITESTREAM_S3_CONFIG`. El helper termina con error si no encuentra una
+réplica explícita o local, para no restaurar accidentalmente desde una URL de
+ejemplo.
+
 En la instalación nativa, Litestream `0.5.16` se instala en
 `/usr/local/lib/ixmati/litestream`. La réplica local se gestiona con
 `ixmati-litestream-file.service`; la réplica S3 es opcional y se habilita con
