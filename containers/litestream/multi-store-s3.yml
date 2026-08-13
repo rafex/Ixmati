@@ -1,0 +1,12 @@
+# Optional S3 replica for the multi-store Compose profile.
+dbs:
+  - dir: /data/stores
+    pattern: "*.db"
+    recursive: true
+    watch: true
+    meta-dir: /meta/s3
+    replica:
+      url: s3://${LITESTREAM_S3_BUCKET}/ixmati
+      region: ${LITESTREAM_S3_REGION:-us-east-1}
+      endpoint: ${LITESTREAM_S3_ENDPOINT:-https://s3.us-east-1.amazonaws.com}
+      sync-interval: 1s

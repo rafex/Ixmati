@@ -55,8 +55,9 @@ durabilidad.
   E2E Debian ya cubre merge/split y backup local; falta cutover de routing,
   topics antiguos, rollback y restore remoto.
 - **Bloqueante para producción**: validar Litestream en el despliegue real
-  (dos destinos, restore destructivo y RPO/RTO). La imagen sidecar no equivale
-  a una recuperación probada y la instalación nativa todavía no lo arranca.
+  (dos destinos, restore destructivo y RPO/RTO). La instalación nativa ya
+  instala y arranca la réplica local y el restore local está probado; eso no
+  equivale a una recuperación remota probada.
 - Siguiente iniciativa: sharding interno de un store.
 - Siguiente iniciativa: dashboard web de operación.
 

@@ -5,7 +5,7 @@
 #   make installer-test-image      → build de la imagen Debian+systemd
 #   make installer-test-up         → levanta el contenedor privilegiado
 #   make installer-test-install    → copia dist/ y corre install.sh dentro
-#   make installer-test-status     → systemctl is-active de los 5 servicios
+#   make installer-test-status     → systemctl is-active de los 6 servicios
 #   make installer-test-logs       → journalctl de un servicio (SVC=ixmati-api)
 #   make installer-test-shell      → shell interactiva dentro del contenedor
 #   make installer-test-uninstall  → corre install.sh --uninstall --purge
@@ -62,7 +62,7 @@ installer-test-install:
 .PHONY: installer-test-status
 installer-test-status:
 	@echo "$(COLOR_BLUE)[INSTALLER-TEST] estado de servicios$(COLOR_RESET)"
-	@for svc in mosquitto ixmati-cache-server ixmati-writer@default ixmati-api ixmati-projector; do \
+	@for svc in mosquitto ixmati-cache-server ixmati-writer@default ixmati-api ixmati-projector ixmati-litestream-file; do \
 		status=$$($(PODMAN) exec $(INSTALLER_TEST_NAME) systemctl is-active $$svc 2>/dev/null || echo inactive); \
 		if [ "$$status" = "active" ]; then \
 			echo "  $(COLOR_GREEN)✓$(COLOR_RESET) $$svc → $$status"; \

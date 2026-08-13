@@ -1,13 +1,9 @@
-# litestream.yml — config de replicacion (sobrescribir destinos via env)
+# litestream.yml — config de replicación para el sidecar Compose.
+# Litestream v0.5 usa una réplica por proceso; el despliegue nativo ejecuta
+# además un proceso local y otro S3 cuando el operador configura S3.
 
 dbs:
-  - path: /data/ixmati.db
-    replicas:
-      - type: s3
-        bucket: ${LITESTREAM_S3_BUCKET}
-        path: ${LITESTREAM_STORE_NAME}
-        region: ${LITESTREAM_S3_REGION:-us-east-1}
-        access-key-id: ${LITESTREAM_ACCESS_KEY_ID}
-        secret-access-key: ${LITESTREAM_SECRET_ACCESS_KEY}
-      - type: file
-        path: ${LITESTREAM_FILESYSTEM_PATH:-/backup}
+  - path: /data/default.db
+    replica:
+      path: ${LITESTREAM_FILESYSTEM_PATH:-/backup}
+      sync-interval: 1s

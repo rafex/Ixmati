@@ -168,6 +168,27 @@ litestream restore -o /data/pedidos_restored.db s3://ixmati-backups/pedidos
 sqlite3 /data/pedidos_restored.db "PRAGMA integrity_check;"
 ```
 
+En la instalación nativa, Litestream `0.5.16` se instala en
+`/usr/local/lib/ixmati/litestream`. La réplica local se gestiona con
+`ixmati-litestream-file.service`; la réplica S3 es opcional y se habilita con
+`IXMATI_LITESTREAM_S3_BUCKET` antes de instalar o actualizar:
+
+```bash
+systemctl status ixmati-litestream-file
+systemctl status ixmati-litestream-s3
+/usr/local/lib/ixmati/litestream restore \
+  -o /tmp/pedidos-restored.db \
+  file:///var/lib/ixmati/backups/pedidos.db
+sqlite3 /tmp/pedidos-restored.db "PRAGMA integrity_check;"
+```
+
+Variables soportadas por el instalador: `IXMATI_LITESTREAM_S3_BUCKET`,
+`IXMATI_LITESTREAM_S3_PREFIX`, `IXMATI_LITESTREAM_S3_REGION`,
+`IXMATI_LITESTREAM_S3_ENDPOINT`, `AWS_ACCESS_KEY_ID`,
+`AWS_SECRET_ACCESS_KEY` y `AWS_SESSION_TOKEN`. El restore local está validado;
+el restore remoto, el segundo destino y las mediciones RPO/RTO siguen siendo
+gates operativos separados.
+
 ## CI
 
 ```bash

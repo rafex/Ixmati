@@ -10,7 +10,7 @@
 #   1. make dist && make dist-checksums && make dist-validate
 #   2. build de containers/installer-test (Debian + systemd)
 #   3. levanta el contenedor, copia el tarball, corre install.sh
-#   4. verifica que los 5 servicios queden active
+#   4. verifica que los 6 servicios queden active, incluida la réplica local
 #   5. round-trip funcional: /health, POST /write, GET /read
 #   6. segunda pasada de install.sh (idempotencia) sin romper nada
 #   7. install.sh --uninstall --purge y confirma limpieza
@@ -59,7 +59,7 @@ wait_for_systemd() {
 check_services_active() {
     local label="$1"
     log "verificando servicios (${label})..."
-    local services=(mosquitto ixmati-cache-server "ixmati-writer@default" ixmati-api ixmati-projector)
+    local services=(mosquitto ixmati-cache-server "ixmati-writer@default" ixmati-api ixmati-projector ixmati-litestream-file)
     local fail=0
     for svc in "${services[@]}"; do
         status="$(exec_c "systemctl is-active ${svc}" 2>/dev/null || echo inactive)"
@@ -92,6 +92,26 @@ check_write_read_roundtrip() {
     ok "GET /read → $read_resp"
 }
 
+check_local_replica_restore() {
+    log "verificando réplica local y restore Litestream..."
+    local replica="/var/lib/ixmati/backups/default.db"
+    local ready=0
+    for _attempt in $(seq 1 30); do
+        if exec_c "test -d '${replica}'"; then
+            ready=1
+            break
+        fi
+        sleep 1
+    done
+    [ "$ready" -eq 1 ] || {
+        exec_c "journalctl -u ixmati-litestream-file --no-pager -n 80" || true
+        die "la réplica local no apareció: ${replica}"
+    }
+    exec_c "/usr/local/lib/ixmati/litestream restore -o /tmp/default-restored.db file://${replica}"
+    exec_c "python3 -c 'import sqlite3; c=sqlite3.connect(\"/tmp/default-restored.db\"); assert c.execute(\"PRAGMA integrity_check\").fetchone()[0] == \"ok\"; assert c.execute(\"SELECT COUNT(*) FROM payload_default\").fetchone()[0] >= 1'"
+    ok "réplica local restaurada e íntegra"
+}
+
 log "=== 1/7: empaquetando dist/ ==="
 make dist
 make dist-checksums
@@ -119,6 +139,9 @@ exec_c "cd /root/${DIST_DIRNAME} && IXMATI_API_KEYS=ix-default-key ./install.sh"
 
 check_services_active "instalación limpia"
 check_write_read_roundtrip
+exec_c "test -x /usr/local/lib/ixmati/litestream" || die "Litestream no fue instalado"
+ok "Litestream binario instalado y ejecutable"
+check_local_replica_restore
 
 log "=== 5/7: verificando idempotencia (segunda pasada) ==="
 exec_c "cd /root/${DIST_DIRNAME} && ./install.sh"
@@ -129,7 +152,7 @@ log "=== 6/7: desinstalando (--uninstall --purge) ==="
 exec_c "cd /root/${DIST_DIRNAME} && ./install.sh --uninstall --purge"
 
 log "verificando limpieza..."
-for svc in ixmati-cache-server "ixmati-writer@default" ixmati-api ixmati-projector; do
+for svc in ixmati-cache-server "ixmati-writer@default" ixmati-api ixmati-projector ixmati-litestream-file; do
     status="$(exec_c "systemctl is-active ${svc}" 2>/dev/null || echo inactive)"
     [ "$status" != "active" ] || die "${svc} sigue activo tras uninstall"
     ok "${svc} → ${status}"

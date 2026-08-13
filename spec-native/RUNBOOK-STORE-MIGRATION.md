@@ -9,6 +9,9 @@ mantenimiento.
 
 - Confirmar el SHA y el binario publicado.
 - Detener API, writers, projectors, reconciler, Litestream y productores.
+- En una instalación nativa detener explícitamente
+  `ixmati-litestream-file` y `ixmati-litestream-s3`; en Compose detener ambos
+  servicios de backup, incluido el perfil `backup-s3` si está activo.
 - Esperar a que `_outbox WHERE published_at IS NULL` sea cero.
 - Ejecutar backup verificable por cada store.
 - Tener espacio para backups y destinos temporales.

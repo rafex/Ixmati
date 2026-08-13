@@ -246,10 +246,11 @@ validation = [
 ]
 ```
 
-La imagen sidecar y la configuración declarativa existen, pero la tarea vuelve a
-`in_progress` hasta demostrar el flujo completo en el despliegue objetivo:
-replicación a dos destinos, restore destructivo verificado y RPO/RTO medidos.
-La instalación nativa actual no instala ni arranca Litestream automáticamente.
+La configuración declarativa y el instalador nativo fijan Litestream 0.5.16;
+la réplica local se arranca con `ixmati-litestream-file.service` y el restore
+local está validado en Debian. La tarea permanece `in_progress` hasta demostrar
+el flujo completo en el despliegue objetivo: replicación a dos destinos,
+restore remoto destructivo y RPO/RTO medidos.
 
 ### TASK-WRITE-0015 — Health checks integrados
 

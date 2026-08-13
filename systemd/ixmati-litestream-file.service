@@ -1,0 +1,25 @@
+[Unit]
+Description=Ixmati Litestream local replica
+After=local-fs.target ixmati-writer@default.service
+RequiresMountsFor=/var/lib/ixmati/stores /var/lib/ixmati/backups
+ConditionPathExists=/usr/local/lib/ixmati/litestream
+ConditionPathExists=/etc/ixmati/litestream-file.yml
+Documentation=https://github.com/rafex/Ixmati
+
+[Service]
+Type=simple
+User=ixmati
+Group=ixmati
+ExecStart=/usr/local/lib/ixmati/litestream replicate -config /etc/ixmati/litestream-file.yml
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/ixmati/stores /var/lib/ixmati/backups /var/lib/ixmati/litestream-meta/file
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

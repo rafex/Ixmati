@@ -116,15 +116,17 @@ services:
       context: ../litestream
       dockerfile: Containerfile
     environment:
-      - LITESTREAM_DB_PATH=/data/smoke.db
+      - LITESTREAM_FILESYSTEM_PATH=/backup
     depends_on:
       writer:
         condition: service_started
     volumes:
       - store_data:/data:U
+      - litestream_backup:/backup:U
 
 volumes:
   mosquitto_data:
   store_data:
   cache_data:
   cache_socket:
+  litestream_backup:

@@ -27,7 +27,7 @@ El instalador configura Mosquitto, instala las unidades systemd y verifica el
 health check. Para revisar el estado:
 
 ```bash
-systemctl status ixmati-cache-server ixmati-api ixmati-projector
+systemctl status ixmati-cache-server ixmati-api ixmati-projector ixmati-litestream-file
 systemctl status 'ixmati-writer@*'
 curl http://127.0.0.1:8080/health
 ```
@@ -111,8 +111,24 @@ backpressure esperado y deben monitorizarse junto con el último commit,
 outbox y cola.
 
 El sistema sigue siendo beta: el atasco de sesión MQTT bajo sobrecarga extrema
-continúa como riesgo operativo conocido y la prueba determinista de crash en
-la ventana PUBACK→`published_at` permanece pendiente.
+continúa como riesgo operativo conocido. La prueba determinista de crash en la
+ventana PUBACK→`published_at` ya cuenta con evidencia; la capacidad de
+150–200/s y el restore remoto S3 todavía no están demostrados.
+
+El instalador nativo fija Litestream `0.5.16` y valida una réplica local por
+store. Para habilitar S3 configura `IXMATI_LITESTREAM_S3_BUCKET` y, si aplica,
+`IXMATI_LITESTREAM_S3_PREFIX`, `IXMATI_LITESTREAM_S3_REGION` y
+`IXMATI_LITESTREAM_S3_ENDPOINT`; las credenciales se leen desde el entorno
+del servicio `ixmati-litestream-s3`. Comprueba el estado con:
+
+```bash
+systemctl status ixmati-litestream-file ixmati-litestream-s3
+/usr/local/lib/ixmati/litestream restore \
+  -o /tmp/default-restored.db file:///var/lib/ixmati/backups/default.db
+```
+
+El restore local no sustituye la validación de destino remoto ni un simulacro
+con RPO/RTO medidos.
 
 Para migrar stores no se deben mover archivos con el servicio activo. Usa
 `ixmati-store-migrate` en una ventana offline, valida el manifiesto, ejecuta

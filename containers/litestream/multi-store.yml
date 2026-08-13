@@ -1,0 +1,10 @@
+# Litestream v0.5 local replica for the multi-store Compose profile.
+dbs:
+  - dir: /data/stores
+    pattern: "*.db"
+    recursive: true
+    watch: true
+    meta-dir: /meta/file
+    replica:
+      path: /backup
+      sync-interval: 1s

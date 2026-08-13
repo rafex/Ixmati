@@ -1739,3 +1739,39 @@ del cliente, cero outbox pendiente tras cinco minutos de drenado e
 `integrity_check=ok`. Por tanto, 10/s queda como perfil productivo
 demostrado para este host y configuración. La evaluación independiente de
 150/s/200/s sigue pendiente y no debe extrapolarse desde este resultado.
+
+### DEC-0078 — Artefactos amd64 y Litestream nativo con restore local verificable
+
+- Fecha: 2026-08-13
+- Estado: `accepted`
+- Relacionado con: `TASK-WRITE-0014`, `TASK-STORE-0001`..`0006`,
+  `TASK-INST-0006`
+- Implementación: `helpers/make/artifacts.mk`, `helpers/make/dist-validate.mk`,
+  `helpers/python/installer.py`, `systemd/ixmati-litestream-*.service`
+
+La distribución `linux/amd64` se construye exclusivamente mediante el builder
+Podman Linux y `make dist` recompila/extrae los binarios del checkout actual;
+no reutiliza el `target/release` del host. `dist-validate` comprueba que cada
+binario empaquetado sea ELF 64-bit x86-64. Esto evita publicar por accidente un
+Mach-O/arm64 generado en macOS bajo el nombre de un artefacto Debian amd64.
+
+La instalación nativa fija Litestream `0.5.16` y verifica el SHA256 del release
+antes de instalarlo. Litestream v0.5 usa una réplica por proceso: el instalador
+arranca `ixmati-litestream-file.service` para el watcher de directorio y sólo
+configura/arranca `ixmati-litestream-s3.service` cuando existe
+`IXMATI_LITESTREAM_S3_BUCKET`. La configuración y el entorno de credenciales
+se conservan durante reinstalaciones. El restore local desde
+`/var/lib/ixmati/backups` e `integrity_check` están validados en Debian; esto no
+se considera evidencia de restore remoto, segundo destino ni RPO/RTO.
+
+La suite de migración offline detiene ambas unidades Litestream antes de
+checkpoint, crea backups locales, preserva tombstones, cuantifica conflictos,
+deduplica idempotencias con digest idéntico y exige checksums reproducibles de
+split. El E2E Debian valida además reconciler, cache, integridad y outbox.
+
+Consecuencias: (+) el artefacto publicado es verificablemente ejecutable en el
+target declarado; (+) una instalación limpia tiene backup local operable y
+restaurable; (+) merge/split es auditable y determinista; (-) el perfil de
+producción sigue limitado a la evidencia de capacidad disponible; (-) S3,
+segundo destino, RPO/RTO y cutover/rollback de routing siguen siendo gates
+pendientes y no se deben presentar como resueltos.

@@ -65,8 +65,8 @@ exec_c "curl -fsS -X POST http://localhost:${API_PORT}/write \
     -d '{\"op\":\"upsert\",\"store\":\"default\",\"entity\":\"test\",\"key\":\"k1\",\"version\":1,\"ts\":\"2026-01-01T00:00:00Z\",\"idempotency_key\":\"migration-e2e-1\",\"ack_mode\":\"committed\",\"payload\":{\"hello\":\"migration\"}}' >/dev/null"
 wait_for_outbox
 
-echo "[migration-e2e] deteniendo servicios que escriben"
-exec_c 'systemctl stop ixmati-api ixmati-projector ixmati-writer@default'
+echo "[migration-e2e] deteniendo servicios que escriben y replican"
+exec_c 'systemctl stop ixmati-api ixmati-projector ixmati-writer@default ixmati-litestream-s3 ixmati-litestream-file'
 
 exec_c "mkdir -p /root/e2e-evidence && cat > /root/rename.toml <<'EOF'
 operation = \"rename\"
@@ -218,7 +218,9 @@ $dist_path/ixmati-store-migrate plan --manifest /root/merge.toml
 $dist_path/ixmati-store-migrate execute --manifest /root/merge.toml
 $dist_path/ixmati-store-migrate verify --manifest /root/merge.toml
 python3 - <<'PY'
+import json
 import sqlite3
+from pathlib import Path
 with sqlite3.connect('/root/merged.db') as conn:
     assert conn.execute('PRAGMA integrity_check').fetchone()[0] == 'ok'
     assert conn.execute('SELECT COUNT(*) FROM payload_merged').fetchone()[0] == 2
@@ -226,7 +228,9 @@ with sqlite3.connect('/root/merged.db') as conn:
     assert conn.execute('SELECT COUNT(*) FROM _idempotency').fetchone()[0] == 3
     assert conn.execute('SELECT COUNT(*) FROM _outbox').fetchone()[0] == 4
     assert conn.execute('SELECT version FROM _tombstones WHERE key=?', ('common',)).fetchone()[0] == 3
-print('merge=ok; tombstone_wins; idempotency_deduplicated')
+report = json.loads(Path('/root/e2e-evidence/merge/migration-report.json').read_text())
+assert report['deduplicated_idempotency'] == 1, report
+print('merge=ok; tombstone_wins; idempotency_deduplicated=1')
 PY"
 
 echo "[migration-e2e] verificando split reproducible en tres destinos"

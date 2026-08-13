@@ -11,7 +11,7 @@ DIST_NAME    := ixmati-$(VERSION)-linux-$(DIST_ARCH)
 
 EXPECTED_BINS    := ixmati-cache-server ixmati-api ixmati-writer ixmati-projector ixmati-supervisor ixmati-reconciler ixmati-store-migrate
 EXPECTED_CONFIG  := stores.toml projections.toml
-EXPECTED_SYSTEMD := ixmati-cache-server.service ixmati-api.service ixmati-writer@.service ixmati-projector.service
+EXPECTED_SYSTEMD := ixmati-cache-server.service ixmati-api.service ixmati-writer@.service ixmati-projector.service ixmati-litestream-file.service ixmati-litestream-s3.service
 
 .PHONY: dist-validate
 dist-validate:
@@ -33,7 +33,15 @@ dist-validate:
 		if tar tzf "$$TARBALL" | grep -q "bin/$$binary"; then \
 			binary_size=$$(tar xzf "$$TARBALL" -O "$(DIST_NAME)/bin/$$binary" 2>/dev/null | wc -c); \
 			if [ "$$binary_size" -gt 50000 ]; then \
-				echo "  $(COLOR_GREEN)✓$(COLOR_RESET) bin/$$binary ($${binary_size} bytes)"; \
+				binary_type=$$(tar xzf "$$TARBALL" -O "$(DIST_NAME)/bin/$$binary" 2>/dev/null | file - 2>/dev/null || true); \
+				case "$$binary_type" in \
+					*"ELF 64-bit"*"x86-64"*) \
+						echo "  $(COLOR_GREEN)✓$(COLOR_RESET) bin/$$binary ($${binary_size} bytes, linux/amd64)"; \
+						;; \
+					*) \
+						echo "  $(COLOR_RED)✗$(COLOR_RESET) bin/$$binary no es ELF linux/amd64: $$binary_type"; FAIL=$$((FAIL+1)); \
+						;; \
+				 esac; \
 			else \
 				echo "  $(COLOR_RED)✗$(COLOR_RESET) bin/$$binary corrupto ($${binary_size} bytes)"; FAIL=$$((FAIL+1)); \
 			fi; \

@@ -17,7 +17,10 @@ SCRIPTS_DIR  := $(REPO_ROOT)/scripts
 BINARIES     := ixmati-cache-server ixmati-api ixmati-writer ixmati-projector ixmati-supervisor ixmati-reconciler ixmati-store-migrate
 
 .PHONY: dist
-dist: installer
+# A linux/amd64 distribution must be built by the reproducible Podman builder,
+# never by the host toolchain (which may produce Mach-O/arm64 on macOS) and
+# never by reusing stale files from target/release.
+dist: containers-builder containers-compile installer
 	@echo "$(COLOR_GREEN)[DIST] ensamblando $(DIST_NAME).tar.gz$(COLOR_RESET)"
 	@mkdir -p $(DIST_DIR)/$(DIST_NAME)/bin
 	@mkdir -p $(DIST_DIR)/$(DIST_NAME)/config/mosquitto

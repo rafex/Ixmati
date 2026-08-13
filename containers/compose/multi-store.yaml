@@ -185,6 +185,47 @@ services:
     profiles:
       - reconciler
 
+  litestream-file:
+    image: localhost/ixmati-litestream:local
+    build:
+      context: ../..
+      dockerfile: containers/litestream/Containerfile
+    command: ["replicate", "-config", "/etc/litestream-multi.yml"]
+    depends_on:
+      writer-pedidos:
+        condition: service_started
+      writer-usuarios:
+        condition: service_started
+      writer-inventario:
+        condition: service_started
+    volumes:
+      - store_pedidos:/data/stores/pedidos:U
+      - store_usuarios:/data/stores/usuarios:U
+      - store_inventario:/data/stores/inventario:U
+      - multi_litestream_backup:/backup:U
+      - multi_litestream_meta:/meta:U
+
+  litestream-s3:
+    image: localhost/ixmati-litestream:local
+    command: ["replicate", "-config", "/etc/litestream-multi-s3.yml"]
+    environment:
+      - LITESTREAM_S3_BUCKET
+      - LITESTREAM_S3_REGION=${LITESTREAM_S3_REGION:-us-east-1}
+      - LITESTREAM_S3_ENDPOINT=${LITESTREAM_S3_ENDPOINT:-https://s3.us-east-1.amazonaws.com}
+      - AWS_ACCESS_KEY_ID
+      - AWS_SECRET_ACCESS_KEY
+      - AWS_SESSION_TOKEN
+    depends_on:
+      litestream-file:
+        condition: service_started
+    volumes:
+      - store_pedidos:/data/stores/pedidos:U
+      - store_usuarios:/data/stores/usuarios:U
+      - store_inventario:/data/stores/inventario:U
+      - multi_litestream_meta:/meta:U
+    profiles:
+      - backup-s3
+
 volumes:
   mosquitto_data:
   store_pedidos:
@@ -192,3 +233,5 @@ volumes:
   store_inventario:
   cache_data:
   cache_socket:
+  multi_litestream_backup:
+  multi_litestream_meta:

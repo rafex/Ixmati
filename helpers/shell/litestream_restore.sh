@@ -18,18 +18,25 @@ if [ -z "$STORE" ] || [ -z "$OUTPUT" ]; then
     exit 1
 fi
 
-require litestream "instala: brew install litestream"
+LITESTREAM_BIN="${IXMATI_LITESTREAM_BIN:-/usr/local/lib/ixmati/litestream}"
+if [ ! -x "$LITESTREAM_BIN" ]; then
+    if command -v litestream >/dev/null 2>&1; then
+        LITESTREAM_BIN="$(command -v litestream)"
+    else
+        die "Litestream no encontrado; ejecuta el instalador nativo o define IXMATI_LITESTREAM_BIN"
+    fi
+fi
 
-S3_URL="${LITESTREAM_S3_URL:-s3://ixmati-backups/$STORE}"
+REPLICA_URL="${LITESTREAM_REPLICA_URL:-${LITESTREAM_S3_URL:-s3://ixmati-backups/$STORE}}"
 
-log "restaurando store=$STORE desde $S3_URL..."
+log "restaurando store=$STORE desde $REPLICA_URL..."
 
 if [ -n "$TIMESTAMP" ]; then
     log "punto en el tiempo: $TIMESTAMP"
-    litestream restore -o "$OUTPUT" --timestamp "$TIMESTAMP" "$S3_URL"
+    "$LITESTREAM_BIN" restore -o "$OUTPUT" --timestamp "$TIMESTAMP" "$REPLICA_URL"
 else
     log "ultimo backup disponible"
-    litestream restore -o "$OUTPUT" "$S3_URL"
+    "$LITESTREAM_BIN" restore -o "$OUTPUT" "$REPLICA_URL"
 fi
 
 ok "restauracion completa: $OUTPUT"

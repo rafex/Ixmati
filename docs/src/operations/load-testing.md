@@ -1,6 +1,7 @@
 # Pruebas prolongadas de capacidad
 
-El perfil productivo predeterminado es 40 escrituras durables por segundo. La
+El perfil productivo demostrado actualmente es 10 escrituras durables por
+segundo por store. La
 capacidad de 150/s y 200/s sólo puede declararse sostenible después de una
 corrida de una hora por escalón en un contenedor Debian nuevo, con generador
 externo rate-controlled y cinco minutos de drenado.

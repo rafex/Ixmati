@@ -93,11 +93,12 @@ services:
       context: ../..
       dockerfile: containers/litestream/Containerfile
     environment:
-      - LITESTREAM_DB_PATH=/data/default.db
+      - LITESTREAM_FILESYSTEM_PATH=/backup
     depends_on:
       - writer
     volumes:
       - store_data:/data:U
+      - litestream_backup:/backup:U
 
   projector:
     image: localhost/ixmati-projector:local
@@ -123,3 +124,4 @@ volumes:
   store_data:
   cache_data:
   cache_socket:
+  litestream_backup:

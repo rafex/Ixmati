@@ -348,7 +348,16 @@ fn collect_states(manifest: &Manifest) -> Result<(Vec<StateRow>, usize), Migrati
             }
         }
     }
-    Ok((states.into_values().collect(), conflicts))
+    let mut ordered_states: Vec<_> = states.into_values().collect();
+    ordered_states.sort_by(|a, b| {
+        a.entity
+            .cmp(&b.entity)
+            .then_with(|| a.key.cmp(&b.key))
+            .then_with(|| a.version.cmp(&b.version))
+            .then_with(|| a.timestamp.cmp(&b.timestamp))
+            .then_with(|| a.source.cmp(&b.source))
+    });
+    Ok((ordered_states, conflicts))
 }
 
 fn merge_state(
@@ -427,7 +436,13 @@ fn collect_idempotency(
             }
         }
     }
-    Ok((rows_by_key.into_values().collect(), deduplicated))
+    let mut ordered_rows: Vec<_> = rows_by_key.into_values().collect();
+    ordered_rows.sort_by(|a, b| {
+        a.idempotency_key
+            .cmp(&b.idempotency_key)
+            .then_with(|| a.source.cmp(&b.source))
+    });
+    Ok((ordered_rows, deduplicated))
 }
 
 fn same_idempotency(a: &IdempotencyRow, b: &IdempotencyRow) -> bool {
@@ -464,7 +479,15 @@ fn collect_outbox(manifest: &Manifest) -> Result<Vec<OutboxRow>, MigrationError>
             }
         }
     }
-    Ok(by_event.into_values().collect())
+    let mut ordered_rows: Vec<_> = by_event.into_values().collect();
+    ordered_rows.sort_by(|a, b| {
+        a.event_id
+            .cmp(&b.event_id)
+            .then_with(|| a.entity.cmp(&b.entity))
+            .then_with(|| a.key.cmp(&b.key))
+            .then_with(|| a.version.cmp(&b.version))
+    });
+    Ok(ordered_rows)
 }
 
 fn columns(
@@ -849,6 +872,51 @@ mod tests {
             .unwrap();
         assert_eq!(version, 2);
         drop(conn);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn merge_counts_identical_idempotency_rows_as_deduplicated() {
+        let dir = std::env::temp_dir().join(format!(
+            "ixmati-store-migrate-idempotency-dedup-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let left = dir.join("left.db");
+        let right = dir.join("right.db");
+        for (path, store) in [(&left, "left"), (&right, "right")] {
+            let conn = Connection::open(path).unwrap();
+            create_schema(&conn, store).unwrap();
+            conn.execute(
+                "INSERT INTO _idempotency(idempotency_key,store,entity,key,version,operation,command_digest,applied_at) VALUES('same-key',?1,'pedido','p1',1,'upsert','digest','2026-01-01')",
+                [store],
+            )
+            .unwrap();
+        }
+        let manifest = Manifest {
+            operation: Operation::Merge,
+            sources: vec![
+                SourceSpec {
+                    name: "left".into(),
+                    path: left,
+                },
+                SourceSpec {
+                    name: "right".into(),
+                    path: right,
+                },
+            ],
+            target: Some(TargetSpec {
+                name: "merged".into(),
+                path: dir.join("merged.db"),
+            }),
+            targets: vec![],
+            hash_algorithm: HASH_ALGORITHM.into(),
+            evidence_dir: dir.join("evidence"),
+            quiesced: true,
+        };
+        let (rows, deduplicated) = collect_idempotency(&manifest).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(deduplicated, 1);
         let _ = std::fs::remove_dir_all(dir);
     }
 

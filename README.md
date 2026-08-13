@@ -5,7 +5,7 @@ beta técnica**, validada en Debian amd64 con carga controlada.
 
 ## Qué es
 
-Ixmati permite que múltiples backends o pods escriban en una misma instancia de SQLite sin contención. Las escrituras pasan por un canal de ingesta desacoplado (API REST/gRPC o MQTT) y son procesadas secuencialmente por un único writer. Las lecturas se sirven desde una cache rápida con fallback a SQLite. El despliegue Compose incluye Litestream como sidecar; la validación de backup remoto y restore en la instalación nativa sigue siendo un gate de producción abierto.
+Ixmati permite que múltiples backends o pods escriban en una misma instancia de SQLite sin contención. Las escrituras pasan por un canal de ingesta desacoplado (API REST/gRPC o MQTT) y son procesadas secuencialmente por un único writer. Las lecturas se sirven desde una cache rápida con fallback a SQLite. El instalador nativo y Compose incluyen Litestream v0.5; la réplica local y su restore están validados, mientras que el restore remoto S3, RPO/RTO y el segundo destino siguen siendo gates de producción abiertos.
 
 ## Uso rápido
 
@@ -20,6 +20,23 @@ docker compose up -d
 La [guía de uso](docs/src/usage.md) cubre Docker, instalación nativa con
 systemd, configuración, API REST, métricas, readiness (`/ready`), backup y
 recuperación.
+
+Para una instalación nativa Debian/amd64 desde un artefacto publicado:
+
+```bash
+tar xzf ixmati-<version>-linux-amd64.tar.gz
+cd ixmati-<version>-linux-amd64
+sudo IXMATI_API_KEYS='cambia-esta-clave' ./install.sh
+systemctl status ixmati-litestream-file
+```
+
+El instalador fija Litestream `0.5.16`, instala una réplica local por store y
+conserva la configuración existente durante reinstalaciones. Para habilitar la
+réplica S3 se deben definir `IXMATI_LITESTREAM_S3_BUCKET`, opcionalmente
+`IXMATI_LITESTREAM_S3_PREFIX`, `IXMATI_LITESTREAM_S3_REGION` y
+`IXMATI_LITESTREAM_S3_ENDPOINT`, además de las credenciales AWS disponibles
+para `ixmati-litestream-s3.service`. La réplica local no sustituye un backup
+remoto ni demuestra por sí sola RPO/RTO.
 
 Una escritura durable se envía así:
 
@@ -148,8 +165,11 @@ es el límite actual: aproximadamente 40 escrituras durables/s y p99 cercana a
 2 s en `ack_mode=committed`. Los `429` por encima del límite son una señal de
 backpressure correcta, no capacidad adicional oculta.
 
-La conclusión de producto es **beta viable para single-host/edge, escritura
-moderada y alta fan-out de lectura**. Estos resultados no justifican afirmar
+La conclusión de producto es **viable para un perfil operativo acotado de
+single-host/edge, escritura moderada y alta fan-out de lectura**. Para llamarlo
+productivo en un entorno concreto todavía deben cerrarse backup remoto,
+restauración medible, rollback y pruebas prolongadas del perfil elegido. Estos
+resultados no justifican afirmar
 que Ixmati supera a SQLite o PostgreSQL en capacidad bruta, que soporta
 100–200 escrituras durables/s, ni que ya es un reemplazo general de PostgreSQL.
 El siguiente trabajo de rendimiento debe concentrarse en la latencia del
@@ -158,7 +178,7 @@ entre PUBACK y `published_at` sigue pendiente.
 
 ## Stack
 
-Rust (tokio, axum, tonic, rusqlite, rumqttc) · Mosquitto (persistence + QoS 1) · SQLite (WAL + synchronous=NORMAL) · FlashDB (cache) · Litestream (sidecar de backup, pendiente de validación remota).
+Rust (tokio, axum, tonic, rusqlite, rumqttc) · Mosquitto (persistence + QoS 1) · SQLite (WAL + synchronous=NORMAL) · FlashDB (cache) · Litestream 0.5.16 (replicación local validada; remoto pendiente de evidencia).
 
 ## Navegación
 

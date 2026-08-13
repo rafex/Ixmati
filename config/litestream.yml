@@ -1,16 +1,14 @@
-# Litestream configuration for Ixmati
-# Two replicas per store: local VPS backup + remote S3
-# Each store gets its own Litestream instance as a sidecar
+# Litestream v0.5 template for a single native replica process.
+# The native installer generates separate local and S3 configs because v0.5
+# supports one replica per database. Never use a moving "latest" image.
 
+sync-interval: 1s
+snapshot:
+  retention: 168h
 dbs:
-  - path: /data/ixmati/${STORE_NAME}.db
-    replicas:
-      - type: file
-        path: /backups/ixmati/${STORE_NAME}
-      - type: s3
-        bucket: ixmati-backups
-        path: ${STORE_NAME}
-        region: us-east-1
-        endpoint: https://s3.us-east-1.amazonaws.com
-        retention: 168h
-        sync-interval: 1s
+  - dir: /var/lib/ixmati/stores
+    pattern: "*.db"
+    watch: true
+    meta-dir: /var/lib/ixmati/litestream-meta/file
+    replica:
+      path: /var/lib/ixmati/backups

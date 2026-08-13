@@ -15,9 +15,10 @@ Tablero de tareas activo. Persiste entre sesiones.
 - [x] `TASK-WRITE-0010` — Endpoint GET /writes/{store}/{idempotency_key}
 - [x] `TASK-WRITE-0011` — Implementar ixmati-cache
 - [x] `TASK-WRITE-0012` — Invalidación/repoblación de cache-aside
-- [ ] `TASK-WRITE-0014` — Configurar y validar Litestream por store con restore
-      remoto, dos destinos y RPO/RTO medidos; la imagen sidecar existe, pero la
-      instalación nativa y la restauración efectiva siguen sin evidencia.
+- [ ] `TASK-WRITE-0014` — Cerrar Litestream por store con réplica S3 + segundo
+      destino, restore destructivo y RPO/RTO medidos. La instalación nativa
+      ahora fija Litestream 0.5.16, arranca la réplica local y valida restore
+      local; la evidencia remota sigue pendiente.
 - [x] `TASK-WRITE-0015` — Health checks integrados
 - [x] `TASK-WRITE-0016` — Documentar runbook de producción
 - [x] `TASK-WRITE-0017` — Store registry + config multi-store
@@ -684,11 +685,11 @@ Tablero de tareas activo. Persiste entre sesiones.
       150/200 quedaron limitados por concurrencia del generador (119/100
       requests/s observadas) y se marcan inconclusos para capacidad del
       servidor. Ver DEC-0060.
-- [x] `TASK-VAL-0031` — Crash/restart durante ingestión MQTT: 30/30 claves
-      confirmadas por API y SQLite, 30/30 eventos observados en MQTT después
-      de `SIGKILL` y reinicio systemd, sin pérdida observada. El intervalo
-      PUBACK→marca del outbox sigue siendo at-least-once y no se forzó de forma
-      determinista en esta corrida. Ver DEC-0060.
+- [x] `TASK-VAL-0031` — Crash/restart durante ingestión MQTT y ventana
+      PUBACK→`published_at`: 30/30 claves confirmadas por API y SQLite, 30/30
+      eventos observados en MQTT después de `SIGKILL` y reinicio systemd, sin
+      pérdida observada; la barrera determinista cuantificó los duplicados
+      at-least-once. Ver evidencia de hardening y DEC-0060.
 - [x] `TASK-VAL-0032` — Concurrencia productiva: el batcher ahora respeta
       `BATCH_INTERVAL_MS` incluso con tráfico continuo; la espera de commit
       SQLite del API sale del worker async. En Debian amd64, el SHA `9d96b0b`

@@ -18,6 +18,9 @@ import shlex
 import shutil
 import subprocess
 import sys
+import hashlib
+import io
+import tarfile
 import time
 import urllib.error
 import urllib.request
@@ -39,6 +42,8 @@ SYSTEMD_UNITS = [
     "ixmati-api.service",
     "ixmati-writer@.service",
     "ixmati-projector.service",
+    "ixmati-litestream-file.service",
+    "ixmati-litestream-s3.service",
 ]
 
 # orden de arranque: cache-server debe estar listo antes que writer/api/projector
@@ -49,7 +54,32 @@ SERVICE_START_ORDER = [
     "ixmati-writer@default",
     "ixmati-api",
     "ixmati-projector",
+    "ixmati-litestream-file",
 ]
+
+LITESTREAM_VERSION = "0.5.16"
+LITESTREAM_INSTALL_PATH = Path("/usr/local/lib/ixmati/litestream")
+LITESTREAM_CONFIG_DIR = Path("/etc/ixmati")
+LITESTREAM_FILE_CONFIG = LITESTREAM_CONFIG_DIR / "litestream-file.yml"
+LITESTREAM_S3_CONFIG = LITESTREAM_CONFIG_DIR / "litestream-s3.yml"
+LITESTREAM_ENV = LITESTREAM_CONFIG_DIR / "litestream.env"
+LITESTREAM_BACKUP_DIR = Path(
+    os.environ.get("IXMATI_LITESTREAM_BACKUP_DIR", "/var/lib/ixmati/backups")
+)
+LITESTREAM_META_DIR = Path("/var/lib/ixmati/litestream-meta")
+
+# Pinned upstream release artifacts. The installer verifies the archive before
+# extracting it; a moving "latest" URL is deliberately never used.
+LITESTREAM_RELEASES = {
+    "amd64": (
+        "x86_64",
+        "9e29112380a942e4a62ee07773684396cb8b308dc4d67e130bef41f75e937f0a",
+    ),
+    "arm64": (
+        "arm64",
+        "678022e4103145302598e35d37f8718392d42e153feeb1e2d4a64dd0cd3aaf10",
+    ),
+}
 
 CONFIG_FILES = [
     "stores.toml",
@@ -127,6 +157,161 @@ def install_mosquitto() -> None:
     else:
         die("no se detectó apt-get, dnf ni yum. Instala Mosquitto manualmente.")
     ok("Mosquitto instalado")
+
+
+def install_litestream() -> None:
+    """Install the pinned Litestream binary used by native systemd units."""
+    override = os.environ.get("IXMATI_LITESTREAM_BIN", "").strip()
+    if override:
+        candidate = Path(override)
+        if not candidate.is_file() or not os.access(candidate, os.X_OK):
+            die(f"IXMATI_LITESTREAM_BIN no es ejecutable: {candidate}")
+        LITESTREAM_INSTALL_PATH.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(candidate, LITESTREAM_INSTALL_PATH)
+        LITESTREAM_INSTALL_PATH.chmod(0o755)
+        ok(f"Litestream instalado desde override: {candidate}")
+        return
+
+    if LITESTREAM_INSTALL_PATH.is_file():
+        ok(f"Litestream ya instalado: {LITESTREAM_INSTALL_PATH}")
+        return
+
+    arch = detect_arch()
+    upstream_arch, expected_sha = LITESTREAM_RELEASES[arch]
+    filename = f"litestream-{LITESTREAM_VERSION}-linux-{upstream_arch}.tar.gz"
+    url = (
+        "https://github.com/benbjohnson/litestream/releases/download/"
+        f"v{LITESTREAM_VERSION}/{filename}"
+    )
+    log(f"instalando Litestream v{LITESTREAM_VERSION} ({arch})...")
+    try:
+        with urllib.request.urlopen(url, timeout=120) as response:
+            archive = response.read()
+    except (urllib.error.URLError, OSError) as exc:
+        die(f"no se pudo descargar Litestream desde {url}: {exc}")
+
+    actual_sha = hashlib.sha256(archive).hexdigest()
+    if actual_sha != expected_sha:
+        die(
+            "checksum de Litestream no coincide: "
+            f"esperado {expected_sha}, recibido {actual_sha}"
+        )
+
+    with tarfile.open(fileobj=io.BytesIO(archive), mode="r:gz") as package:
+        binary = next(
+            (
+                member
+                for member in package.getmembers()
+                if member.name == "litestream" and member.isfile()
+            ),
+            None,
+        )
+        if binary is None:
+            die("el archivo de Litestream no contiene el binario esperado")
+        extracted = package.extractfile(binary)
+        if extracted is None:
+            die("no se pudo extraer el binario de Litestream")
+        content = extracted.read()
+
+    LITESTREAM_INSTALL_PATH.parent.mkdir(parents=True, exist_ok=True)
+    temporary = LITESTREAM_INSTALL_PATH.with_suffix(".new")
+    temporary.write_bytes(content)
+    temporary.chmod(0o755)
+    temporary.replace(LITESTREAM_INSTALL_PATH)
+    ok(f"Litestream v{LITESTREAM_VERSION} → {LITESTREAM_INSTALL_PATH}")
+
+
+def _write_if_missing(path: Path, content: str, mode: int = 0o640) -> None:
+    if path.exists():
+        warn(f"{path.name} ya existe en {path}, se conserva")
+        return
+    path.write_text(content)
+    path.chmod(mode)
+    try:
+        shutil.chown(path, user="root", group="ixmati")
+    except (LookupError, OSError) as exc:
+        die(f"no se pudo proteger {path}: {exc}")
+    ok(f"{path.name} → {path}")
+
+
+def install_litestream_config() -> None:
+    """Create native local replication and optional S3 replication configs."""
+    LITESTREAM_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    LITESTREAM_BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    (LITESTREAM_META_DIR / "file").mkdir(parents=True, exist_ok=True)
+    (LITESTREAM_META_DIR / "s3").mkdir(parents=True, exist_ok=True)
+    try:
+        shutil.chown(LITESTREAM_BACKUP_DIR, user="ixmati", group="ixmati")
+        shutil.chown(LITESTREAM_META_DIR, user="ixmati", group="ixmati")
+        shutil.chown(LITESTREAM_META_DIR / "file", user="ixmati", group="ixmati")
+        shutil.chown(LITESTREAM_META_DIR / "s3", user="ixmati", group="ixmati")
+    except (LookupError, OSError) as exc:
+        die(f"no se pudo proteger {LITESTREAM_BACKUP_DIR}: {exc}")
+
+    local_config = f"""# Generated by Ixmati; edit only through the operator config.
+sync-interval: 1s
+snapshot:
+  retention: 168h
+dbs:
+  - dir: /var/lib/ixmati/stores
+    pattern: \"*.db\"
+    watch: true
+    meta-dir: /var/lib/ixmati/litestream-meta/file
+    replica:
+      path: {LITESTREAM_BACKUP_DIR}
+"""
+    _write_if_missing(LITESTREAM_FILE_CONFIG, local_config)
+
+    bucket = os.environ.get(
+        "IXMATI_LITESTREAM_S3_BUCKET", os.environ.get("LITESTREAM_S3_BUCKET", "")
+    ).strip()
+    if not bucket:
+        warn(
+            "IXMATI_LITESTREAM_S3_BUCKET no está configurado; "
+            "la réplica S3 queda deshabilitada"
+        )
+        return
+
+    prefix = os.environ.get("IXMATI_LITESTREAM_S3_PREFIX", "ixmati").strip()
+    region = os.environ.get("IXMATI_LITESTREAM_S3_REGION", "us-east-1").strip()
+    endpoint = os.environ.get("IXMATI_LITESTREAM_S3_ENDPOINT", "").strip()
+    endpoint_line = f"      endpoint: {endpoint}\n" if endpoint else ""
+    s3_config = f"""# Generated by Ixmati; credentials are loaded from litestream.env.
+sync-interval: 1s
+snapshot:
+  retention: 168h
+dbs:
+  - dir: /var/lib/ixmati/stores
+    pattern: \"*.db\"
+    watch: true
+    meta-dir: /var/lib/ixmati/litestream-meta/s3
+    replica:
+      url: s3://{bucket}/{prefix}
+      region: {region}
+{endpoint_line}"""
+    _write_if_missing(LITESTREAM_S3_CONFIG, s3_config)
+
+    env_lines = []
+    for name in (
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+        "AWS_SESSION_TOKEN",
+    ):
+        value = os.environ.get(name, "").strip()
+        if value:
+            if any(char in value for char in "\r\n"):
+                die(f"{name} no puede contener saltos de línea")
+            # EnvironmentFile is parsed by systemd, not by a shell.  Shell
+            # quoting (shlex.quote) is not valid for every credential (for
+            # example a value containing a single quote), so emit a systemd
+            # double-quoted value with only the required escapes.
+            escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+            env_lines.append(f'{name}="{escaped}"')
+    if not LITESTREAM_ENV.exists():
+        _write_if_missing(LITESTREAM_ENV, "\n".join(env_lines) + "\n")
+    else:
+        warn(f"{LITESTREAM_ENV.name} ya existe en {LITESTREAM_ENV}, se conserva")
+    ok("réplica S3 configurada; habilitar ixmati-litestream-s3.service")
 
 
 MOSQUITTO_MARKER = "# ixmati-managed"
@@ -287,12 +472,20 @@ def wait_for_cache_socket(timeout_s: float = 10.0) -> None:
     warn(f"cache-server socket no apareció tras {timeout_s}s ({socket_path})")
 
 
+def configured_services() -> list[str]:
+    services = list(SERVICE_START_ORDER)
+    if LITESTREAM_S3_CONFIG.exists():
+        services.append("ixmati-litestream-s3")
+    return services
+
+
 def start_services() -> None:
     log("iniciando servicios...")
 
     run(["systemctl", "daemon-reload"], quiet=True)
 
-    for svc in SERVICE_START_ORDER:
+    services = configured_services()
+    for svc in services:
         run(["systemctl", "enable", svc], check=False, quiet=True)
         # A plain `start` leaves an already-running process on the previous
         # binary after an upgrade. Restart in dependency order so an
@@ -301,7 +494,7 @@ def start_services() -> None:
         if svc == "ixmati-cache-server":
             wait_for_cache_socket()
 
-    for svc in SERVICE_START_ORDER:
+    for svc in services:
         result = subprocess.run(
             ["systemctl", "is-active", svc],
             check=False, capture_output=True, text=True,
@@ -367,12 +560,9 @@ def show_final_message() -> None:
 
 
 # servicios propios de ixmati (excluye mosquitto, que es un paquete del sistema)
-IXMATI_SERVICES = [svc for svc in SERVICE_START_ORDER if svc != "mosquitto"]
-
-
 def stop_services() -> None:
     log("deteniendo servicios ixmati...")
-    for svc in reversed(IXMATI_SERVICES):
+    for svc in reversed([svc for svc in configured_services() if svc != "mosquitto"]):
         run(["systemctl", "stop", svc], check=False, quiet=True)
         run(["systemctl", "disable", svc], check=False, quiet=True)
         ok(svc)
@@ -397,6 +587,9 @@ def remove_binaries() -> None:
         if dst.exists():
             dst.unlink()
             ok(binary)
+    if LITESTREAM_INSTALL_PATH.exists():
+        LITESTREAM_INSTALL_PATH.unlink()
+        ok(str(LITESTREAM_INSTALL_PATH))
 
 
 def remove_config() -> None:
@@ -469,11 +662,13 @@ def main() -> None:
     ok(f"directorio de instalación: {base_dir}")
 
     install_mosquitto()
+    install_litestream()
     install_binaries(base_dir)
     # The credential file is owned by root:ixmati, so the service account must
     # exist before install_config writes and protects it.
     create_user()
     install_config(base_dir)
+    install_litestream_config()
     configure_mosquitto(base_dir)
     install_systemd_units(base_dir)
     create_directories()

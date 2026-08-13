@@ -5,7 +5,7 @@ agent = "codex"
 initiative = "protobuf-api"
 task = "TASK-PROTO-0004"
 intent = "Completar gRPC, REST/Protobuf, replay/live, despliegue y pruebas sin alterar la durabilidad existente"
-last_updated = "2026-08-12T23:40:00Z"
+last_updated = "2026-08-13T02:30:00Z"
 +++
 
 # Active Session
@@ -66,14 +66,23 @@ validación exacta de `6c38eb8` completó una hora a 10/s con `36,001/36,001`
 respuestas `200`, p99 de 212.86 ms, outbox drenado e `integrity_check=ok`.
 El resultado está en `PRODUCTION-PROFILE-10S-SHA-6C38EB8-20260813.md`.
 
+En este ciclo se cerró un defecto de distribución: `make dist` podía reutilizar
+binarios del host o stale de `target/release` bajo el nombre `linux-amd64`. Ahora
+extrae los binarios desde el builder Podman actual y `dist-validate` exige ELF
+64-bit x86-64. El instalador nativo fija Litestream 0.5.16, arranca la réplica
+local y la prueba Debian valida restore local íntegro. La suite de migración
+offline también valida merge con una idempotencia deduplicada, tombstone ganador,
+split reproducible, backup local, reconciler, cache, integridad y outbox.
+
 ## Next steps
 
 Siguiente paso de `protobuf-api`: ampliar las pruebas de integración con
 cliente lento, backpressure, `OUT_OF_RANGE` tras retención y reconexión con
 cursor. La evidencia `STORE-MIGRATION-E2E-20260813.md` ya cubre merge/split,
 tombstone, checksums reproducibles, backup local y reconciler/cache. Siguen
-pendientes el restore remoto de Litestream, topics antiguos, cutover de routing,
-rollback y la prueba prolongada de 150/s y 200/s. El perfil
+pendientes el restore remoto de Litestream, el segundo destino, RPO/RTO, topics
+antiguos, cutover de routing, rollback y la prueba prolongada de 150/s y 200/s.
+El perfil
 recomendado queda en 10/s con evidencia de una hora; 40/s es diagnóstico. `mdbook` continúa
 pendiente por no estar instalado localmente.
 
