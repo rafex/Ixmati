@@ -42,4 +42,4 @@ Vínculos entre artefactos del proyecto.
 | `TASK-PROTO-0004` | `EventService.SubscribeEvents` replay/live, buffer acotado y cursor de reanudación | `spec-native/evidence/PROTOBUF-E2E-20260812.md`; tests locales de cliente lento/backpressure; integración remota de retención/reconexión pendiente | `DEC-0069`, `DEC-0080` |
 | `TASK-PROTO-0005` | deployment, OpenAPI, README, docs and SpecNative | `spec-native/evidence/PROTOBUF-E2E-20260812.md`; config/distribution gates pass | `DEC-0069` |
 | `TASK-PROTO-0006` | `benchmarks/protocol_benchmark.sh`, `ixmati-protocol-bench` | `spec-native/evidence/PROTOBUF-BENCH-20260812.md` | `DEC-0069` |
-| `TASK-PROD-0002` | REST body limits, gRPC message/stream limits, slow-stream terminal cursor | `cargo test -p ixmati-api` (47 tests), `cargo clippy -p ixmati-api --all-targets --all-features -- -D warnings` | `DEC-0080` |
+| `TASK-PROD-0002` | REST body limits, gRPC message/stream limits, slow-stream terminal cursor | `spec-native/evidence/API-HARDENING-20260813.md`; gates locales y distribución amd64 | `DEC-0080` |
