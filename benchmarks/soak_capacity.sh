@@ -54,10 +54,18 @@ trap cleanup EXIT INT TERM
   echo "host=$TEST_HOST api_port=$API_PORT writer_metrics_port=$WRITER_METRICS_PORT"
   echo "container=$CONTAINER_NAME store=$STORE duration=$DURATION concurrency=$CONCURRENCY"
   echo "generator=$GENERATOR image=$GENERATOR_IMAGE podman_host_ip=$PODMAN_HOST_IP snapshot_interval=$SNAPSHOT_INTERVAL rates=${RATES[*]}"
+  echo "api_auth_configured=$([[ -n \"$API_KEY\" ]] && echo true || echo false)"
   podman version
 } > "$OUT_DIR/manifest.txt"
 
 podman exec "$CONTAINER_NAME" curl -fsS "http://127.0.0.1:30000/health" > "$OUT_DIR/health.json"
+auth_status="$(podman exec "$CONTAINER_NAME" curl -sS -o /dev/null -w '%{http_code}' \
+  -H "Authorization: ApiKey ${API_KEY}" \
+  "http://127.0.0.1:30000/writes/${STORE}/__soak_auth_probe" || true)"
+if [[ "$auth_status" == "401" || "$auth_status" == "403" || -z "$auth_status" ]]; then
+  echo "API auth preflight failed with HTTP ${auth_status:-unknown}; refusing to start a capacity run" >&2
+  exit 1
+fi
 
 for rate in "${RATES[@]}"; do
   run_dir="$OUT_DIR/rate-${rate}"

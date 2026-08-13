@@ -8,6 +8,7 @@ ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 TEST_HOST="${TEST_HOST:-192.168.3.175}"
 API_PORT="${API_PORT:-30300}"
 WRITER_METRICS_PORT="${WRITER_METRICS_PORT:-30301}"
+API_KEY="${API_KEY:-ix-default-key}"
 IMAGE_NAME="${IMAGE_NAME:-ixmati-soak-debian}"
 GENERATOR_IMAGE="${GENERATOR_IMAGE:-ixmati-soak-generator}"
 CONTAINER_PREFIX="${CONTAINER_PREFIX:-ixmati-soak}"
@@ -58,7 +59,9 @@ for rate in "${RATES[@]}"; do
     wait_for_systemd "$container"
     podman cp "$tarball" "$container:/root/$(basename "$tarball")"
     podman exec "$container" bash -lc \
-        "cd /root && tar xzf $(basename "$tarball") && cd /root/$dist_dir && ./install.sh"
+        "cd /root && tar xzf $(basename "$tarball") && cd /root/$dist_dir"
+    podman exec --env "IXMATI_API_KEYS=${API_KEY}" "$container" bash -lc \
+        "cd /root/$dist_dir && ./install.sh"
 
     podman exec "$container" bash -lc 'mkdir -p /etc/systemd/system/ixmati-writer@default.service.d
 cat > /etc/systemd/system/ixmati-writer@default.service.d/metrics.conf <<EOF
