@@ -38,6 +38,12 @@ réplica S3 se deben definir `IXMATI_LITESTREAM_S3_BUCKET`, opcionalmente
 para `ixmati-litestream-s3.service`. La réplica local no sustituye un backup
 remoto ni demuestra por sí sola RPO/RTO.
 
+La ruta S3-compatible puede probarse con el arnés reproducible
+[`helpers/shell/test_litestream_s3.sh`](helpers/shell/test_litestream_s3.sh),
+que usa MinIO fijado por digest, replica SQLite y restaura desde el objeto
+remoto. Esta prueba valida compatibilidad de transporte; no reemplaza un
+simulacro contra el bucket remoto de producción.
+
 Una escritura durable se envía así:
 
 ```bash

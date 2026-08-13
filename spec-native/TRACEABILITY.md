@@ -36,7 +36,7 @@ Vínculos entre artefactos del proyecto.
 | `TASK-PROD-0001` | `benchmarks/ixmati-soak.jmx`, `benchmarks/soak_capacity.sh`, `ixmati-protocol-bench` | `spec-native/evidence/PRODUCTION-PROFILE-10S-SHA-6C38EB8-20260813.md` | `DEC-0077` |
 | `TASK-CAP-0001` | `benchmarks/ixmati-soak.jmx`, `benchmarks/soak_capacity.sh`, bounded `rate_load.py` | pending Debian soak evidence for 150/s and 200/s | pending |
 | `TASK-STORE-0001`..`0006` | `crates/ixmati-store-migrate`, tombstones, migration runbook | `spec-native/evidence/STORE-MIGRATION-E2E-20260813.md`; cutover remoto pendiente | `DEC-0068` |
-| `TASK-WRITE-0014` | `config/litestream.yml`, `containers/litestream/`, `helpers/python/installer.py`, `helpers/shell/litestream_restore.sh` | `spec-native/evidence/PRODUCTION-BACKUP-LOCAL-20260813.md`; restore S3, segundo destino y RPO/RTO pendientes | `DEC-0078` |
+| `TASK-WRITE-0014` | `config/litestream.yml`, `containers/litestream/`, `helpers/python/installer.py`, `helpers/shell/litestream_restore.sh`, `helpers/shell/test_litestream_s3.sh` | `PRODUCTION-BACKUP-LOCAL-20260813.md` + `PRODUCTION-BACKUP-S3-COMPAT-20260813.md`; bucket remoto real, segundo destino y RPO/RTO pendientes | `DEC-0078` |
 | `TASK-PROTO-0001` | `proto/ixmati/v1/`, `build.rs`, `make proto` | `cargo check -p ixmati-api`, `make proto` | `DEC-0069` |
 | `TASK-PROTO-0002`..`0003` | `crates/ixmati-api/src/grpc.rs`, REST dispatch and generated tonic client | `spec-native/evidence/PROTOBUF-E2E-20260812.md` | `DEC-0069` |
 | `TASK-PROTO-0004` | `EventService.SubscribeEvents` replay/live | `spec-native/evidence/PROTOBUF-E2E-20260812.md`; cliente lento/backpressure pendiente | `DEC-0069` |

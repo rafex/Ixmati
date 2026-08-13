@@ -1771,7 +1771,9 @@ split. El E2E Debian valida además reconciler, cache, integridad y outbox.
 
 Consecuencias: (+) el artefacto publicado es verificablemente ejecutable en el
 target declarado; (+) una instalación limpia tiene backup local operable y
-restaurable; (+) merge/split es auditable y determinista; (-) el perfil de
-producción sigue limitado a la evidencia de capacidad disponible; (-) S3,
-segundo destino, RPO/RTO y cutover/rollback de routing siguen siendo gates
-pendientes y no se deben presentar como resueltos.
+restaurable; (+) merge/split es auditable y determinista; (+) la ruta
+S3-compatible queda cubierta por un smoke test con MinIO fijado por digest;
+(-) el perfil de producción sigue limitado a la evidencia de capacidad
+disponible; (-) un bucket remoto real, segundo destino, RPO/RTO y
+cutover/rollback de routing siguen siendo gates pendientes y no se deben
+presentar como resueltos.

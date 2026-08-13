@@ -189,6 +189,15 @@ Variables soportadas por el instalador: `IXMATI_LITESTREAM_S3_BUCKET`,
 el restore remoto, el segundo destino y las mediciones RPO/RTO siguen siendo
 gates operativos separados.
 
+Smoke test S3-compatible reproducible, sin tocar los stores del host:
+
+```bash
+helpers/shell/test_litestream_s3.sh
+```
+
+El arnés usa MinIO y Debian fijados por digest, verifica que existan objetos
+LTX y restaura una base con `integrity_check`. No mide RPO/RTO de producción.
+
 ## CI
 
 ```bash
