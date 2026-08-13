@@ -83,8 +83,10 @@ tombstone, checksums reproducibles, backup local y reconciler/cache. Siguen
 pendientes el restore remoto de Litestream, el segundo destino, RPO/RTO, topics
 antiguos, cutover de routing, rollback y la prueba prolongada de 150/s y 200/s.
 El perfil
-recomendado queda en 10/s con evidencia de una hora; 40/s es diagnóstico. `mdbook` continúa
-pendiente por no estar instalado localmente.
+recomendado queda en 10/s con evidencia de una hora; 40/s es diagnóstico.
+Los smokes post-fix alcanzaron 150/s y 200/s durante 60s sin `202`, pero no
+reemplazan un soak; el writer volvió a acumular cola a 150/s tras los primeros
+minutos. `mdbook` continúa pendiente por no estar instalado localmente.
 
 ## Context for next agent
 
