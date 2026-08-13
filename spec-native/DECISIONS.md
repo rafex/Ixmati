@@ -1852,3 +1852,25 @@ un límite de aislamiento demostrable. El rechazo es HTTP 403 o
 El instalador persiste `IXMATI_API_KEY_SCOPES` junto con `IXMATI_API_KEYS` en
 `/etc/ixmati/ixmati.env`; omitirlo durante la instalación no debe convertir una
 configuración scoped en global después de un reinicio.
+
+### DEC-0082 — 150/s no es un perfil sostenible en el SHA publicado
+
+- Fecha: 2026-08-13
+- Estado: `accepted`
+- Relacionado con: `TASK-CAP-0001`, `TASK-PROD-0001`
+- Evidencia: `spec-native/evidence/SOAK-CAPACITY-20260813.md`
+
+La prueba rate-controlled sobre Debian amd64 con 400 clientes confirma que el
+primer límite operativo aparece alrededor de 150/s: en unos 130 segundos el
+generador no estaba saturado, pero el outbox superó el umbral 500, aparecieron
+751 respuestas `429` por `outbox_backlog` y 1,274 respuestas `202/PENDING`.
+Esto es una señal de backpressure y latencia durable degradada, no una pérdida
+de datos ni una capacidad sostenible.
+
+El escalón de 200/s no permite inferir el techo del servidor porque el
+generador alcanzó 2,338 ticks de saturación; sus 2,833 respuestas `202` sólo
+clasifican el perfil como no productivo/inconcluso. La capacidad recomendada
+se mantiene en 10/s por store, validada durante una hora. No se elevará el
+throttle productivo para maquillar estos resultados; la siguiente optimización
+debe aumentar la capacidad real del writer/outbox y repetirse con un generador
+distribuido.

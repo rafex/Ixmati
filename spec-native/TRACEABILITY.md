@@ -14,7 +14,7 @@ Vínculos entre artefactos del proyecto.
 
 ## Total
 
-- **Decisiones**: el histórico está en `DECISIONS.md`; la última es `DEC-0081`
+- **Decisiones**: el histórico está en `DECISIONS.md`; la última es `DEC-0082`
 - **Tareas**: el histórico está en las carpetas de `tasks/`; se agregó
   `protobuf-api` con seis tareas
 | SPEC-WRITE-0001 | spec-native/specs/write-engine/SPEC.md | closed | 2026-07-30 |
@@ -34,7 +34,7 @@ Vínculos entre artefactos del proyecto.
 | `TASK-VAL-0036` | Pattern R reverse index + reconciler rebuild | `spec-native/evidence/PRODUCTION-HARDENING-20260811.md` | `DEC-0065` |
 | `TASK-VAL-0025` | post-index durable writer baseline and rate-controlled staircase | `spec-native/evidence/LOAD-POST-INDEX-20260811.md` | `DEC-0067` |
 | `TASK-PROD-0001` | `benchmarks/ixmati-soak.jmx`, `benchmarks/soak_capacity.sh`, `ixmati-protocol-bench` | `spec-native/evidence/PRODUCTION-PROFILE-10S-SHA-6C38EB8-20260813.md`; smoke post-hardening `PRODUCTION-PROFILE-10S-SHA-359CF89-SMOKE-20260813.md` | `DEC-0077` |
-| `TASK-CAP-0001` | `benchmarks/ixmati-soak.jmx`, `benchmarks/soak_capacity.sh`, bounded `rate_load.py` | baseline 150/s non-sustainable (`SOAK-150-SHA-907236F-20260813.md`); post-fix 150/s/200/s smokes only (`SOAK-150-SHA-43F8106-SMOKE-20260813.md`, `SOAK-200-SHA-105E79B-SMOKE-20260813.md`) | pending |
+| `TASK-CAP-0001` | `benchmarks/ixmati-soak.jmx`, `benchmarks/soak_capacity.sh`, bounded `rate_load.py` | `spec-native/evidence/SOAK-CAPACITY-20260813.md`: 150/s activa backpressure; 200/s satura el generador | pending |
 | `TASK-STORE-0001`..`0006` | `crates/ixmati-store-migrate`, tombstones, migration runbook | `spec-native/evidence/STORE-MIGRATION-E2E-20260813.md`; cutover remoto pendiente | `DEC-0068` |
 | `TASK-WRITE-0014` | `config/litestream.yml`, `containers/litestream/`, `helpers/python/installer.py`, `helpers/shell/litestream_restore.sh`, `helpers/shell/test_litestream_s3.sh` | `PRODUCTION-BACKUP-LOCAL-20260813.md` + `PRODUCTION-BACKUP-S3-COMPAT-20260813.md`; bucket remoto real, segundo destino y RPO/RTO pendientes | `DEC-0078` |
 | `TASK-PROTO-0001` | `proto/ixmati/v1/`, `build.rs`, `make proto` | `cargo check -p ixmati-api`, `make proto` | `DEC-0069` |

@@ -126,6 +126,12 @@ cliente es demasiado lento. Estos valores se pueden ajustar explícitamente en
   de capacidad temporal anterior.
 - 150 solicitudes/s produjo la primera señal de saturación; no se presenta
   como capacidad sostenible.
+- El soak prolongado del SHA `df381f4` confirmó el límite: a 150/s el outbox
+  superó 500 y produjo 751 rechazos `429` y 1,274 `202` en unos 130 segundos,
+  sin saturación del generador; a 200/s el generador se saturó y produjo 2,833
+  `202` en unos 200 segundos. Ver
+  [`SOAK-CAPACITY-20260813.md`](spec-native/evidence/SOAK-CAPACITY-20260813.md).
+  Ninguna de esas tasas es un perfil productivo demostrado.
 - La entrega de eventos es at-least-once: un crash en la ventana de PUBACK
   puede producir duplicados, pero no debe perder eventos confirmados.
 - Cada store tiene un writer y un archivo SQLite; sharding interno, clustering

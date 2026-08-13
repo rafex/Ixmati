@@ -97,6 +97,14 @@ Los smokes post-fix alcanzaron 150/s y 200/s durante 60s sin `202`, pero no
 reemplazan un soak; el writer volvió a acumular cola a 150/s tras los primeros
 minutos. `mdbook` continúa pendiente por no estar instalado localmente.
 
+El soak rate-controlled sobre `df381f4` confirmó el límite operativo: 150/s
+produjo `17,468` respuestas 200, `1,274` 202 y `751` 429 en unos 130s sin
+saturación del generador, al superar el outbox el umbral 500. El escenario de
+200/s acumuló `2,833` 202 y `2,338` ticks de saturación del cliente en unos
+200s, por lo que su techo es inconcluso. Ver
+`spec-native/evidence/SOAK-CAPACITY-20260813.md`. El perfil recomendado sigue
+siendo 10/s; 40–120/s es diagnóstico corto, no una garantía de una hora.
+
 ## Context for next agent
 
 La iniciativa native-installer-hardening anterior está COMPLETADA.

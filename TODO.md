@@ -719,13 +719,13 @@ Tablero de tareas activo. Persiste entre sesiones.
       cliente ya está acotado y reserva un slot para `RESOURCE_EXHAUSTED`, con
       test local; faltan retención/reconexión contra el stack remoto.
 
-- [ ] `TASK-CAP-0001` — Ejecutar soak rate-controlled de 150/s y 200/s durante
-      una hora por escalón en contenedores Debian nuevos; conservar JTL/JSONL,
-      métricas, logs, drenado y clasificación sostenible/inconclusa. El
-      baseline de 150/s contra `907236f` se clasificó no sostenible a los 15
-      minutos por 91.1% de `200`, `10,526` `202` y `1,501` `429`; ver
-      `spec-native/evidence/SOAK-150-SHA-907236F-20260813.md`. Falta repetir
-      con `28245fd` y ejecutar 200/s.
+- [ ] `TASK-CAP-0001` — Soak prolongado de 150/s y 200/s: la ejecución sobre
+      `df381f4` se detuvo al demostrar que 150/s activa backpressure y 202
+      antes de saturar el generador (`17,468/1,274/751` en ~130s), mientras
+      200/s saturó al cliente (`2,338` ticks y `2,833` 202 en ~200s). Ambos
+      quedan fuera del perfil productivo; falta optimizar el writer/outbox y
+      repetir una hora completa con generador distribuido. Ver
+      `spec-native/evidence/SOAK-CAPACITY-20260813.md`.
 - [x] `TASK-STORE-0001` — Añadir `_tombstones`, operación y digest de comando
       en `_idempotency`, con migración idempotente de esquemas existentes.
 - [x] `TASK-STORE-0002` — Crear `ixmati-store-migrate` con manifiesto,
