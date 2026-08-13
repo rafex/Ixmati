@@ -183,9 +183,12 @@ restauración medible, rollback y pruebas prolongadas del perfil elegido. Estos
 resultados no justifican afirmar
 que Ixmati supera a SQLite o PostgreSQL en capacidad bruta, que soporta
 100–200 escrituras durables/s, ni que ya es un reemplazo general de PostgreSQL.
-El siguiente trabajo de rendimiento debe concentrarse en la latencia del
-writer y en la observabilidad de la cola; la prueba determinista de crash
-entre PUBACK y `published_at` sigue pendiente.
+La prueba determinista de crash entre `PUBACK` y `published_at` ya está
+implementada y validada: 20/20 escrituras recuperadas, 20/20 eventos
+observados, outbox drenado y un duplicado permitido por at-least-once
+(`spec-native/evidence/PRODUCTION-HARDENING-20260811.md`). El siguiente trabajo
+de rendimiento debe concentrarse en la latencia del writer y en la
+observabilidad de la cola.
 
 ## Stack
 

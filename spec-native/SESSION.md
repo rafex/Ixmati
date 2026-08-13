@@ -115,9 +115,10 @@ Resultados del ciclo actual:
    147/205/281/375/252ms respectivamente y la cola MQTT quedó en 0.
 3. A 150/s aparecieron `202 PENDING`, p99≈2.13s y cola MQTT=100; es el primer
    escalón de saturación y no debe presentarse como capacidad sostenible.
-4. El crash/restart anterior validó 30/30 escrituras y 30/30 eventos sin
-   pérdida observada; la ventana PUBACK→marca permanece pendiente de prueba
-   forzada.
+4. La prueba forzada de crash entre PUBACK y `published_at` alcanzó la barrera,
+   terminó el writer con SIGKILL y recuperó 20/20 escrituras y 20/20 eventos;
+   el outbox drenó y se observó un duplicado permitido por at-least-once. Ver
+   `spec-native/evidence/PRODUCTION-HARDENING-20260811.md`.
 
 Motivo: el usuario preguntó si Ixmati ya tenía un instalador "listo para usar"
 estilo PostgreSQL/MongoDB para Linux Debian. El instalador nativo existía
