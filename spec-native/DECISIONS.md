@@ -1709,3 +1709,31 @@ como perfil recomendado provisional, mientras 15/s queda como diagnóstico.
 La prueba de una hora contra el SHA recalibrado sigue siendo obligatoria antes
 de cerrar `TASK-PROD-0001`; este cambio no convierte el control corto en una
 garantía de disponibilidad.
+
+### DEC-0077 — El perfil de 10/s requiere corregir la segunda ruta de escritura SQLite
+
+- Fecha: 2026-08-13
+- Estado: `accepted`
+- Reemplaza: la conclusión de capacidad de `DEC-0076`, sin revertir su límite
+  provisional de admisión
+- Relacionado con: `TASK-PROD-0001`, `TASK-VAL-0025`
+
+La primera ejecución exacta del SHA `b023819` a 10/s se detuvo después de
+aproximadamente 12 minutos al observar 283 respuestas `202/PENDING`. El
+writer tuvo pausas de hasta aproximadamente 1.25 s y luego procesó lotes
+acumulados de hasta 20 comandos, mientras Mosquitto no reportó una
+desconexión equivalente. SQLite terminó íntegra y el outbox drenó después del
+alto, pero el criterio de confirmación durable no se cumplió.
+
+La causa de diseño identificada es que `EventPublisher` abría una segunda
+conexión SQLite para ejecutar `mark_published_batch`, en paralelo con la
+conexión exclusiva del hilo de escritura. Aunque ambas operaciones eran
+válidas individualmente, esto violaba la propiedad single-writer y podía
+introducir contención en el mismo archivo durante carga sostenida.
+
+La corrección consiste en enviar las marcas de `published_at` como trabajos al
+`WriteHandle`; sólo ese hilo ejecuta escrituras SQLite. El cambio tiene prueba
+unitaria específica, pero aún requiere build amd64, repetición limpia de 10/s
+durante una hora, drenado de cinco minutos y luego una nueva evaluación de
+150/s/200/s. Hasta entonces, 10/s permanece como límite provisional de
+admisión, no como capacidad productiva certificada.

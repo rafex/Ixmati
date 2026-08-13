@@ -16,12 +16,23 @@ use ixmati_core::WriteEnvelope;
 
 use crate::BatchResult;
 use crate::db;
+use crate::outbox::Outbox;
 use crate::write_engine::WriteEngine;
 
 struct Job {
-    cmds: Vec<WriteEnvelope>,
-    reply: std::sync::mpsc::Sender<rusqlite::Result<BatchResult>>,
-    submitted_at: std::time::Instant,
+    kind: JobKind,
+}
+
+enum JobKind {
+    Process {
+        cmds: Vec<WriteEnvelope>,
+        reply: std::sync::mpsc::Sender<rusqlite::Result<BatchResult>>,
+        submitted_at: std::time::Instant,
+    },
+    MarkPublished {
+        outbox_ids: Vec<i64>,
+        reply: std::sync::mpsc::Sender<rusqlite::Result<usize>>,
+    },
 }
 
 #[derive(Clone)]
@@ -43,19 +54,33 @@ impl WriteHandle {
                     .unwrap_or_else(|e| panic!("write thread: failed to open {db_path}: {e}"));
 
                 while let Ok(job) = rx.recv() {
-                    let queue_wait = job.submitted_at.elapsed().as_secs_f64();
-                    let sqlite_started = std::time::Instant::now();
-                    let result =
-                        WriteEngine::process_batch(&mut conn, &job.cmds).map(|mut result| {
-                            result.write_queue_wait_seconds = queue_wait;
-                            result.sqlite_process_seconds = sqlite_started.elapsed().as_secs_f64();
-                            result
-                        });
-                    // Si quien pidió el batch ya no está esperando (p.ej. se
-                    // cayó el hilo llamador), no hay nada que hacer con el
-                    // error de `send` — el hilo de escritura sigue vivo para
-                    // el próximo job.
-                    let _ = job.reply.send(result);
+                    match job.kind {
+                        JobKind::Process {
+                            cmds,
+                            reply,
+                            submitted_at,
+                        } => {
+                            let queue_wait = submitted_at.elapsed().as_secs_f64();
+                            let sqlite_started = std::time::Instant::now();
+                            let result =
+                                WriteEngine::process_batch(&mut conn, &cmds).map(|mut result| {
+                                    result.write_queue_wait_seconds = queue_wait;
+                                    result.sqlite_process_seconds =
+                                        sqlite_started.elapsed().as_secs_f64();
+                                    result
+                                });
+                            // Si quien pidió el batch ya no está esperando (p.ej. se
+                            // cayó el hilo llamador), no hay nada que hacer con el
+                            // error de `send` — el hilo de escritura sigue vivo para
+                            // el próximo job.
+                            let _ = reply.send(result);
+                        }
+                        JobKind::MarkPublished { outbox_ids, reply } => {
+                            let result = Outbox::mark_published_batch(&conn, &outbox_ids)
+                                .map(|_| outbox_ids.len());
+                            let _ = reply.send(result);
+                        }
+                    }
                 }
 
                 tracing::warn!("write thread: canal de jobs cerrado, terminando");
@@ -73,14 +98,38 @@ impl WriteHandle {
         let (reply_tx, reply_rx) = std::sync::mpsc::channel();
         self.tx
             .send(Job {
-                cmds,
-                reply: reply_tx,
-                submitted_at: std::time::Instant::now(),
+                kind: JobKind::Process {
+                    cmds,
+                    reply: reply_tx,
+                    submitted_at: std::time::Instant::now(),
+                },
             })
             .expect("write thread died");
         reply_rx
             .recv()
             .expect("write thread dropped the reply channel")
+    }
+
+    /// Marca eventos como publicados en la misma conexión y el mismo hilo que
+    /// procesa las escrituras. El publicador MQTT no debe abrir una segunda
+    /// conexión de escritura para actualizar `published_at`: eso rompe la
+    /// garantía de single-writer y añade contención SQLite bajo carga.
+    pub fn mark_published_batch(&self, outbox_ids: Vec<i64>) -> rusqlite::Result<usize> {
+        if outbox_ids.is_empty() {
+            return Ok(0);
+        }
+        let (reply_tx, reply_rx) = std::sync::mpsc::channel();
+        self.tx
+            .send(Job {
+                kind: JobKind::MarkPublished {
+                    outbox_ids,
+                    reply: reply_tx,
+                },
+            })
+            .expect("write thread died");
+        reply_rx
+            .recv()
+            .expect("write thread dropped the published reply channel")
     }
 }
 
@@ -153,6 +202,52 @@ mod tests {
 
         assert_eq!(second.committed, 1);
         assert_eq!(second.duplicates, 0);
+
+        let _ = std::fs::remove_file(&path);
+        let _ = std::fs::remove_file(path.with_extension("db-wal"));
+        let _ = std::fs::remove_file(path.with_extension("db-shm"));
+    }
+
+    #[test]
+    fn marks_published_on_the_same_write_thread() {
+        let path = std::env::temp_dir().join(format!(
+            "ixmati-write-thread-test-published-{}.db",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let path_str = path.to_str().unwrap().to_string();
+
+        {
+            let conn = db::open_with_pragmas(&path_str).unwrap();
+            WriteEngine::ensure_schema(&conn, "pedidos").unwrap();
+        }
+
+        let handle = WriteHandle::spawn(path_str.clone());
+        let result = handle.process_batch(vec![make_cmd("p1", 1)]).unwrap();
+        let event_id = result.events[0].event_id.clone();
+        let conn = db::open_with_pragmas(&path_str).unwrap();
+        let outbox_id: i64 = conn
+            .query_row(
+                "SELECT id FROM _outbox WHERE event_id = ?1",
+                [&event_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        drop(conn);
+
+        assert_eq!(handle.mark_published_batch(vec![outbox_id]).unwrap(), 1);
+
+        let conn = db::open_with_pragmas(&path_str).unwrap();
+        let published: Option<String> = conn
+            .query_row(
+                "SELECT published_at FROM _outbox WHERE id = ?1",
+                [outbox_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(published.is_some());
 
         let _ = std::fs::remove_file(&path);
         let _ = std::fs::remove_file(path.with_extension("db-wal"));

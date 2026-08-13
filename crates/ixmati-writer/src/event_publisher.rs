@@ -5,6 +5,7 @@ use std::sync::Mutex;
 use std::sync::mpsc::{self, Receiver, Sender};
 
 use crate::outbox::Outbox;
+use crate::write_thread::WriteHandle;
 
 #[derive(Default)]
 struct PublishTracker {
@@ -54,13 +55,20 @@ pub struct EventPublisher {
     client: Client,
     db_path: String,
     store: String,
+    write_handle: WriteHandle,
     tracker: Arc<Mutex<PublishTracker>>,
     puback_rx: Mutex<Receiver<i64>>,
     late_acks: Mutex<HashSet<i64>>,
 }
 
 impl EventPublisher {
-    pub fn new(broker: &str, client_id: &str, db_path: &str, store: &str) -> Self {
+    pub fn new(
+        broker: &str,
+        client_id: &str,
+        db_path: &str,
+        store: &str,
+        write_handle: WriteHandle,
+    ) -> Self {
         let (host, port) = ixmati_core::mqtt::parse_mqtt_broker(broker);
         let mut mqtt_options = MqttOptions::new(format!("{}-publisher", client_id), &host, port);
         mqtt_options.set_keep_alive(std::time::Duration::from_secs(5));
@@ -87,6 +95,7 @@ impl EventPublisher {
             client,
             db_path: db_path.to_string(),
             store: store.to_string(),
+            write_handle,
             tracker,
             puback_rx: Mutex::new(puback_rx),
             late_acks: Mutex::new(HashSet::new()),
@@ -200,8 +209,8 @@ impl EventPublisher {
             if published_ids.len() == queued_ids.len() {
                 pause_after_puback_for_test(&self.store, &published_ids);
             }
-            let conn = crate::db::open_with_pragmas(&self.db_path)?;
-            Outbox::mark_published_batch(&conn, &published_ids)?;
+            self.write_handle
+                .mark_published_batch(published_ids.clone())?;
         }
 
         Ok(published_ids.len())

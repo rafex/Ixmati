@@ -109,11 +109,14 @@ fn main() -> std::io::Result<()> {
     ixmati_writer::watchdog::spawn(Arc::clone(&progress), watchdog_timeout);
     let mut batcher = Batcher::new(batch_size, batch_interval_ms);
 
+    let write_handle = WriteHandle::spawn(db_path.clone());
+
     let publisher = Arc::new(EventPublisher::new(
         &mqtt_broker,
         &client_id,
         &db_path,
         &store_name,
+        write_handle.clone(),
     ));
     {
         let publisher = Arc::clone(&publisher);
@@ -144,8 +147,6 @@ fn main() -> std::io::Result<()> {
         .and_then(|v| v.parse().ok())
         .unwrap_or(1000);
     let cache_sync = CacheSyncWorker::spawn(cache_client, cache_sync_capacity, &store_name);
-
-    let write_handle = WriteHandle::spawn(db_path.clone());
 
     // Cada iteración espera un comando hasta `batch_interval_ms` — mismo rol
     // que el `flush_interval`/`select!` de la versión con tokio, pero con

@@ -57,8 +57,12 @@ sincronización de cache a un worker post-commit con cola acotada. La corrida
 limpia de cinco minutos del candidato pasó 4,501/4,501 `200`, p99=92.21ms,
 sin errores, con `integrity_check=ok` y outbox drenado. La validación
 prolongada posterior mostró que 15/s no conserva margen: acumuló `PENDING`
-por timeout aunque las claves terminaron comprometidas. El límite candidato
-se redujo a 10/s; falta cerrar la hora completa contra el SHA publicado.
+por timeout aunque las claves terminaron comprometidas. Una ejecución exacta
+de 10/s sobre `b023819` acumuló 283 `PENDING` en aproximadamente 12 minutos
+y se documentó en `PRODUCTION-PROFILE-10S-SHA-B023819-20260813.md`. El
+publicador de eventos escribía `published_at` desde una segunda conexión
+SQLite; la corrección para devolver esa operación al hilo único de escritura
+está en progreso y requiere una nueva validación de una hora.
 
 ## Next steps
 
