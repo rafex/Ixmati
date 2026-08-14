@@ -1,0 +1,161 @@
+name: ixmati-java-live
+
+services:
+  mosquitto:
+    image: localhost/ixmati-mosquitto:local
+    volumes: [mosquitto_data:/mosquitto/data:U]
+    healthcheck:
+      test: ["CMD", "mosquitto_pub", "-h", "127.0.0.1", "-p", "30200", "-t", "health", "-m", "1", "-q", "0"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  cache-server:
+    image: localhost/ixmati-cache-server:local
+    environment:
+      CACHE_BACKEND: redb
+      CACHE_DIR: /var/lib/ixmati/cache
+      CACHE_SOCKET_PATH: /var/run/ixmati/cache.sock
+      RUST_LOG: ixmati_cache_server=info
+    volumes:
+      - cache_data:/var/lib/ixmati/cache:U
+      - cache_socket:/var/run/ixmati:U
+    healthcheck:
+      test: ["CMD", "test", "-S", "/var/run/ixmati/cache.sock"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    image: localhost/ixmati-api:local
+    environment:
+      MQTT_BROKER: tcp://mosquitto:30200
+      API_HOST: 0.0.0.0
+      API_PORT: 30000
+      GRPC_HOST: 0.0.0.0
+      GRPC_PORT: 30100
+      IXMATI_API_KEYS: ix-live-key
+      SQLITE_PATH: /data/default.db
+      CACHE_READ_MODE: socket
+      CACHE_SOCKET_PATH: /var/run/ixmati/cache.sock
+      MAX_WRITES_PER_WINDOW: "60"
+      THROTTLE_WINDOW_SECS: "1"
+      RUST_LOG: ixmati_api=info
+    depends_on:
+      mosquitto: {condition: service_healthy}
+      cache-server: {condition: service_healthy}
+    volumes:
+      - ixmati_data:/data:U
+      - cache_socket:/var/run/ixmati:U
+
+  writer:
+    image: localhost/ixmati-writer:local
+    environment:
+      MQTT_BROKER: tcp://mosquitto:30200
+      STORE_NAME: default
+      SQLITE_PATH: /data/default.db
+      BATCH_SIZE: "100"
+      BATCH_INTERVAL_MS: "100"
+      CACHE_SOCKET_PATH: /var/run/ixmati/cache.sock
+      CACHE_SYNC_QUEUE_CAPACITY: "1000"
+      METRICS_PORT: "30300"
+      RUST_LOG: ixmati_writer=info
+    depends_on:
+      mosquitto: {condition: service_healthy}
+      cache-server: {condition: service_healthy}
+    volumes:
+      - ixmati_data:/data:U
+      - cache_socket:/var/run/ixmati:U
+
+  projector:
+    image: localhost/ixmati-projector:local
+    environment:
+      MQTT_BROKER: tcp://mosquitto:30200
+      CACHE_SOCKET_PATH: /var/run/ixmati/cache.sock
+      IXMATI_PROJECTIONS_PATH: /etc/ixmati/projections.toml
+      RUST_LOG: ixmati_projector=info
+    depends_on:
+      mosquitto: {condition: service_healthy}
+      cache-server: {condition: service_healthy}
+    volumes:
+      - cache_socket:/var/run/ixmati:U
+
+  litestream:
+    image: localhost/ixmati-litestream:local
+    environment: {LITESTREAM_FILESYSTEM_PATH: /backup}
+    command: ["replicate", "-config", "/etc/litestream.yml"]
+    depends_on: [writer]
+    volumes:
+      - ixmati_data:/data:U
+      - litestream_backup:/backup:U
+
+  sqlite-init:
+    image: localhost/ixmati-java-live-client:local
+    environment:
+      LIVE_INIT_ONLY: "1"
+      LIVE_DB_PATH: /direct-data/demo.sqlite
+    volumes: [direct_data:/direct-data:U]
+    restart: "no"
+
+  dashboard:
+    image: localhost/ixmati-java-live-dashboard:local
+    build:
+      context: ../..
+      dockerfile: benchmarks/java-live/dashboard-Containerfile
+    environment:
+      SNAPSHOT_DIR: /snapshots
+      DIRECT_DB: /direct-data/demo.sqlite
+      IXMATI_HEALTH_URL: http://api:30000/health
+      IXMATI_WRITER_METRICS_URL: http://writer:30300/metrics
+    depends_on: [api, writer]
+    ports: ["30450:8080"]
+    volumes:
+      - snapshots:/snapshots:ro
+      - direct_data:/direct-data:ro
+
+  sqlite-java-1:
+    image: localhost/ixmati-java-live-client:local
+    environment: {LIVE_MODE: direct, LIVE_CLIENT_ID: "1", LIVE_WRITE_RATE: "${LIVE_WRITE_RATE:-20}", LIVE_READ_RATE: "${LIVE_READ_RATE:-20}", LIVE_DURATION: "${LIVE_DURATION:-60}", LIVE_SNAPSHOT_DIR: /snapshots}
+    volumes: [direct_data:/direct-data:U, snapshots:/snapshots:U]
+    depends_on: [sqlite-init]
+    restart: "no"
+  sqlite-java-2:
+    image: localhost/ixmati-java-live-client:local
+    environment: {LIVE_MODE: direct, LIVE_CLIENT_ID: "2", LIVE_WRITE_RATE: "${LIVE_WRITE_RATE:-20}", LIVE_READ_RATE: "${LIVE_READ_RATE:-20}", LIVE_DURATION: "${LIVE_DURATION:-60}", LIVE_SNAPSHOT_DIR: /snapshots}
+    volumes: [direct_data:/direct-data:U, snapshots:/snapshots:U]
+    depends_on: [sqlite-init]
+    restart: "no"
+  sqlite-java-3:
+    image: localhost/ixmati-java-live-client:local
+    environment: {LIVE_MODE: direct, LIVE_CLIENT_ID: "3", LIVE_WRITE_RATE: "${LIVE_WRITE_RATE:-20}", LIVE_READ_RATE: "${LIVE_READ_RATE:-20}", LIVE_DURATION: "${LIVE_DURATION:-60}", LIVE_SNAPSHOT_DIR: /snapshots}
+    volumes: [direct_data:/direct-data:U, snapshots:/snapshots:U]
+    depends_on: [sqlite-init]
+    restart: "no"
+
+  ixmati-java-1:
+    image: localhost/ixmati-java-live-client:local
+    environment: {LIVE_MODE: ixmati, LIVE_CLIENT_ID: "1", LIVE_WRITE_RATE: "${LIVE_WRITE_RATE:-20}", LIVE_READ_RATE: "${LIVE_READ_RATE:-20}", LIVE_DURATION: "${LIVE_DURATION:-60}", LIVE_GRPC_ENDPOINT: http://api:30100, LIVE_API_KEY: ix-live-key, LIVE_SNAPSHOT_DIR: /snapshots}
+    volumes: [snapshots:/snapshots:U]
+    depends_on: [api]
+    restart: "no"
+  ixmati-java-2:
+    image: localhost/ixmati-java-live-client:local
+    environment: {LIVE_MODE: ixmati, LIVE_CLIENT_ID: "2", LIVE_WRITE_RATE: "${LIVE_WRITE_RATE:-20}", LIVE_READ_RATE: "${LIVE_READ_RATE:-20}", LIVE_DURATION: "${LIVE_DURATION:-60}", LIVE_GRPC_ENDPOINT: http://api:30100, LIVE_API_KEY: ix-live-key, LIVE_SNAPSHOT_DIR: /snapshots}
+    volumes: [snapshots:/snapshots:U]
+    depends_on: [api]
+    restart: "no"
+  ixmati-java-3:
+    image: localhost/ixmati-java-live-client:local
+    environment: {LIVE_MODE: ixmati, LIVE_CLIENT_ID: "3", LIVE_WRITE_RATE: "${LIVE_WRITE_RATE:-20}", LIVE_READ_RATE: "${LIVE_READ_RATE:-20}", LIVE_DURATION: "${LIVE_DURATION:-60}", LIVE_GRPC_ENDPOINT: http://api:30100, LIVE_API_KEY: ix-live-key, LIVE_SNAPSHOT_DIR: /snapshots}
+    volumes: [snapshots:/snapshots:U]
+    depends_on: [api]
+    restart: "no"
+
+volumes:
+  mosquitto_data:
+  cache_data:
+  cache_socket:
+  ixmati_data:
+  litestream_backup:
+  direct_data:
+  snapshots:

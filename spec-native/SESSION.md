@@ -121,6 +121,15 @@ saturación del generador, al superar el outbox el umbral 500. El escenario de
 `spec-native/evidence/SOAK-CAPACITY-20260813.md`. El perfil recomendado sigue
 siendo 10/s; 40–120/s es diagnóstico corto, no una garantía de una hora.
 
+Se implementó la demo visual completamente contenerizada `TASK-BENCH-0001`:
+Compose aislado, 3 clientes Java JDBC contra un SQLite compartido, 3 clientes
+Java gRPC/Protobuf contra `api:30100`, stack Ixmati, Litestream, dashboard
+web en `30450` y vista ANSI. Los clientes intercambian snapshots JSONL
+por volumen Podman; la demo no usa SSH ni IP de LAN. Su ejecución concurrente
+comparte recursos y no sustituye benchmarks secuenciales de capacidad. La
+compilación Maven y la configuración Compose pasan; queda pendiente ejecutar
+un smoke contenerizado en un host con las imágenes Rust disponibles.
+
 ## Context for next agent
 
 La iniciativa native-installer-hardening anterior está COMPLETADA.

@@ -72,3 +72,27 @@ corrida. `40/s` es el baseline con el throttle productivo; `100/s` y `150/s`
 son diagnósticos. Una tasa con `429` o con saturación del cliente no se declara
 capacidad sostenible. El cooldown evita que el warmup contamine la ventana del
 rate limiter.
+
+## Demo visual contenerizada: SQLite directo vs Ixmati
+
+La demo ejecuta seis contenedores Java en paralelo: tres usan JDBC contra un
+SQLite compartido y tres usan gRPC/Protobuf contra `api:30100` dentro de la
+misma red Podman. El stack Ixmati, el dashboard y los volúmenes de datos
+también son contenedores; no se usa SSH ni una IP de la LAN para el tráfico.
+
+`just java-live-demo`
+`just java-live-demo duration=120 write_rate=20 read_rate=20 clients=3`
+
+Durante la ejecución se muestra una vista ANSI ejecutada dentro del contenedor
+dashboard y el dashboard web queda en
+`http://127.0.0.1:30450`. El estado JSON está en `/state`. Las métricas
+incluyen confirmaciones, `PENDING`, errores, `SQLITE_BUSY`, percentiles, WAL,
+outbox, cola MQTT y estado de API. La evidencia temporal se guarda en
+`spec-native/evidence/raw/java-live-<timestamp>/`.
+
+`java-live-dashboard` levanta sólo el dashboard sobre un proyecto ya iniciado
+y `java-live-clean` elimina exclusivamente ese proyecto y sus volúmenes.
+La topología es fija 3 vs 3 para que la comparación visual sea equivalente.
+Como ambos lados comparten CPU, memoria y filesystem, el resultado es una
+demostración de comportamiento concurrente, no una medición aislada de
+capacidad ni una afirmación de que Ixmati supera a SQLite directo.

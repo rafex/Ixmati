@@ -204,6 +204,15 @@ JSON, REST/Protobuf y gRPC confirmaron el mismo throughput durable bajo el
 throttle productivo. Protobuf y gRPC son interfaces de transporte; no cambian
 la frontera de commit ni deben anunciarse como una mejora de capacidad.
 
+Para observar el camino real completo junto a un SQLite directo existe la demo
+contenerizada `just java-live-demo` (ver `benchmarks/README.md`). Levanta tres
+clientes Java JDBC y tres clientes Java gRPC/Protobuf en paralelo, además de
+API, writer, MQTT, cache, projector, Litestream y un dashboard en
+`http://127.0.0.1:30450`. Todos los clientes se comunican por la red interna
+de Podman (`api:30100`); no dependen de SSH ni de la IP pública. Es una demo
+visual de estrés concurrente y comparte recursos entre ambos lados, por lo que
+no sustituye la comparativa secuencial de capacidad.
+
 ### Qué dicen estos resultados del producto
 
 Ixmati no compite por throughput SQL bruto. La comparativa demuestra que

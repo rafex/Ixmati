@@ -306,3 +306,9 @@ curl -H "Authorization: ApiKey ix-key-1" \
 | `just docs-serve` | `mdbook serve --open docs/` |
 | `just env-up` | `docker compose -f docker/docker-compose.dev.yml up -d` |
 | `just installer-test` | `helpers/shell/test_installer_debian.sh` (vía `make installer-test`) |
+| `just java-live-demo` | demo Podman 3 clientes JDBC vs 3 clientes gRPC |
+| `just java-live-dashboard` | dashboard de la demo en puerto 30450 |
+| `just java-live-clean` | elimina sólo la demo y sus volúmenes |
+
+La demo Java usa `api:30100` dentro de la red Podman y escribe snapshots
+JSONL para la vista ANSI y el dashboard web.

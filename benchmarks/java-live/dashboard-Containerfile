@@ -1,0 +1,7 @@
+FROM docker.io/library/python:3.13-alpine
+WORKDIR /app
+COPY benchmarks/java-live/dashboard.py /app/dashboard.py
+COPY benchmarks/java-live/tui.py /app/tui.py
+RUN mkdir -p /snapshots /direct-data
+EXPOSE 8080
+ENTRYPOINT ["python", "/app/dashboard.py"]
