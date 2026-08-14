@@ -5,7 +5,7 @@ agent = "codex"
 initiative = "protobuf-api"
 task = "TASK-PROTO-0004"
 intent = "Completar gRPC, REST/Protobuf, replay/live, despliegue y pruebas sin alterar la durabilidad existente"
-last_updated = "2026-08-13T05:20:00Z"
+last_updated = "2026-08-14T15:30:00Z"
 +++
 
 # Active Session
@@ -121,14 +121,18 @@ saturación del generador, al superar el outbox el umbral 500. El escenario de
 `spec-native/evidence/SOAK-CAPACITY-20260813.md`. El perfil recomendado sigue
 siendo 10/s; 40–120/s es diagnóstico corto, no una garantía de una hora.
 
-Se implementó la demo visual completamente contenerizada `TASK-BENCH-0001`:
-Compose aislado, 3 clientes Java JDBC contra un SQLite compartido, 3 clientes
-Java gRPC/Protobuf contra `api:30100`, stack Ixmati, Litestream, dashboard
-web en `30450` y vista ANSI. Los clientes intercambian snapshots JSONL
-por volumen Podman; la demo no usa SSH ni IP de LAN. Su ejecución concurrente
-comparte recursos y no sustituye benchmarks secuenciales de capacidad. La
-compilación Maven y la configuración Compose pasan; queda pendiente ejecutar
-un smoke contenerizado en un host con las imágenes Rust disponibles.
+Se implementó y validó la demo visual completamente contenerizada
+`TASK-BENCH-0001`: Compose aislado, 3 clientes Java JDBC contra un SQLite
+compartido, 3 clientes Java gRPC/Protobuf contra `api:30100`, stack Ixmati,
+Litestream, dashboard web en `30450` y vista ANSI. La primera ejecución remota
+reveló dos defectos de la demo: contexto `COPY` de Litestream y empaquetado/
+resolución DNS del cliente gRPC. Ambos quedaron corregidos; un smoke en el
+Bastion confirmó 25/25 escrituras `COMMITTED`, 20/25 lecturas encontradas,
+`PRAGMA integrity_check=ok` y 25 filas en `_idempotency`/`_outbox`. Cuando el
+engine está remoto, `PODMAN_CONNECTION` dirige build, compose y cleanup al
+Bastion; el tráfico de clientes permanece en `api:30100` dentro de la red
+interna. La demo comparte recursos y no sustituye benchmarks secuenciales de
+capacidad.
 
 ## Context for next agent
 

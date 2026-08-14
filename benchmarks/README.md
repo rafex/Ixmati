@@ -80,12 +80,29 @@ SQLite compartido y tres usan gRPC/Protobuf contra `api:30100` dentro de la
 misma red Podman. El stack Ixmati, el dashboard y los volúmenes de datos
 también son contenedores; no se usa SSH ni una IP de la LAN para el tráfico.
 
-`just java-live-demo`
-`just java-live-demo duration=120 write_rate=20 read_rate=20 clients=3`
+Local:
+
+```bash
+just java-live-demo duration=120 write_rate=20 read_rate=20 clients=3
+```
+
+Con Podman remoto en el Bastion:
+
+```bash
+PODMAN_CONNECTION=debian-server-wifi \
+PODMAN_DASHBOARD_HOST=192.168.3.143 \
+just java-live-demo duration=120 write_rate=20 read_rate=20 clients=3
+```
+
+En este segundo caso las imágenes, red, volúmenes y contenedores viven en el
+Bastion; el cliente local sólo envía comandos al engine remoto. El tráfico de
+los seis clientes sigue siendo interno (`api:30100`), y el puerto 30450 queda
+publicado en el Bastion.
 
 Durante la ejecución se muestra una vista ANSI ejecutada dentro del contenedor
 dashboard y el dashboard web queda en
-`http://127.0.0.1:30450`. El estado JSON está en `/state`. Las métricas
+`http://127.0.0.1:30450` en ejecución local, o en
+`http://$PODMAN_DASHBOARD_HOST:30450` cuando el engine es remoto. El estado JSON está en `/state`. Las métricas
 incluyen confirmaciones, `PENDING`, errores, `SQLITE_BUSY`, percentiles, WAL,
 outbox, cola MQTT y estado de API. La evidencia temporal se guarda en
 `spec-native/evidence/raw/java-live-<timestamp>/`.

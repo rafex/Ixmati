@@ -5,5 +5,7 @@
 dbs:
   - path: /data/default.db
     replica:
-      path: ${LITESTREAM_FILESYSTEM_PATH:-/backup}
+      # Litestream does not expand shell-style defaults in YAML. The
+      # container profiles mount their local replica at /backup.
+      path: /backup
       sync-interval: 1s

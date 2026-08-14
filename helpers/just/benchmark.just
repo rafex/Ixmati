@@ -24,10 +24,10 @@ java-live-demo duration="60" write_rate="20" read_rate="20" clients="3":
 
 [group('benchmark')]
 java-live-dashboard:
-    @podman compose -f {{repo_root}}/benchmarks/java-live/compose.yaml up -d dashboard
-    @echo "Dashboard: http://127.0.0.1:30450"
-    @echo "Estado:     http://127.0.0.1:30450/state"
+    @if [ -n "$${PODMAN_CONNECTION:-}" ]; then podman --connection "$${PODMAN_CONNECTION}" compose -f {{repo_root}}/benchmarks/java-live/compose.yaml up -d dashboard; else podman compose -f {{repo_root}}/benchmarks/java-live/compose.yaml up -d dashboard; fi
+    @echo "Dashboard: http://$${PODMAN_DASHBOARD_HOST:-127.0.0.1}:30450"
+    @echo "Estado:     http://$${PODMAN_DASHBOARD_HOST:-127.0.0.1}:30450/state"
 
 [group('benchmark')]
 java-live-clean:
-    @podman compose -f {{repo_root}}/benchmarks/java-live/compose.yaml down -v --remove-orphans
+    @if [ -n "$${PODMAN_CONNECTION:-}" ]; then podman --connection "$${PODMAN_CONNECTION}" compose -f {{repo_root}}/benchmarks/java-live/compose.yaml down -v --remove-orphans; else podman compose -f {{repo_root}}/benchmarks/java-live/compose.yaml down -v --remove-orphans; fi

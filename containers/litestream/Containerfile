@@ -1,9 +1,12 @@
 # containers/litestream/Containerfile — sidecar de replicacion WAL
 FROM docker.io/litestream/litestream:0.5.16
 
-COPY containers/litestream/litestream.yml /etc/litestream.yml
-COPY containers/litestream/multi-store.yml /etc/litestream-multi.yml
-COPY containers/litestream/multi-store-s3.yml /etc/litestream-multi-s3.yml
+# The build context is containers/litestream (see helpers/make/containers.mk).
+# Keep COPY paths relative to that context so remote Podman builds behave the
+# same as local builds.
+COPY litestream.yml /etc/litestream.yml
+COPY multi-store.yml /etc/litestream-multi.yml
+COPY multi-store-s3.yml /etc/litestream-multi-s3.yml
 
 USER 1000:1000
 ENTRYPOINT ["litestream"]

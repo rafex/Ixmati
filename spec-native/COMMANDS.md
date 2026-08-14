@@ -311,4 +311,8 @@ curl -H "Authorization: ApiKey ix-key-1" \
 | `just java-live-clean` | elimina sólo la demo y sus volúmenes |
 
 La demo Java usa `api:30100` dentro de la red Podman y escribe snapshots
-JSONL para la vista ANSI y el dashboard web.
+JSONL para la vista ANSI y el dashboard web. Si el engine corre en el Bastion,
+anteponer `PODMAN_CONNECTION=debian-server-wifi`; los comandos de la demo,
+incluidos build, compose y cleanup, se ejecutan contra ese engine. Use
+`PODMAN_DASHBOARD_HOST=<ip-del-bastion>` para imprimir la URL publicada en el
+host remoto.

@@ -74,8 +74,10 @@ if [[ "${ready}" != "1" ]]; then
   exit 1
 fi
 compose up -d sqlite-java-1 sqlite-java-2 sqlite-java-3 ixmati-java-1 ixmati-java-2 ixmati-java-3
-echo "dashboard=http://127.0.0.1:30450" | tee -a "${evidence_dir}/manifest.txt"
-echo "[java-live] dashboard: http://127.0.0.1:30450"
+dashboard_host="${PODMAN_DASHBOARD_HOST:-127.0.0.1}"
+echo "podman_connection=${podman_connection:-local}" >> "${evidence_dir}/manifest.txt"
+echo "dashboard=http://${dashboard_host}:30450" | tee -a "${evidence_dir}/manifest.txt"
+echo "[java-live] dashboard: http://${dashboard_host}:30450"
 echo "[java-live] terminal view runs inside the dashboard container; Ctrl-C cleans the project"
 compose exec -T dashboard python /app/tui.py --url http://dashboard:8080/state --duration "${duration}" \
   | tee "${evidence_dir}/terminal.log"

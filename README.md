@@ -209,9 +209,12 @@ contenerizada `just java-live-demo` (ver `benchmarks/README.md`). Levanta tres
 clientes Java JDBC y tres clientes Java gRPC/Protobuf en paralelo, además de
 API, writer, MQTT, cache, projector, Litestream y un dashboard en
 `http://127.0.0.1:30450`. Todos los clientes se comunican por la red interna
-de Podman (`api:30100`); no dependen de SSH ni de la IP pública. Es una demo
-visual de estrés concurrente y comparte recursos entre ambos lados, por lo que
-no sustituye la comparativa secuencial de capacidad.
+de Podman (`api:30100`); no dependen de SSH ni de la IP pública. Si Podman está
+en el Bastion, la misma receta usa `PODMAN_CONNECTION` para crear todo allí y
+el dashboard se publica en el host remoto indicado por
+`PODMAN_DASHBOARD_HOST` (por ejemplo `192.168.3.143`). Es una demo visual de
+estrés concurrente y comparte recursos entre ambos lados, por lo que no
+sustituye la comparativa secuencial de capacidad.
 
 ### Qué dicen estos resultados del producto
 

@@ -3,10 +3,10 @@ package io.ixmati.javalive;
 import com.google.protobuf.Struct;
 import com.google.protobuf.Value;
 import io.grpc.ManagedChannel;
-import io.grpc.ManagedChannelBuilder;
 import io.grpc.Metadata;
 import io.grpc.StatusRuntimeException;
 import io.grpc.stub.MetadataUtils;
+import io.grpc.netty.shaded.io.grpc.netty.NettyChannelBuilder;
 import ixmati.v1.Common;
 import ixmati.v1.Read;
 import ixmati.v1.ReadServiceGrpc;
@@ -16,6 +16,8 @@ import org.sqlite.SQLiteConfig;
 
 import java.io.BufferedWriter;
 import java.io.IOException;
+import java.net.URI;
+import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -113,7 +115,7 @@ public final class LiveClient {
             stats.writeCommitted(elapsedMillis(started));
         } catch (BusyException e) { stats.busy(elapsedMillis(started)); }
         catch (PendingException e) { stats.pending(elapsedMillis(started)); }
-        catch (Exception e) { stats.writeError(elapsedMillis(started)); }
+        catch (Exception e) { stats.writeError(elapsedMillis(started), e); }
     }
 
     private void read() {
@@ -124,7 +126,7 @@ public final class LiveClient {
                     ? DirectStore.read(config.dbPath, key)
                     : ixmati.read(key);
             stats.read(found, elapsedMillis(started));
-        } catch (Exception e) { stats.readError(elapsedMillis(started)); }
+        } catch (Exception e) { stats.readError(elapsedMillis(started), e); }
     }
 
     private static long elapsedMillis(long started) {
@@ -174,6 +176,7 @@ public final class LiveClient {
         private long writesSent, writesCommitted, pending, writeErrors, reads, readHits, readErrors, busy;
         private long totalWrites, totalCommitted, totalPending, totalWriteErrors, totalReads, totalReadHits, totalReadErrors, totalBusy;
         private long writeNumber;
+        private String lastWriteError = "", lastReadError = "";
         private final List<Long> writeLatencies = new ArrayList<>();
         private final List<Long> readLatencies = new ArrayList<>();
 
@@ -181,10 +184,16 @@ public final class LiveClient {
         synchronized long currentWriteNumber() { return writeNumber; }
         synchronized void writeCommitted(long ms) { writesSent++; writesCommitted++; totalWrites++; totalCommitted++; writeLatencies.add(ms); }
         synchronized void pending(long ms) { writesSent++; pending++; totalWrites++; totalPending++; writeLatencies.add(ms); }
-        synchronized void writeError(long ms) { writesSent++; writeErrors++; totalWrites++; totalWriteErrors++; writeLatencies.add(ms); }
+        synchronized void writeError(long ms, Throwable error) {
+            writesSent++; writeErrors++; totalWrites++; totalWriteErrors++; writeLatencies.add(ms);
+            if (lastWriteError.isEmpty()) lastWriteError = error.toString();
+        }
         synchronized void busy(long ms) { writesSent++; busy++; totalWrites++; totalBusy++; writeLatencies.add(ms); }
         synchronized void read(boolean hit, long ms) { reads++; totalReads++; if (hit) { readHits++; totalReadHits++; } readLatencies.add(ms); }
-        synchronized void readError(long ms) { reads++; readErrors++; totalReads++; totalReadErrors++; readLatencies.add(ms); }
+        synchronized void readError(long ms, Throwable error) {
+            reads++; readErrors++; totalReads++; totalReadErrors++; readLatencies.add(ms);
+            if (lastReadError.isEmpty()) lastReadError = error.toString();
+        }
         synchronized void error() { totalWriteErrors++; }
 
         synchronized String snapshot(Config c, boolean finalSnapshot) {
@@ -194,6 +203,7 @@ public final class LiveClient {
                     + "\"writes_sent\":" + writesSent + ",\"writes_committed\":" + writesCommitted + ","
                     + "\"pending\":" + pending + ",\"write_errors\":" + writeErrors + ",\"sqlite_busy\":" + busy + ","
                     + "\"reads\":" + reads + ",\"read_hits\":" + readHits + ",\"read_errors\":" + readErrors + ","
+                    + "\"last_write_error\":\"" + escape(lastWriteError) + "\",\"last_read_error\":\"" + escape(lastReadError) + "\","
                     + "\"p50_ms\":" + percentile(writeLatencies, .50) + ",\"p95_ms\":" + percentile(writeLatencies, .95) + ",\"p99_ms\":" + percentile(writeLatencies, .99) + ","
                     + "\"read_p50_ms\":" + percentile(readLatencies, .50) + ",\"read_p95_ms\":" + percentile(readLatencies, .95) + ","
                     + "\"total_writes\":" + totalWrites + ",\"total_committed\":" + totalCommitted + ",\"total_pending\":" + totalPending + ","
@@ -275,8 +285,16 @@ public final class LiveClient {
         private final ReadServiceGrpc.ReadServiceBlockingStub reads;
 
         IxmatiStore(String endpoint, String apiKey) {
-            String target = endpoint.replaceFirst("^https?://", "");
-            channel = ManagedChannelBuilder.forTarget(target).usePlaintext().build();
+            URI address = URI.create(endpoint.contains("://") ? endpoint : "http://" + endpoint);
+            if (address.getHost() == null || address.getPort() < 1) {
+                throw new IllegalArgumentException("gRPC endpoint must contain a host and port: " + endpoint);
+            }
+            // Build a direct TCP channel so a Compose/Podman DNS name is not
+            // interpreted as a resolver scheme (for example, "api:30100"
+            // may otherwise be treated as a unix target).
+            channel = NettyChannelBuilder.forAddress(
+                            new InetSocketAddress(address.getHost(), address.getPort()))
+                    .usePlaintext().build();
             Metadata headers = new Metadata();
             headers.put(Metadata.Key.of("x-api-key", Metadata.ASCII_STRING_MARSHALLER), apiKey);
             writes = WriteServiceGrpc.newBlockingStub(channel)
